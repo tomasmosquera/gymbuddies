@@ -1,0 +1,15 @@
+-- Optional local-dev seed data. Run after `supabase db reset` against a
+-- local stack (requires Docker). Creates two auth users via the admin API
+-- is out of scope for plain SQL, so this file intentionally only documents
+-- the manual steps — seeding through Supabase Auth normally happens by
+-- signing up real test accounts from the running app instead.
+--
+-- 1. supabase start
+-- 2. Sign up 2-3 test accounts from the app (or supabase auth admin CLI)
+-- 3. Use one account to create a group, share the invite_code with the rest
+-- 4. Have each account call join_group('<code>') then submit an
+--    initial_deposit wallet_transaction and confirm it as the admin
+--
+-- There is intentionally no synthetic data inserted directly into
+-- auth.users/profiles here, since profiles are created by the
+-- handle_new_user() trigger and must correspond to a real auth.users row.

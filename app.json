@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "Gym Buddies",
+    "slug": "gymbuddies",
+    "version": "1.0.0",
+    "scheme": "gymbuddies",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gymbuddies.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Gym Buddies necesita la cámara para verificar tus check-ins en el gimnasio en el momento en que ocurren.",
+        "NSLocationWhenInUseUsageDescription": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio."
+      }
+    },
+    "android": {
+      "package": "com.gymbuddies.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-image",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Gym Buddies necesita la cámara para verificar tus check-ins en el gimnasio en el momento en que ocurren."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Gym Buddies necesita acceso a tus fotos para adjuntar el comprobante de tu transferencia."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
