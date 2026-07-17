@@ -20,6 +20,8 @@ export default function DepositScreen() {
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   if (isLoading || !group || !membership || !session) {
     return (
@@ -57,20 +59,43 @@ export default function DepositScreen() {
     try {
       const path = receiptPath(group.id, session.user.id, `initial-${Date.now()}`);
       await uploadImage('receipts', path, result.data.receiptImageUri);
-      const { error: insertError } = await supabase.from('wallet_transactions').insert({
-        group_id: group.id,
-        user_id: session.user.id,
-        type: 'initial_deposit',
-        amount: result.data.amount,
-        status: 'pending',
-        receipt_path: path,
-      });
+      const { data: inserted, error: insertError } = await supabase
+        .from('wallet_transactions')
+        .insert({
+          group_id: group.id,
+          user_id: session.user.id,
+          type: 'initial_deposit',
+          amount: result.data.amount,
+          status: 'pending',
+          receipt_path: path,
+        })
+        .select('id')
+        .single();
       if (insertError) throw new Error(insertError.message);
+      setPendingTransactionId(inserted?.id ?? null);
       setJustSubmitted(true);
     } catch (err) {
       Alert.alert('No se pudo registrar el depósito', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSelfConfirm = async () => {
+    if (!pendingTransactionId) return;
+    setIsConfirming(true);
+    try {
+      const { error: updateError } = await supabase
+        .from('wallet_transactions')
+        .update({ status: 'confirmed' })
+        .eq('id', pendingTransactionId);
+      if (updateError) throw new Error(updateError.message);
+      await refresh();
+      router.replace('/home');
+    } catch (err) {
+      Alert.alert('No se pudo confirmar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -104,6 +129,14 @@ export default function DepositScreen() {
           <Text style={styles.pendingText}>
             El admin del grupo debe confirmar tu transferencia antes de que puedas empezar a hacer check-ins.
           </Text>
+          {membership.role === 'admin' && pendingTransactionId ? (
+            <>
+              <Text style={styles.pendingText}>
+                Como eres el admin del grupo, puedes confirmar tu propio depósito ahora mismo.
+              </Text>
+              <Button label="Confirmar mi depósito" onPress={handleSelfConfirm} loading={isConfirming} />
+            </>
+          ) : null}
           <Button label="Revisar de nuevo" onPress={handleCheckStatus} variant="secondary" />
         </Card>
       ) : (

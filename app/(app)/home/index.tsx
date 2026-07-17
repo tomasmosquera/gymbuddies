@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckins } from '@/hooks/useCheckins';
@@ -26,6 +27,7 @@ export default function HomeScreen() {
     group?.id ?? null,
     session?.user.id ?? null
   );
+  const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
 
   const todayString = toBogotaDateString(new Date());
   const { weekStart } = getWeekBounds(new Date());
@@ -33,6 +35,7 @@ export default function HomeScreen() {
 
   const completedCount = weekCheckins.length;
   const vacationCount = weekVacationDays.length;
+  const activatedDateString = membership ? toBogotaDateString(new Date(membership.activated_at ?? membership.joined_at)) : null;
 
   if (groupLoading || checkinsLoading || vacationLoading || !group || !membership) {
     return (
@@ -102,21 +105,30 @@ export default function HomeScreen() {
         </Text>
         <View style={styles.weekRow}>
           {days.map((day, index) => {
-            const isDone = weekCheckins.some((c) => c.checkin_date === day);
+            const checkinForDay = weekCheckins.find((c) => c.checkin_date === day);
+            const isDone = !!checkinForDay;
             const isVacation = weekVacationDays.some((v) => v.vacation_date === day);
             const isToday = day === todayString;
             const isPast = day < todayString;
+            // Days before the member's activation date weren't theirs to fail —
+            // they weren't an accountable member of the group yet.
+            const isBeforeMembership = activatedDateString !== null && day < activatedDateString;
             let tone: 'neutral' | 'success' | 'warning' | 'danger' = 'neutral';
             if (isVacation) tone = 'warning';
             else if (isDone) tone = 'success';
-            else if (isPast) tone = 'danger';
+            else if (isPast && !isBeforeMembership) tone = 'danger';
             return (
-              <View key={day} style={styles.dayColumn}>
+              <Pressable
+                key={day}
+                style={styles.dayColumn}
+                disabled={!checkinForDay}
+                onPress={() => checkinForDay && setViewingPhotoPath(checkinForDay.photo_path)}
+              >
                 <View style={[styles.dayDot, dayToneStyle(tone)]}>
                   <Text style={styles.dayDotText}>{isVacation ? '🌴' : isDone ? '✓' : ''}</Text>
                 </View>
                 <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>{DAY_LABELS[index]}</Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -125,10 +137,20 @@ export default function HomeScreen() {
       {!todayCheckin ? (
         <Button label="Hacer check-in de hoy 📸" onPress={() => router.push('/checkin')} />
       ) : (
-        <Card>
+        <Card style={styles.doneCard}>
           <Text style={styles.doneText}>Ya hiciste check-in hoy ✓</Text>
+          <View style={styles.doneActions}>
+            <Button label="Ver mi foto" variant="secondary" onPress={() => setViewingPhotoPath(todayCheckin.photo_path)} />
+            <Button label="Volver a tomar la foto" variant="secondary" onPress={() => router.push('/checkin')} />
+          </View>
         </Card>
       )}
+
+      <CheckinPhotoModal
+        visible={viewingPhotoPath !== null}
+        photoPath={viewingPhotoPath}
+        onClose={() => setViewingPhotoPath(null)}
+      />
 
       <Button label="Tomar día de vacaciones hoy" variant="secondary" onPress={handleVacation} />
     </ScrollView>
@@ -169,5 +191,7 @@ const styles = StyleSheet.create({
   dayDotText: { fontSize: 14 },
   dayLabel: { color: colors.textMuted, fontSize: 12 },
   dayLabelToday: { color: colors.primary, fontWeight: '700' },
+  doneCard: { gap: spacing.sm },
   doneText: { color: colors.success, fontWeight: '600', textAlign: 'center' },
+  doneActions: { flexDirection: 'row', gap: spacing.sm },
 });

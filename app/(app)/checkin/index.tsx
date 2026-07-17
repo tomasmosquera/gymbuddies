@@ -20,6 +20,7 @@ export default function CheckinCameraScreen() {
   const setDraft = useCheckinDraftStore((s) => s.setDraft);
   const cameraRef = useRef<CameraView>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [retakeRequested, setRetakeRequested] = useState(false);
 
   useEffect(() => {
     if (locationStatus === 'idle') requestLock();
@@ -38,6 +39,7 @@ export default function CheckinCameraScreen() {
         longitude: location.longitude,
         accuracyMeters: location.accuracyMeters,
         address: null,
+        existingCheckinId: todayCheckin?.id ?? null,
       });
       router.push('/checkin/preview');
     } catch (err) {
@@ -55,13 +57,14 @@ export default function CheckinCameraScreen() {
     );
   }
 
-  if (todayCheckin) {
+  if (todayCheckin && !retakeRequested) {
     return (
       <View style={styles.center}>
         <EmptyState
           title="Ya hiciste check-in hoy 💪"
-          description="Vuelve mañana para registrar tu siguiente día de gym."
+          description="Puedes volver a tomar la foto de hoy si quieres reemplazarla."
         />
+        <Button label="Volver a tomar la foto" variant="secondary" onPress={() => setRetakeRequested(true)} />
       </View>
     );
   }

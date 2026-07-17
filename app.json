@@ -32,7 +32,6 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-image",
       [
         "expo-camera",
         {
@@ -56,8 +55,7 @@
         {
           "photosPermission": "Gym Buddies necesita acceso a tus fotos para adjuntar el comprobante de tu transferencia."
         }
-      ],
-      "expo-status-bar"
+      ]
     ],
     "experiments": {
       "typedRoutes": true

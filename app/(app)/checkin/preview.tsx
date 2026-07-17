@@ -64,19 +64,33 @@ export default function CheckinPreviewScreen() {
       const path = checkinPhotoPath(group.id, session.user.id, checkinDate);
       await uploadImage('checkins', path, flattenedUri);
 
-      const { error } = await supabase.from('checkins').insert({
-        group_id: group.id,
-        user_id: session.user.id,
-        captured_at: draft.capturedAt,
-        latitude: draft.latitude,
-        longitude: draft.longitude,
-        location_accuracy_m: draft.accuracyMeters,
-        photo_path: path,
-      });
+      const { error } = draft.existingCheckinId
+        ? await supabase
+            .from('checkins')
+            .update({
+              captured_at: draft.capturedAt,
+              latitude: draft.latitude,
+              longitude: draft.longitude,
+              location_accuracy_m: draft.accuracyMeters,
+              photo_path: path,
+            })
+            .eq('id', draft.existingCheckinId)
+        : await supabase.from('checkins').insert({
+            group_id: group.id,
+            user_id: session.user.id,
+            captured_at: draft.capturedAt,
+            latitude: draft.latitude,
+            longitude: draft.longitude,
+            location_accuracy_m: draft.accuracyMeters,
+            photo_path: path,
+          });
       if (error) throw new Error(error.message);
 
       setDraft(null);
-      Alert.alert('¡Check-in registrado! 💪', 'Tu día de hoy ya cuenta.');
+      Alert.alert(
+        draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
+        'Tu día de hoy ya cuenta.'
+      );
       router.replace('/home');
     } catch (err) {
       Alert.alert('No se pudo registrar el check-in', err instanceof Error ? err.message : 'Intenta de nuevo');

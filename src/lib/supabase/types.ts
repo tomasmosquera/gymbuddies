@@ -51,6 +51,7 @@ export type GroupMember = {
   status: GroupMemberStatus;
   balance: number;
   joined_at: string;
+  activated_at: string | null;
 };
 
 export type Checkin = {
@@ -166,7 +167,8 @@ export type Database = {
       checkins: {
         Row: Checkin;
         Insert: Pick<Checkin, 'group_id' | 'user_id' | 'captured_at' | 'latitude' | 'longitude' | 'location_accuracy_m' | 'photo_path'>;
-        Update: never;
+        // Only a same-day self re-capture is allowed (checkins_update_self_today, 0012).
+        Update: Partial<Pick<Checkin, 'captured_at' | 'latitude' | 'longitude' | 'location_accuracy_m' | 'photo_path'>>;
       } & NoRelationships;
       vacation_days: {
         Row: VacationDay;
