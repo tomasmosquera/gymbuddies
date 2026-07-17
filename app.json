@@ -56,7 +56,8 @@
         {
           "photosPermission": "Gym Buddies necesita acceso a tus fotos para adjuntar el comprobante de tu transferencia."
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
