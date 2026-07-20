@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { supabase } from '@/lib/supabase/client';
-import { checkinPhotoPath, uploadImage } from '@/lib/supabase/storage';
+import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
 import { formatBogotaDateTime, toBogotaDateString } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -61,6 +61,33 @@ export default function CheckinPreviewScreen() {
     try {
       const flattenedUri = await captureRef(viewShotRef, { format: 'jpg', quality: 0.85 });
       const checkinDate = toBogotaDateString(capturedAtDate);
+
+      if (draft.mode === 'checkout') {
+        if (!draft.existingCheckinId) throw new Error('No se encontró el check-in de hoy');
+        const path = checkoutPhotoPath(group.id, session.user.id, checkinDate);
+        await uploadImage('checkins', path, flattenedUri);
+
+        const { data, error } = await supabase.rpc('submit_workout_checkout', {
+          p_checkin_id: draft.existingCheckinId,
+          p_captured_at: draft.capturedAt,
+          p_latitude: draft.latitude,
+          p_longitude: draft.longitude,
+          p_location_accuracy_m: draft.accuracyMeters,
+          p_photo_path: path,
+        });
+        if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la salida');
+
+        setDraft(null);
+        const minutes = data.workout_minutes ?? 0;
+        const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
+        Alert.alert(
+          'Salida registrada 🏁',
+          `Entrenaste ${minutes} minuto(s).${isShort ? ` No alcanzaste el mínimo de ${group.min_workout_minutes} minutos.` : ''}`
+        );
+        router.replace('/home');
+        return;
+      }
+
       const path = checkinPhotoPath(group.id, session.user.id, checkinDate);
       await uploadImage('checkins', path, flattenedUri);
 
@@ -93,7 +120,10 @@ export default function CheckinPreviewScreen() {
       );
       router.replace('/home');
     } catch (err) {
-      Alert.alert('No se pudo registrar el check-in', err instanceof Error ? err.message : 'Intenta de nuevo');
+      Alert.alert(
+        draft.mode === 'checkout' ? 'No se pudo registrar la salida' : 'No se pudo registrar el check-in',
+        err instanceof Error ? err.message : 'Intenta de nuevo'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -111,7 +141,11 @@ export default function CheckinPreviewScreen() {
 
       <View style={styles.actions}>
         <Button label="Repetir foto" variant="secondary" onPress={handleRetake} disabled={isSubmitting} />
-        <Button label="Confirmar check-in" onPress={handleConfirm} loading={isSubmitting} />
+        <Button
+          label={draft.mode === 'checkout' ? 'Confirmar salida' : 'Confirmar check-in'}
+          onPress={handleConfirm}
+          loading={isSubmitting}
+        />
       </View>
     </View>
   );

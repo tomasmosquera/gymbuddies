@@ -15,6 +15,10 @@ export function checkinPhotoPath(groupId: string, userId: string, checkinDate: s
   return `${groupId}/${userId}/${checkinDate}.jpg`;
 }
 
+export function checkoutPhotoPath(groupId: string, userId: string, checkinDate: string): string {
+  return `${groupId}/${userId}/${checkinDate}-checkout.jpg`;
+}
+
 export function receiptPath(groupId: string, userId: string, transactionRef: string): string {
   return `${groupId}/${userId}/${transactionRef}.jpg`;
 }

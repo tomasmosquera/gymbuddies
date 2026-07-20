@@ -21,6 +21,8 @@ export const createGroupSchema = z.object({
   weeklyPenaltyCap: z.number().min(0),
   exitFeeAmount: z.number().min(0).default(0),
   exitNoticeDays: z.number().int().min(0).default(0),
+  requireCheckoutPhoto: z.boolean().default(false),
+  minWorkoutMinutes: z.number().int().min(0).default(0),
   adminPaymentInfo: z.string().trim().max(280).optional().or(z.literal('')),
 });
 
@@ -44,6 +46,8 @@ export const ruleProposalSchema = z
     weeklyPenaltyCap: z.number().min(0).optional(),
     exitFeeAmount: z.number().min(0).optional(),
     exitNoticeDays: z.number().int().min(0).optional(),
+    requireCheckoutPhoto: z.boolean().optional(),
+    minWorkoutMinutes: z.number().int().min(0).optional(),
   })
   .refine((changes) => Object.values(changes).some((v) => v !== undefined), {
     message: 'Propón al menos un cambio',

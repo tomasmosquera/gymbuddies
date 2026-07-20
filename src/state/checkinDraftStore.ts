@@ -9,6 +9,8 @@ export interface CheckinDraft {
   address: string | null; // best-effort reverse geocode, may be null
   /** Set when re-taking today's already-submitted photo: updates that row instead of inserting a new one. */
   existingCheckinId: string | null;
+  /** 'checkout' finishes an existing check-in's workout-duration photo instead of creating/updating the check-in itself. */
+  mode: 'checkin' | 'checkout';
 }
 
 interface CheckinDraftState {

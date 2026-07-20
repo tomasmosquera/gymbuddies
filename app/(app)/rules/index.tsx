@@ -16,11 +16,17 @@ const CHANGE_LABELS: Record<string, string> = {
   weekly_penalty_cap: 'Tope de multa por semana',
   exit_fee_amount: 'Cuota por salir sin aviso',
   exit_notice_days: 'Días de aviso para salir sin costo',
+  require_checkout_photo: 'Foto de salida requerida',
+  min_workout_minutes: 'Duración mínima del entreno (min)',
 };
 
 const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'exit_fee_amount']);
+const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
 
 function formatChangeValue(key: string, value: unknown): string {
+  if (BOOLEAN_CHANGE_FIELDS.has(key)) {
+    return value ? 'Sí' : 'No';
+  }
   if (MONEY_CHANGE_FIELDS.has(key) && typeof value === 'number') {
     return value.toLocaleString('es-CO');
   }
@@ -119,6 +125,16 @@ export default function RulesScreen() {
           <Text style={styles.ruleLabel}>Días de aviso para salir sin costo</Text>
           <Text style={styles.ruleValue}>{group.exit_notice_days}</Text>
         </View>
+        <View style={styles.ruleRow}>
+          <Text style={styles.ruleLabel}>Foto de salida requerida</Text>
+          <Text style={styles.ruleValue}>{group.require_checkout_photo ? 'Sí' : 'No'}</Text>
+        </View>
+        {group.require_checkout_photo ? (
+          <View style={styles.ruleRow}>
+            <Text style={styles.ruleLabel}>Duración mínima del entreno</Text>
+            <Text style={styles.ruleValue}>{group.min_workout_minutes} min</Text>
+          </View>
+        ) : null}
       </Card>
 
       {proposal ? (

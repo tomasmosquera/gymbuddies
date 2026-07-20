@@ -3,10 +3,16 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, Vi
 import { Link, router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { supabase } from '@/lib/supabase/client';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
 import { createGroupSchema } from '@/lib/validation/schemas';
 import { colors, spacing, typography } from '@/constants/theme';
+
+const YES_NO_OPTIONS: { key: 'yes' | 'no'; label: string }[] = [
+  { key: 'no', label: 'No' },
+  { key: 'yes', label: 'Sí' },
+];
 
 export default function CreateGroupScreen() {
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
@@ -18,6 +24,8 @@ export default function CreateGroupScreen() {
   const [weeklyPenaltyCap, setWeeklyPenaltyCap] = useState('');
   const [exitFeeAmount, setExitFeeAmount] = useState('0');
   const [exitNoticeDays, setExitNoticeDays] = useState('0');
+  const [requireCheckoutPhoto, setRequireCheckoutPhoto] = useState<'yes' | 'no'>('no');
+  const [minWorkoutMinutes, setMinWorkoutMinutes] = useState('0');
   const [adminPaymentInfo, setAdminPaymentInfo] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,6 +39,8 @@ export default function CreateGroupScreen() {
       weeklyPenaltyCap: Number(weeklyPenaltyCap),
       exitFeeAmount: Number(exitFeeAmount),
       exitNoticeDays: Number(exitNoticeDays),
+      requireCheckoutPhoto: requireCheckoutPhoto === 'yes',
+      minWorkoutMinutes: Number(minWorkoutMinutes),
       adminPaymentInfo,
     });
     if (!result.success) {
@@ -50,6 +60,8 @@ export default function CreateGroupScreen() {
         p_weekly_penalty_cap: result.data.weeklyPenaltyCap,
         p_exit_fee_amount: result.data.exitFeeAmount,
         p_exit_notice_days: result.data.exitNoticeDays,
+        p_require_checkout_photo: result.data.requireCheckoutPhoto,
+        p_min_workout_minutes: result.data.minWorkoutMinutes,
         p_admin_payment_info: result.data.adminPaymentInfo || null,
       });
       if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el grupo');
@@ -113,6 +125,17 @@ export default function CreateGroupScreen() {
             keyboardType="numeric"
             error={errors.exitNoticeDays}
           />
+          <View style={styles.toggleField}>
+            <Text style={styles.toggleLabel}>¿Exigir foto de salida al terminar el entreno?</Text>
+            <SegmentedControl options={YES_NO_OPTIONS} value={requireCheckoutPhoto} onChange={setRequireCheckoutPhoto} />
+          </View>
+          <TextField
+            label="Duración mínima del entreno (minutos)"
+            value={minWorkoutMinutes}
+            onChangeText={setMinWorkoutMinutes}
+            keyboardType="numeric"
+            error={errors.minWorkoutMinutes}
+          />
           <TextField
             label="Datos de pago (Nequi, Bancolombia, etc.)"
             value={adminPaymentInfo}
@@ -136,6 +159,8 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg },
   subtitle: { ...typography.body, color: colors.textMuted },
   form: { gap: spacing.md },
+  toggleField: { gap: spacing.xs },
+  toggleLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   link: { alignSelf: 'center', marginVertical: spacing.lg },
   linkText: { color: colors.primary, fontWeight: '600' },
 });

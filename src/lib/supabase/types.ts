@@ -43,6 +43,8 @@ export type Group = {
   weekly_penalty_cap: number;
   exit_fee_amount: number;
   exit_notice_days: number;
+  require_checkout_photo: boolean;
+  min_workout_minutes: number;
   admin_payment_info: string | null;
   timezone: string;
   created_at: string;
@@ -71,6 +73,12 @@ export type Checkin = {
   longitude: number;
   location_accuracy_m: number | null;
   photo_path: string;
+  checkout_captured_at: string | null;
+  checkout_latitude: number | null;
+  checkout_longitude: number | null;
+  checkout_location_accuracy_m: number | null;
+  checkout_photo_path: string | null;
+  workout_minutes: number | null;
   created_at: string;
 };
 
@@ -95,6 +103,8 @@ export type RuleProposalChanges = {
   weekly_penalty_cap?: number;
   exit_fee_amount?: number;
   exit_notice_days?: number;
+  require_checkout_photo?: boolean;
+  min_workout_minutes?: number;
 };
 
 export type RuleProposal = {
@@ -247,6 +257,8 @@ export type Database = {
           p_weekly_penalty_cap: number;
           p_exit_fee_amount: number;
           p_exit_notice_days: number;
+          p_require_checkout_photo?: boolean;
+          p_min_workout_minutes?: number;
           p_admin_payment_info?: string | null;
         };
         Returns: Group;
@@ -285,6 +297,17 @@ export type Database = {
         Returns: AttendanceOverride;
       };
       clear_attendance_override: { Args: { p_group_id: string; p_user_id: string; p_date: string }; Returns: void };
+      submit_workout_checkout: {
+        Args: {
+          p_checkin_id: string;
+          p_captured_at: string;
+          p_latitude: number;
+          p_longitude: number;
+          p_location_accuracy_m: number | null;
+          p_photo_path: string;
+        };
+        Returns: Checkin;
+      };
     };
   };
 };

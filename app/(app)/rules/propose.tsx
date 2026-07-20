@@ -14,6 +14,12 @@ const TIMING_OPTIONS: { key: 'immediate' | 'next_week'; label: string }[] = [
   { key: 'immediate', label: 'De inmediato' },
 ];
 
+const CHECKOUT_TOGGLE_OPTIONS: { key: 'no_change' | 'yes' | 'no'; label: string }[] = [
+  { key: 'no_change', label: 'Sin cambio' },
+  { key: 'yes', label: 'Sí' },
+  { key: 'no', label: 'No' },
+];
+
 export default function ProposeRuleChangeScreen() {
   const { group } = useActiveGroup();
   const [minDaysPerWeek, setMinDaysPerWeek] = useState('');
@@ -21,6 +27,8 @@ export default function ProposeRuleChangeScreen() {
   const [weeklyPenaltyCap, setWeeklyPenaltyCap] = useState('');
   const [exitFeeAmount, setExitFeeAmount] = useState('');
   const [exitNoticeDays, setExitNoticeDays] = useState('');
+  const [requireCheckoutPhoto, setRequireCheckoutPhoto] = useState<'no_change' | 'yes' | 'no'>('no_change');
+  const [minWorkoutMinutes, setMinWorkoutMinutes] = useState('');
   const [timing, setTiming] = useState<'immediate' | 'next_week'>('next_week');
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,6 +41,8 @@ export default function ProposeRuleChangeScreen() {
       weeklyPenaltyCap: weeklyPenaltyCap ? Number(weeklyPenaltyCap) : undefined,
       exitFeeAmount: exitFeeAmount ? Number(exitFeeAmount) : undefined,
       exitNoticeDays: exitNoticeDays ? Number(exitNoticeDays) : undefined,
+      requireCheckoutPhoto: requireCheckoutPhoto === 'no_change' ? undefined : requireCheckoutPhoto === 'yes',
+      minWorkoutMinutes: minWorkoutMinutes ? Number(minWorkoutMinutes) : undefined,
     };
     const result = ruleProposalSchema.safeParse(changes);
     if (!result.success) {
@@ -50,6 +60,10 @@ export default function ProposeRuleChangeScreen() {
           ...(result.data.weeklyPenaltyCap !== undefined && { weekly_penalty_cap: result.data.weeklyPenaltyCap }),
           ...(result.data.exitFeeAmount !== undefined && { exit_fee_amount: result.data.exitFeeAmount }),
           ...(result.data.exitNoticeDays !== undefined && { exit_notice_days: result.data.exitNoticeDays }),
+          ...(result.data.requireCheckoutPhoto !== undefined && {
+            require_checkout_photo: result.data.requireCheckoutPhoto,
+          }),
+          ...(result.data.minWorkoutMinutes !== undefined && { min_workout_minutes: result.data.minWorkoutMinutes }),
         },
         p_apply_immediately: timing === 'immediate',
       });
@@ -110,6 +124,21 @@ export default function ProposeRuleChangeScreen() {
             onChangeText={setExitNoticeDays}
             keyboardType="numeric"
             placeholder={group ? String(group.exit_notice_days) : ''}
+          />
+          <View style={styles.timingField}>
+            <Text style={styles.timingLabel}>¿Exigir foto de salida al terminar el entreno?</Text>
+            <SegmentedControl
+              options={CHECKOUT_TOGGLE_OPTIONS}
+              value={requireCheckoutPhoto}
+              onChange={setRequireCheckoutPhoto}
+            />
+          </View>
+          <TextField
+            label="Nueva duración mínima del entreno (minutos)"
+            value={minWorkoutMinutes}
+            onChangeText={setMinWorkoutMinutes}
+            keyboardType="numeric"
+            placeholder={group ? String(group.min_workout_minutes) : ''}
           />
           <View style={styles.timingField}>
             <Text style={styles.timingLabel}>¿Cuándo debe aplicar el cambio si se aprueba?</Text>

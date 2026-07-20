@@ -9,6 +9,7 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckins } from '@/hooks/useCheckins';
 import { useLocationLock } from '@/hooks/useLocationLock';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
+import { formatBogotaDateTime } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function CheckinCameraScreen() {
@@ -21,6 +22,11 @@ export default function CheckinCameraScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [retakeRequested, setRetakeRequested] = useState(false);
+  const [checkoutRequested, setCheckoutRequested] = useState(false);
+
+  const checkoutRequired = group?.require_checkout_photo ?? false;
+  const needsCheckout = checkoutRequired && !!todayCheckin && !todayCheckin.checkout_captured_at;
+  const isCheckoutFlow = needsCheckout && checkoutRequested;
 
   useEffect(() => {
     if (locationStatus === 'idle') requestLock();
@@ -40,6 +46,7 @@ export default function CheckinCameraScreen() {
         accuracyMeters: location.accuracyMeters,
         address: null,
         existingCheckinId: todayCheckin?.id ?? null,
+        mode: isCheckoutFlow ? 'checkout' : 'checkin',
       });
       router.push('/checkin/preview');
     } catch (err) {
@@ -57,7 +64,19 @@ export default function CheckinCameraScreen() {
     );
   }
 
-  if (todayCheckin && !retakeRequested) {
+  if (todayCheckin && needsCheckout && !checkoutRequested) {
+    return (
+      <View style={styles.center}>
+        <EmptyState
+          title="Check-in inicial hecho ✓"
+          description={`Entraste a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Cuando termines de entrenar, registra tu salida.`}
+        />
+        <Button label="Registrar salida 🏁" onPress={() => setCheckoutRequested(true)} />
+      </View>
+    );
+  }
+
+  if (todayCheckin && !needsCheckout && !retakeRequested) {
     return (
       <View style={styles.center}>
         <EmptyState
@@ -108,6 +127,11 @@ export default function CheckinCameraScreen() {
     <View style={styles.flex}>
       <CameraView ref={cameraRef} style={styles.camera} facing="back" />
       <View style={styles.overlay}>
+        {isCheckoutFlow ? (
+          <View style={styles.modePill}>
+            <Text style={styles.modePillText}>Foto de salida</Text>
+          </View>
+        ) : null}
         <View style={styles.statusPill}>
           {isLocked ? (
             <Text style={styles.statusText}>📍 Ubicación lista</Text>
@@ -153,6 +177,15 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     gap: spacing.md,
   },
+  modePill: {
+    position: 'absolute',
+    top: -48,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+  },
+  modePillText: { color: colors.primaryText, fontWeight: '700', fontSize: 13 },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',

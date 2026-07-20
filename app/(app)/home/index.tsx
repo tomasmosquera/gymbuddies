@@ -192,9 +192,23 @@ export default function HomeScreen() {
 
       {isCurrentWeek && !todayCheckin ? (
         <Button label="Hacer check-in de hoy 📸" onPress={() => router.push('/checkin')} />
+      ) : isCurrentWeek && todayCheckin && group.require_checkout_photo && !todayCheckin.checkout_captured_at ? (
+        <Card style={styles.doneCard}>
+          <Text style={styles.doneText}>Check-in inicial hecho ✓</Text>
+          <Text style={styles.hint}>Cuando termines de entrenar, registra tu salida.</Text>
+          <Button label="Registrar salida 🏁" onPress={() => router.push('/checkin')} />
+        </Card>
       ) : isCurrentWeek && todayCheckin ? (
         <Card style={styles.doneCard}>
           <Text style={styles.doneText}>Ya hiciste check-in hoy ✓</Text>
+          {group.require_checkout_photo && todayCheckin.checkout_captured_at ? (
+            <View style={styles.workoutInfo}>
+              <Text style={styles.workoutMinutes}>Entrenaste {todayCheckin.workout_minutes} minuto(s)</Text>
+              {todayCheckin.workout_minutes !== null && todayCheckin.workout_minutes < group.min_workout_minutes ? (
+                <Badge label="Corto" tone="warning" />
+              ) : null}
+            </View>
+          ) : null}
           <View style={styles.doneActions}>
             <Button label="Ver mi foto" variant="secondary" onPress={() => setViewingPhotoPath(todayCheckin.photo_path)} />
             <Button label="Volver a tomar la foto" variant="secondary" onPress={() => router.push('/checkin')} />
@@ -270,4 +284,6 @@ const styles = StyleSheet.create({
   doneCard: { gap: spacing.sm },
   doneText: { color: colors.success, fontWeight: '600', textAlign: 'center' },
   doneActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
+  workoutInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  workoutMinutes: { color: colors.text, fontWeight: '600' },
 });
