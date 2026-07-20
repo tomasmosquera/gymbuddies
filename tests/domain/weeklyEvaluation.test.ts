@@ -1,13 +1,17 @@
 import { daysPresentInWeek, evaluateWeek } from '@/lib/domain/weeklyEvaluation';
 
+// High enough to never bind unless a test is specifically exercising the cap.
+const NO_EFFECTIVE_CAP = 1_000_000;
+
 describe('evaluateWeek', () => {
   it('charges no penalty when the member met their required days', () => {
     const result = evaluateWeek({
       requiredDaysPerWeek: 3,
       daysPresentInWeek: 7,
       completedDays: 3,
-      vacationDaysUsed: 0,
+      excusedDaysUsed: 0,
       penaltyAmount: 10000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(result).toEqual({
@@ -25,8 +29,9 @@ describe('evaluateWeek', () => {
       requiredDaysPerWeek: 4,
       daysPresentInWeek: 7,
       completedDays: 1,
-      vacationDaysUsed: 0,
+      excusedDaysUsed: 0,
       penaltyAmount: 10000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(result.failedDays).toBe(3);
@@ -35,13 +40,14 @@ describe('evaluateWeek', () => {
     expect(result.statusAfter).toBe('active');
   });
 
-  it('lets vacation days excuse required days without counting as failures', () => {
+  it('lets excused days excuse required days without counting as failures', () => {
     const result = evaluateWeek({
       requiredDaysPerWeek: 3,
       daysPresentInWeek: 7,
       completedDays: 1,
-      vacationDaysUsed: 2,
+      excusedDaysUsed: 2,
       penaltyAmount: 10000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(result.effectiveRequiredDays).toBe(1);
@@ -49,13 +55,14 @@ describe('evaluateWeek', () => {
     expect(result.penaltyCharged).toBe(0);
   });
 
-  it('caps effective required days at zero when vacation days exceed the requirement', () => {
+  it('caps effective required days at zero when excused days exceed the requirement', () => {
     const result = evaluateWeek({
       requiredDaysPerWeek: 2,
       daysPresentInWeek: 7,
       completedDays: 0,
-      vacationDaysUsed: 5,
+      excusedDaysUsed: 5,
       penaltyAmount: 10000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(result.effectiveRequiredDays).toBe(0);
@@ -67,8 +74,9 @@ describe('evaluateWeek', () => {
       requiredDaysPerWeek: 2,
       daysPresentInWeek: 7,
       completedDays: 5,
-      vacationDaysUsed: 0,
+      excusedDaysUsed: 0,
       penaltyAmount: 10000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(result.failedDays).toBe(0);
@@ -79,8 +87,9 @@ describe('evaluateWeek', () => {
       requiredDaysPerWeek: 2,
       daysPresentInWeek: 7,
       completedDays: 0,
-      vacationDaysUsed: 0,
+      excusedDaysUsed: 0,
       penaltyAmount: 25000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(exact.balanceAfter).toBe(0);
@@ -90,8 +99,9 @@ describe('evaluateWeek', () => {
       requiredDaysPerWeek: 3,
       daysPresentInWeek: 7,
       completedDays: 0,
-      vacationDaysUsed: 0,
+      excusedDaysUsed: 0,
       penaltyAmount: 25000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(over.balanceAfter).toBe(-25000);
@@ -103,12 +113,58 @@ describe('evaluateWeek', () => {
       requiredDaysPerWeek: 2,
       daysPresentInWeek: 7,
       completedDays: 0,
-      vacationDaysUsed: 0,
+      excusedDaysUsed: 0,
       penaltyAmount: 10000,
+      weeklyPenaltyCap: NO_EFFECTIVE_CAP,
       balanceBefore: 50000,
     });
     expect(result.balanceAfter).toBe(30000);
     expect(result.statusAfter).toBe('active');
+  });
+
+  describe('weekly penalty cap', () => {
+    it('caps the charged penalty at the group weekly cap, per the $100k/day, $300k/week example rule', () => {
+      const result = evaluateWeek({
+        requiredDaysPerWeek: 5,
+        daysPresentInWeek: 7,
+        completedDays: 0,
+        excusedDaysUsed: 0,
+        penaltyAmount: 100000,
+        weeklyPenaltyCap: 300000,
+        balanceBefore: 1000000,
+      });
+      expect(result.failedDays).toBe(5);
+      expect(result.penaltyCharged).toBe(300000);
+      expect(result.balanceAfter).toBe(700000);
+    });
+
+    it('does not apply the cap when the uncapped penalty is already under it', () => {
+      const result = evaluateWeek({
+        requiredDaysPerWeek: 5,
+        daysPresentInWeek: 7,
+        completedDays: 3,
+        excusedDaysUsed: 0,
+        penaltyAmount: 100000,
+        weeklyPenaltyCap: 300000,
+        balanceBefore: 1000000,
+      });
+      expect(result.failedDays).toBe(2);
+      expect(result.penaltyCharged).toBe(200000);
+    });
+
+    it('a cap of zero means the week can never cost anything', () => {
+      const result = evaluateWeek({
+        requiredDaysPerWeek: 7,
+        daysPresentInWeek: 7,
+        completedDays: 0,
+        excusedDaysUsed: 0,
+        penaltyAmount: 10000,
+        weeklyPenaltyCap: 0,
+        balanceBefore: 50000,
+      });
+      expect(result.penaltyCharged).toBe(0);
+      expect(result.balanceAfter).toBe(50000);
+    });
   });
 
   describe('partial week (joined mid-week)', () => {
@@ -118,8 +174,9 @@ describe('evaluateWeek', () => {
         requiredDaysPerWeek: 3,
         daysPresentInWeek: 2,
         completedDays: 0,
-        vacationDaysUsed: 0,
+        excusedDaysUsed: 0,
         penaltyAmount: 10000,
+        weeklyPenaltyCap: NO_EFFECTIVE_CAP,
         balanceBefore: 50000,
       });
       expect(result.requiredDays).toBe(2);
@@ -130,8 +187,9 @@ describe('evaluateWeek', () => {
         requiredDaysPerWeek: 3,
         daysPresentInWeek: 7,
         completedDays: 0,
-        vacationDaysUsed: 0,
+        excusedDaysUsed: 0,
         penaltyAmount: 10000,
+        weeklyPenaltyCap: NO_EFFECTIVE_CAP,
         balanceBefore: 50000,
       });
       expect(result.requiredDays).toBe(3);
@@ -142,8 +200,9 @@ describe('evaluateWeek', () => {
         requiredDaysPerWeek: 3,
         daysPresentInWeek: 0,
         completedDays: 0,
-        vacationDaysUsed: 0,
+        excusedDaysUsed: 0,
         penaltyAmount: 10000,
+        weeklyPenaltyCap: NO_EFFECTIVE_CAP,
         balanceBefore: 50000,
       });
       expect(result.requiredDays).toBe(0);

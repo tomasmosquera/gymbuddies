@@ -3,16 +3,25 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, Vi
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { supabase } from '@/lib/supabase/client';
 import { ruleProposalSchema } from '@/lib/validation/schemas';
 import { colors, spacing, typography } from '@/constants/theme';
 
+const TIMING_OPTIONS: { key: 'immediate' | 'next_week'; label: string }[] = [
+  { key: 'next_week', label: 'La próxima semana' },
+  { key: 'immediate', label: 'De inmediato' },
+];
+
 export default function ProposeRuleChangeScreen() {
   const { group } = useActiveGroup();
   const [minDaysPerWeek, setMinDaysPerWeek] = useState('');
   const [penaltyAmount, setPenaltyAmount] = useState('');
-  const [vacationDaysPerMonth, setVacationDaysPerMonth] = useState('');
+  const [weeklyPenaltyCap, setWeeklyPenaltyCap] = useState('');
+  const [exitFeeAmount, setExitFeeAmount] = useState('');
+  const [exitNoticeDays, setExitNoticeDays] = useState('');
+  const [timing, setTiming] = useState<'immediate' | 'next_week'>('next_week');
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -21,7 +30,9 @@ export default function ProposeRuleChangeScreen() {
     const changes = {
       minDaysPerWeek: minDaysPerWeek ? Number(minDaysPerWeek) : undefined,
       penaltyAmount: penaltyAmount ? Number(penaltyAmount) : undefined,
-      vacationDaysPerMonth: vacationDaysPerMonth ? Number(vacationDaysPerMonth) : undefined,
+      weeklyPenaltyCap: weeklyPenaltyCap ? Number(weeklyPenaltyCap) : undefined,
+      exitFeeAmount: exitFeeAmount ? Number(exitFeeAmount) : undefined,
+      exitNoticeDays: exitNoticeDays ? Number(exitNoticeDays) : undefined,
     };
     const result = ruleProposalSchema.safeParse(changes);
     if (!result.success) {
@@ -36,14 +47,20 @@ export default function ProposeRuleChangeScreen() {
         p_changes: {
           ...(result.data.minDaysPerWeek !== undefined && { min_days_per_week: result.data.minDaysPerWeek }),
           ...(result.data.penaltyAmount !== undefined && { penalty_amount: result.data.penaltyAmount }),
-          ...(result.data.vacationDaysPerMonth !== undefined && {
-            vacation_days_per_month: result.data.vacationDaysPerMonth,
-          }),
+          ...(result.data.weeklyPenaltyCap !== undefined && { weekly_penalty_cap: result.data.weeklyPenaltyCap }),
+          ...(result.data.exitFeeAmount !== undefined && { exit_fee_amount: result.data.exitFeeAmount }),
+          ...(result.data.exitNoticeDays !== undefined && { exit_notice_days: result.data.exitNoticeDays }),
         },
+        p_apply_immediately: timing === 'immediate',
       });
       if (rpcError) throw new Error(rpcError.message);
-      Alert.alert('Propuesta enviada', 'El grupo tiene 72 horas para votar.');
-      router.back();
+      Alert.alert(
+        'Propuesta enviada',
+        timing === 'immediate'
+          ? 'El grupo tiene 72 horas para votar. Si se aprueba, el cambio aplica de inmediato.'
+          : 'El grupo tiene 72 horas para votar. Si se aprueba, el cambio aplica la próxima semana.'
+      );
+      router.replace('/rules');
     } catch (err) {
       Alert.alert('No se pudo enviar la propuesta', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
@@ -71,17 +88,36 @@ export default function ProposeRuleChangeScreen() {
             value={penaltyAmount}
             onChangeText={setPenaltyAmount}
             keyboardType="numeric"
-            placeholder={group ? String(group.penalty_amount) : ''}
+            placeholder={group ? group.penalty_amount.toLocaleString('es-CO') : ''}
           />
           <TextField
-            label="Nuevos días de vacaciones al mes"
-            value={vacationDaysPerMonth}
-            onChangeText={setVacationDaysPerMonth}
+            label="Nuevo tope de multa por semana (COP)"
+            value={weeklyPenaltyCap}
+            onChangeText={setWeeklyPenaltyCap}
             keyboardType="numeric"
-            placeholder={group ? String(group.vacation_days_per_month) : ''}
+            placeholder={group ? group.weekly_penalty_cap.toLocaleString('es-CO') : ''}
           />
+          <TextField
+            label="Nueva cuota por salir sin aviso (COP)"
+            value={exitFeeAmount}
+            onChangeText={setExitFeeAmount}
+            keyboardType="numeric"
+            placeholder={group ? group.exit_fee_amount.toLocaleString('es-CO') : ''}
+          />
+          <TextField
+            label="Nuevos días de aviso para salir sin costo"
+            value={exitNoticeDays}
+            onChangeText={setExitNoticeDays}
+            keyboardType="numeric"
+            placeholder={group ? String(group.exit_notice_days) : ''}
+          />
+          <View style={styles.timingField}>
+            <Text style={styles.timingLabel}>¿Cuándo debe aplicar el cambio si se aprueba?</Text>
+            <SegmentedControl options={TIMING_OPTIONS} value={timing} onChange={setTiming} />
+          </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Button label="Enviar propuesta" onPress={handleSubmit} loading={isSubmitting} />
+          <Button label="Cancelar" variant="secondary" onPress={() => router.replace('/rules')} disabled={isSubmitting} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -93,5 +129,7 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg },
   subtitle: { ...typography.body, color: colors.textMuted },
   form: { gap: spacing.md },
+  timingField: { gap: spacing.xs },
+  timingLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   error: { color: colors.danger },
 });

@@ -18,7 +18,9 @@ export const createGroupSchema = z.object({
   initialDepositAmount: z.number().positive('El monto debe ser mayor a 0'),
   minDaysPerWeek: z.number().int().min(0).max(7),
   penaltyAmount: z.number().min(0),
-  vacationDaysPerMonth: z.number().int().min(0).default(0),
+  weeklyPenaltyCap: z.number().min(0),
+  exitFeeAmount: z.number().min(0).default(0),
+  exitNoticeDays: z.number().int().min(0).default(0),
   adminPaymentInfo: z.string().trim().max(280).optional().or(z.literal('')),
 });
 
@@ -39,16 +41,30 @@ export const ruleProposalSchema = z
   .object({
     minDaysPerWeek: z.number().int().min(0).max(7).optional(),
     penaltyAmount: z.number().min(0).optional(),
-    vacationDaysPerMonth: z.number().int().min(0).optional(),
+    weeklyPenaltyCap: z.number().min(0).optional(),
+    exitFeeAmount: z.number().min(0).optional(),
+    exitNoticeDays: z.number().int().min(0).optional(),
   })
   .refine((changes) => Object.values(changes).some((v) => v !== undefined), {
     message: 'Propón al menos un cambio',
   });
 
-export const vacationDayRequestSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'),
-  reason: z.string().trim().max(140).optional().or(z.literal('')),
-});
+export const excuseRequestSchema = z
+  .object({
+    excuseType: z.enum(['travel', 'medical', 'other']),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'),
+    reason: z.string().trim().max(280).optional().or(z.literal('')),
+    proofImageUri: z.string().min(1).optional(),
+  })
+  .refine((v) => v.endDate >= v.startDate, {
+    message: 'La fecha final debe ser igual o posterior a la inicial',
+    path: ['endDate'],
+  })
+  .refine((v) => v.excuseType === 'other' || !!v.proofImageUri, {
+    message: 'Adjunta una prueba (tiquete, recibo de peaje o incapacidad médica)',
+    path: ['proofImageUri'],
+  });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
@@ -56,4 +72,4 @@ export type CreateGroupInput = z.infer<typeof createGroupSchema>;
 export type JoinGroupInput = z.infer<typeof joinGroupSchema>;
 export type WalletTransactionInput = z.infer<typeof walletTransactionSchema>;
 export type RuleProposalInput = z.infer<typeof ruleProposalSchema>;
-export type VacationDayRequestInput = z.infer<typeof vacationDayRequestSchema>;
+export type ExcuseRequestInput = z.infer<typeof excuseRequestSchema>;

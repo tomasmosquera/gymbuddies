@@ -146,7 +146,7 @@ export default function DepositScreen() {
             value={amount}
             onChangeText={setAmount}
             keyboardType="numeric"
-            placeholder={String(group.initial_deposit_amount)}
+            placeholder={group.initial_deposit_amount.toLocaleString('es-CO')}
           />
           <Button
             label={receiptUri ? 'Cambiar comprobante' : 'Adjuntar comprobante'}

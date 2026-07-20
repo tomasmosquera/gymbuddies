@@ -15,7 +15,9 @@ export default function CreateGroupScreen() {
   const [initialDepositAmount, setInitialDepositAmount] = useState('');
   const [minDaysPerWeek, setMinDaysPerWeek] = useState('3');
   const [penaltyAmount, setPenaltyAmount] = useState('');
-  const [vacationDaysPerMonth, setVacationDaysPerMonth] = useState('1');
+  const [weeklyPenaltyCap, setWeeklyPenaltyCap] = useState('');
+  const [exitFeeAmount, setExitFeeAmount] = useState('0');
+  const [exitNoticeDays, setExitNoticeDays] = useState('0');
   const [adminPaymentInfo, setAdminPaymentInfo] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +28,9 @@ export default function CreateGroupScreen() {
       initialDepositAmount: Number(initialDepositAmount),
       minDaysPerWeek: Number(minDaysPerWeek),
       penaltyAmount: Number(penaltyAmount),
-      vacationDaysPerMonth: Number(vacationDaysPerMonth),
+      weeklyPenaltyCap: Number(weeklyPenaltyCap),
+      exitFeeAmount: Number(exitFeeAmount),
+      exitNoticeDays: Number(exitNoticeDays),
       adminPaymentInfo,
     });
     if (!result.success) {
@@ -43,7 +47,9 @@ export default function CreateGroupScreen() {
         p_initial_deposit_amount: result.data.initialDepositAmount,
         p_min_days_per_week: result.data.minDaysPerWeek,
         p_penalty_amount: result.data.penaltyAmount,
-        p_vacation_days_per_month: result.data.vacationDaysPerMonth,
+        p_weekly_penalty_cap: result.data.weeklyPenaltyCap,
+        p_exit_fee_amount: result.data.exitFeeAmount,
+        p_exit_notice_days: result.data.exitNoticeDays,
         p_admin_payment_info: result.data.adminPaymentInfo || null,
       });
       if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el grupo');
@@ -87,11 +93,25 @@ export default function CreateGroupScreen() {
             error={errors.penaltyAmount}
           />
           <TextField
-            label="Días de vacaciones permitidos por mes"
-            value={vacationDaysPerMonth}
-            onChangeText={setVacationDaysPerMonth}
+            label="Tope de multa por semana (COP)"
+            value={weeklyPenaltyCap}
+            onChangeText={setWeeklyPenaltyCap}
             keyboardType="numeric"
-            error={errors.vacationDaysPerMonth}
+            error={errors.weeklyPenaltyCap}
+          />
+          <TextField
+            label="Cuota por salir sin aviso (COP)"
+            value={exitFeeAmount}
+            onChangeText={setExitFeeAmount}
+            keyboardType="numeric"
+            error={errors.exitFeeAmount}
+          />
+          <TextField
+            label="Días de aviso para salir sin costo"
+            value={exitNoticeDays}
+            onChangeText={setExitNoticeDays}
+            keyboardType="numeric"
+            error={errors.exitNoticeDays}
           />
           <TextField
             label="Datos de pago (Nequi, Bancolombia, etc.)"

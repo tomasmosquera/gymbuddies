@@ -1,4 +1,5 @@
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -6,23 +7,51 @@ import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
+import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { colors, spacing, typography } from '@/constants/theme';
 
 const CHANGE_LABELS: Record<string, string> = {
   min_days_per_week: 'Días mínimos por semana',
   penalty_amount: 'Penalización por día fallado',
-  vacation_days_per_month: 'Días de vacaciones al mes',
+  weekly_penalty_cap: 'Tope de multa por semana',
+  exit_fee_amount: 'Cuota por salir sin aviso',
+  exit_notice_days: 'Días de aviso para salir sin costo',
 };
+
+const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'exit_fee_amount']);
+
+function formatChangeValue(key: string, value: unknown): string {
+  if (MONEY_CHANGE_FIELDS.has(key) && typeof value === 'number') {
+    return value.toLocaleString('es-CO');
+  }
+  return String(value);
+}
 
 export default function RulesScreen() {
   const { session } = useAuth();
-  const { group, membership, isLoading: groupLoading } = useActiveGroup();
-  const { proposal, yesCount, noCount, myVote, isLoading: proposalLoading, castVote } = useRuleProposal(
-    group?.id ?? null,
-    session?.user.id ?? null
-  );
+  const { group, membership, isLoading: groupLoading, refresh: refreshGroup } = useActiveGroup();
+  const {
+    proposal,
+    yesCount,
+    noCount,
+    myVote,
+    upcomingChange,
+    isLoading: proposalLoading,
+    castVote,
+    refresh: refreshProposal,
+  } = useRuleProposal(group?.id ?? null, session?.user.id ?? null);
+  const {
+    request: excuseVoteRequest,
+    yesCount: excuseYesCount,
+    noCount: excuseNoCount,
+    myVote: myExcuseVote,
+    isLoading: excuseVoteLoading,
+    castVote: castExcuseVote,
+    refresh: refreshExcuseVote,
+  } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (groupLoading || proposalLoading || !group || !membership) {
+  if (groupLoading || proposalLoading || excuseVoteLoading || !group || !membership) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -40,8 +69,28 @@ export default function RulesScreen() {
     }
   };
 
+  const handleExcuseVote = async (vote: 'yes' | 'no') => {
+    try {
+      await castExcuseVote(vote);
+    } catch (err) {
+      Alert.alert('No se pudo votar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refreshGroup(), refreshProposal(), refreshExcuseVote()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
+    >
       <Card>
         <Text style={styles.cardTitle}>Reglas actuales</Text>
         <View style={styles.ruleRow}>
@@ -55,22 +104,39 @@ export default function RulesScreen() {
           </Text>
         </View>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Días de vacaciones al mes</Text>
-          <Text style={styles.ruleValue}>{group.vacation_days_per_month}</Text>
+          <Text style={styles.ruleLabel}>Tope de multa por semana</Text>
+          <Text style={styles.ruleValue}>
+            {group.currency} {group.weekly_penalty_cap.toLocaleString('es-CO')}
+          </Text>
+        </View>
+        <View style={styles.ruleRow}>
+          <Text style={styles.ruleLabel}>Cuota por salir sin aviso</Text>
+          <Text style={styles.ruleValue}>
+            {group.currency} {group.exit_fee_amount.toLocaleString('es-CO')}
+          </Text>
+        </View>
+        <View style={styles.ruleRow}>
+          <Text style={styles.ruleLabel}>Días de aviso para salir sin costo</Text>
+          <Text style={styles.ruleValue}>{group.exit_notice_days}</Text>
         </View>
       </Card>
 
       {proposal ? (
         <Card style={styles.proposalCard}>
           <View style={styles.proposalHeader}>
-            <Text style={styles.cardTitle}>Votación en curso</Text>
+            <Text style={styles.cardTitle}>Votación de reglas en curso</Text>
             <Badge label={`Cierra ${new Date(proposal.voting_closes_at).toLocaleDateString('es-CO')}`} />
           </View>
           {Object.entries(proposal.proposed_changes).map(([key, value]) => (
             <Text key={key} style={styles.changeText}>
-              {CHANGE_LABELS[key] ?? key}: {String(value)}
+              {CHANGE_LABELS[key] ?? key}: {formatChangeValue(key, value)}
             </Text>
           ))}
+          <Text style={styles.timingText}>
+            {proposal.apply_immediately
+              ? 'Si se aprueba, aplica de inmediato.'
+              : 'Si se aprueba, aplica la próxima semana.'}
+          </Text>
           <Text style={styles.tally}>
             {yesCount} a favor · {noCount} en contra · se necesitan {proposal.required_votes} votos a favor
           </Text>
@@ -85,11 +151,59 @@ export default function RulesScreen() {
         </Card>
       ) : isAdmin ? (
         <Button label="Proponer cambio de reglas" variant="secondary" onPress={() => router.push('/rules/propose')} />
-      ) : (
-        <Card>
-          <Text style={styles.emptyText}>No hay ninguna votación activa en este momento.</Text>
+      ) : null}
+
+      {upcomingChange ? (
+        <Card style={styles.proposalCard}>
+          <View style={styles.proposalHeader}>
+            <Text style={styles.cardTitle}>Cambio de reglas aprobado</Text>
+            <Badge
+              label={`Entra en vigor el ${new Date(upcomingChange.effective_at!).toLocaleDateString('es-CO')}`}
+              tone="success"
+            />
+          </View>
+          <Text style={styles.tally}>
+            La semana en curso se evalúa con las reglas actuales; el cambio se aplica el próximo lunes.
+          </Text>
+          {Object.entries(upcomingChange.proposed_changes).map(([key, value]) => (
+            <Text key={key} style={styles.changeText}>
+              {CHANGE_LABELS[key] ?? key}: {formatChangeValue(key, value)}
+            </Text>
+          ))}
         </Card>
-      )}
+      ) : null}
+
+      {excuseVoteRequest ? (
+        <Card style={styles.proposalCard}>
+          <View style={styles.proposalHeader}>
+            <Text style={styles.cardTitle}>Votación de excusa en curso</Text>
+            <Badge label={`Cierra ${new Date(excuseVoteRequest.voting_closes_at!).toLocaleDateString('es-CO')}`} />
+          </View>
+          <Text style={styles.changeText}>
+            {excuseVoteRequest.requested_start_date} a {excuseVoteRequest.requested_end_date}
+          </Text>
+          {excuseVoteRequest.reason ? <Text style={styles.changeText}>{excuseVoteRequest.reason}</Text> : null}
+          <Text style={styles.tally}>
+            {excuseYesCount} a favor · {excuseNoCount} en contra · se necesitan {excuseVoteRequest.required_votes} votos
+            a favor
+          </Text>
+          {myExcuseVote ? (
+            <Text style={styles.myVote}>Ya votaste: {myExcuseVote.vote === 'yes' ? 'a favor' : 'en contra'}</Text>
+          ) : (
+            <View style={styles.voteButtons}>
+              <Button label="Votar a favor" onPress={() => handleExcuseVote('yes')} />
+              <Button label="Votar en contra" variant="secondary" onPress={() => handleExcuseVote('no')} />
+            </View>
+          )}
+        </Card>
+      ) : null}
+
+      <View style={styles.actionButtons}>
+        <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
+        {isAdmin ? (
+          <Button label="Revisar excusas" variant="secondary" onPress={() => router.push('/rules/excuse-admin')} />
+        ) : null}
+      </View>
     </ScrollView>
   );
 }
@@ -104,8 +218,10 @@ const styles = StyleSheet.create({
   proposalCard: { gap: spacing.sm },
   proposalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   changeText: { color: colors.text },
+  timingText: { color: colors.warning, fontSize: 13, fontWeight: '600' },
   tally: { color: colors.textMuted, fontSize: 13 },
   myVote: { color: colors.primary, fontWeight: '600' },
   voteButtons: { gap: spacing.sm, marginTop: spacing.sm },
   emptyText: { color: colors.textMuted, textAlign: 'center' },
+  actionButtons: { gap: spacing.sm },
 });

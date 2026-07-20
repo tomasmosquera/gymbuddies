@@ -1,12 +1,14 @@
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
-import { useWallet } from '@/hooks/useWallet';
+import { useWallet, type WeeklyEvaluationResultWithRun } from '@/hooks/useWallet';
 import type { WalletTransaction, WalletTransactionStatus, WalletTransactionType } from '@/lib/supabase/types';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -29,21 +31,42 @@ const STATUS_LABELS: Record<WalletTransactionStatus, string> = {
   rejected: 'Rechazado',
 };
 
-function TransactionRow({ transaction }: { transaction: WalletTransaction }) {
+const FILTER_OPTIONS: { key: 'all' | 'penalties'; label: string }[] = [
+  { key: 'all', label: 'Todo' },
+  { key: 'penalties', label: 'Penalizaciones' },
+];
+
+function TransactionRow({
+  transaction,
+  result,
+}: {
+  transaction: WalletTransaction;
+  result: WeeklyEvaluationResultWithRun | undefined;
+}) {
   const isNegative = transaction.amount < 0;
   return (
     <Card style={styles.row}>
-      <View style={styles.rowLeft}>
-        <Text style={styles.rowTitle}>{TYPE_LABELS[transaction.type]}</Text>
-        <Text style={styles.rowDate}>{new Date(transaction.created_at).toLocaleDateString('es-CO')}</Text>
+      <View style={styles.rowTop}>
+        <View style={styles.rowLeft}>
+          <Text style={styles.rowTitle}>{TYPE_LABELS[transaction.type]}</Text>
+          <Text style={styles.rowDate}>{new Date(transaction.created_at).toLocaleDateString('es-CO')}</Text>
+        </View>
+        <View style={styles.rowRight}>
+          <Text style={[styles.amount, isNegative ? styles.amountNegative : styles.amountPositive]}>
+            {isNegative ? '-' : '+'}
+            {Math.abs(transaction.amount).toLocaleString('es-CO')}
+          </Text>
+          <Badge label={STATUS_LABELS[transaction.status]} tone={STATUS_TONE[transaction.status]} />
+        </View>
       </View>
-      <View style={styles.rowRight}>
-        <Text style={[styles.amount, isNegative ? styles.amountNegative : styles.amountPositive]}>
-          {isNegative ? '-' : '+'}
-          {Math.abs(transaction.amount).toLocaleString('es-CO')}
+      {result ? (
+        <Text style={styles.resultDetail}>
+          Semana del {new Date(result.run.week_start_date).toLocaleDateString('es-CO')} al{' '}
+          {new Date(result.run.week_end_date).toLocaleDateString('es-CO')} · {result.failed_days} de{' '}
+          {result.required_days} día(s) fallados
+          {result.excused_days_used > 0 ? ` · ${result.excused_days_used} excusado(s)` : ''}
         </Text>
-        <Badge label={STATUS_LABELS[transaction.status]} tone={STATUS_TONE[transaction.status]} />
-      </View>
+      ) : null}
     </Card>
   );
 }
@@ -51,7 +74,20 @@ function TransactionRow({ transaction }: { transaction: WalletTransaction }) {
 export default function WalletScreen() {
   const { session } = useAuth();
   const { group, membership, isLoading: groupLoading } = useActiveGroup();
-  const { transactions, isLoading: walletLoading, refresh } = useWallet(group?.id ?? null, session?.user.id ?? null);
+  const {
+    transactions,
+    resultById,
+    totalPenaltiesPaid,
+    weeksWithFailures,
+    isLoading: walletLoading,
+    refresh,
+  } = useWallet(group?.id ?? null, session?.user.id ?? null);
+  const [filter, setFilter] = useState<'all' | 'penalties'>('all');
+
+  const filteredTransactions = useMemo(
+    () => (filter === 'penalties' ? transactions.filter((t) => t.type === 'penalty') : transactions),
+    [transactions, filter]
+  );
 
   if (groupLoading || walletLoading || !group || !membership) {
     return (
@@ -64,7 +100,7 @@ export default function WalletScreen() {
   return (
     <FlatList
       contentContainerStyle={styles.container}
-      data={transactions}
+      data={filteredTransactions}
       keyExtractor={(item) => item.id}
       onRefresh={refresh}
       refreshing={false}
@@ -75,10 +111,36 @@ export default function WalletScreen() {
             {group.currency} {membership.balance.toLocaleString('es-CO')}
           </Text>
           <Button label="Registrar recarga" onPress={() => router.push('/wallet/recharge')} />
+
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Resumen de penalizaciones</Text>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Total pagado en multas</Text>
+              <Text style={styles.summaryValue}>
+                {group.currency} {totalPenaltiesPaid.toLocaleString('es-CO')}
+              </Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Semanas con días fallados</Text>
+              <Text style={styles.summaryValue}>{weeksWithFailures}</Text>
+            </View>
+          </Card>
+
+          <SegmentedControl options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
         </View>
       }
-      ListEmptyComponent={<EmptyState title="Sin movimientos" description="Aquí verás tus depósitos y penalizaciones." />}
-      renderItem={({ item }) => <TransactionRow transaction={item} />}
+      ListEmptyComponent={
+        <EmptyState
+          title="Sin movimientos"
+          description={filter === 'penalties' ? 'Todavía no tienes penalizaciones.' : 'Aquí verás tus depósitos y penalizaciones.'}
+        />
+      }
+      renderItem={({ item }) => (
+        <TransactionRow
+          transaction={item}
+          result={item.weekly_evaluation_result_id ? resultById.get(item.weekly_evaluation_result_id) : undefined}
+        />
+      )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />
   );
@@ -90,7 +152,13 @@ const styles = StyleSheet.create({
   header: { gap: spacing.sm, marginBottom: spacing.lg },
   balanceLabel: { color: colors.textMuted },
   balance: { ...typography.title, color: colors.text },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  summaryCard: { gap: spacing.xs, marginTop: spacing.sm },
+  summaryTitle: { ...typography.heading, fontSize: 15, color: colors.text, marginBottom: spacing.xs },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  summaryLabel: { color: colors.textMuted },
+  summaryValue: { color: colors.text, fontWeight: '700' },
+  row: { gap: spacing.xs },
+  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowLeft: { gap: 2 },
   rowTitle: { color: colors.text, fontWeight: '600' },
   rowDate: { color: colors.textMuted, fontSize: 12 },
@@ -98,4 +166,5 @@ const styles = StyleSheet.create({
   amount: { fontWeight: '700' },
   amountPositive: { color: colors.success },
   amountNegative: { color: colors.danger },
+  resultDetail: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
 });

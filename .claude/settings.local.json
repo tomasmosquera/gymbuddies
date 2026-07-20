@@ -1,8 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "mcp__Claude_Code_Remote__list_repos",
-      "mcp__Claude_Code_Remote__add_repo"
+      "Bash(git clone *)",
+      "Bash(rm -rf /tmp/gymbuddies_clone && git clone https://github.com/tomasmosquera/gymbuddies.git /tmp/gymbuddies_clone 2>&1)",
+      "Bash(node -e ' *)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/expo/package.json'\\).version\\)\")",
+      "Bash(npx expo *)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).scripts.start\\)\")",
+      "Bash(ipconfig)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://192.168.1.22:8081/status)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies['expo-image-picker']\\)\")",
+      "Bash(npm run *)",
+      "Bash(npx supabase *)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies['expo-image-manipulator']\\)\")",
+      "Bash(xargs -I{} sh -c 'echo ==={}===; cat {}')"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }

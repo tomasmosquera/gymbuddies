@@ -42,7 +42,9 @@ describe('createGroupSchema', () => {
       initialDepositAmount: 100000,
       minDaysPerWeek: 3,
       penaltyAmount: 15000,
-      vacationDaysPerMonth: 2,
+      weeklyPenaltyCap: 300000,
+      exitFeeAmount: 500000,
+      exitNoticeDays: 30,
     });
     expect(result.success).toBe(true);
   });
@@ -53,7 +55,7 @@ describe('createGroupSchema', () => {
       initialDepositAmount: 0,
       minDaysPerWeek: 3,
       penaltyAmount: 15000,
-      vacationDaysPerMonth: 0,
+      weeklyPenaltyCap: 300000,
     });
     expect(result.success).toBe(false);
   });
@@ -64,7 +66,7 @@ describe('createGroupSchema', () => {
       initialDepositAmount: 100000,
       minDaysPerWeek: 8,
       penaltyAmount: 15000,
-      vacationDaysPerMonth: 0,
+      weeklyPenaltyCap: 300000,
     });
     expect(result.success).toBe(false);
   });

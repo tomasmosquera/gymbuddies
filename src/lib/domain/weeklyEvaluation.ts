@@ -15,8 +15,10 @@ export interface WeeklyEvaluationInput {
    */
   daysPresentInWeek: number;
   completedDays: number;
-  vacationDaysUsed: number;
+  excusedDaysUsed: number;
   penaltyAmount: number;
+  /** Hard ceiling on how much a single week can ever cost (groups.weekly_penalty_cap). */
+  weeklyPenaltyCap: number;
   balanceBefore: number;
 }
 
@@ -30,13 +32,20 @@ export interface WeeklyEvaluationOutput {
 }
 
 export function evaluateWeek(input: WeeklyEvaluationInput): WeeklyEvaluationOutput {
-  const { requiredDaysPerWeek, daysPresentInWeek, completedDays, vacationDaysUsed, penaltyAmount, balanceBefore } =
-    input;
+  const {
+    requiredDaysPerWeek,
+    daysPresentInWeek,
+    completedDays,
+    excusedDaysUsed,
+    penaltyAmount,
+    weeklyPenaltyCap,
+    balanceBefore,
+  } = input;
 
   const requiredDays = Math.min(requiredDaysPerWeek, daysPresentInWeek);
-  const effectiveRequiredDays = Math.max(requiredDays - vacationDaysUsed, 0);
+  const effectiveRequiredDays = Math.max(requiredDays - excusedDaysUsed, 0);
   const failedDays = Math.max(effectiveRequiredDays - completedDays, 0);
-  const penaltyCharged = failedDays * penaltyAmount;
+  const penaltyCharged = Math.min(failedDays * penaltyAmount, weeklyPenaltyCap);
   const balanceAfter = balanceBefore - penaltyCharged;
   const statusAfter: WeeklyEvaluationOutput['statusAfter'] = balanceAfter <= 0 ? 'needs_recharge' : 'active';
 

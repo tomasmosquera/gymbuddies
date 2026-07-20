@@ -42,6 +42,26 @@ function PendingTransactionRow({
     }
   };
 
+  const confirmDelete = () => {
+    Alert.alert('Eliminar transferencia', '¿Eliminar esta transferencia pendiente? No se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: handleDelete },
+    ]);
+  };
+
+  const handleDelete = async () => {
+    setIsDeciding(true);
+    try {
+      const { error } = await supabase.rpc('admin_delete_wallet_transaction', { p_transaction_id: transaction.id });
+      if (error) throw new Error(error.message);
+      onDecided();
+    } catch (err) {
+      Alert.alert('No se pudo eliminar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsDeciding(false);
+    }
+  };
+
   return (
     <Card style={styles.row}>
       <Text style={styles.rowTitle}>{transaction.member_name}</Text>
@@ -53,6 +73,7 @@ function PendingTransactionRow({
         <Button label="Confirmar" onPress={() => decide('confirmed')} loading={isDeciding} />
         <Button label="Rechazar" variant="danger" onPress={() => decide('rejected')} loading={isDeciding} />
       </View>
+      <Button label="Eliminar" variant="secondary" onPress={confirmDelete} loading={isDeciding} />
     </Card>
   );
 }

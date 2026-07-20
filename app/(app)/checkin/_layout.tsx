@@ -13,6 +13,7 @@ export default function CheckinStackLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Check-in' }} />
       <Stack.Screen name="preview" options={{ title: 'Confirmar', presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="gallery" options={{ title: 'Fotos de la semana' }} />
     </Stack>
   );
 }

@@ -27,8 +27,11 @@ export function CheckinPhotoModal({ visible, photoPath, onClose }: CheckinPhotoM
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <View style={styles.backdrop}>
         <View style={styles.content}>
+          <Pressable accessibilityRole="button" style={styles.closeButton} onPress={onClose}>
+            <Text style={styles.closeButtonText}>Cerrar ✕</Text>
+          </Pressable>
           {status === 'loading' ? <ActivityIndicator color={colors.primary} /> : null}
           {status === 'expired' ? (
             <Text style={styles.expiredText}>
@@ -37,7 +40,7 @@ export function CheckinPhotoModal({ visible, photoPath, onClose }: CheckinPhotoM
           ) : null}
           {status === 'ready' && signedUrl ? <Image source={{ uri: signedUrl }} style={styles.photo} /> : null}
         </View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -55,7 +58,16 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.md,
   },
+  closeButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+  },
+  closeButtonText: { color: colors.text, fontWeight: '600' },
   photo: { width: '100%', aspectRatio: 3 / 4, borderRadius: radii.lg },
   expiredText: { color: colors.text, textAlign: 'center', padding: spacing.lg },
 });
