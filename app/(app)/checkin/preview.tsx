@@ -10,6 +10,7 @@ import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { supabase } from '@/lib/supabase/client';
 import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
 import { formatBogotaDateTime, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function CheckinPreviewScreen() {
@@ -77,6 +78,7 @@ export default function CheckinPreviewScreen() {
         });
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la salida');
 
+        await cancelCheckoutReminders(draft.existingCheckinId);
         setDraft(null);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
@@ -97,7 +99,7 @@ export default function CheckinPreviewScreen() {
       // back) a plain insert would collide with today's already-existing row
       // and fail with a duplicate-key error — upsert resolves to an update
       // in that case instead of erroring.
-      const { error } = await supabase
+      const { data: checkinRow, error } = await supabase
         .from('checkins')
         .upsert(
           {
@@ -110,9 +112,14 @@ export default function CheckinPreviewScreen() {
             photo_path: path,
           },
           { onConflict: 'group_id,user_id,checkin_date' }
-        );
+        )
+        .select('id')
+        .single();
       if (error) throw new Error(error.message);
 
+      if (group.require_checkout_photo) {
+        await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude);
+      }
       setDraft(null);
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',

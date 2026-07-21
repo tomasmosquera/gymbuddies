@@ -22,7 +22,8 @@
       "Bash(node -e \"console.log\\('expo-updates:', require\\('./package.json'\\).dependencies['expo-updates'] || 'no instalado'\\)\")",
       "Bash(node -e \"console.log\\('expo-clipboard:', require\\('./package.json'\\).dependencies['expo-clipboard'] || 'no instalado'\\)\")",
       "Bash(cp \"app/\\(app\\)/wallet/index.tsx\" \"app/\\(app\\)/profile/wallet.tsx\")",
-      "Bash(cp \"app/\\(app\\)/wallet/recharge.tsx\" \"app/\\(app\\)/profile/wallet-recharge.tsx\")"
+      "Bash(cp \"app/\\(app\\)/wallet/recharge.tsx\" \"app/\\(app\\)/profile/wallet-recharge.tsx\")",
+      "Bash(npm view *)"
     ],
     "additionalDirectories": [
       "\\tmp"

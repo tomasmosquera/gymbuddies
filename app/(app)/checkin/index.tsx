@@ -9,6 +9,7 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckins } from '@/hooks/useCheckins';
 import { useLocationLock } from '@/hooks/useLocationLock';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
+import { stopCheckoutGeofence } from '@/lib/notifications/checkoutReminders';
 import { formatBogotaDateTime } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -31,6 +32,15 @@ export default function CheckinCameraScreen() {
   useEffect(() => {
     if (locationStatus === 'idle') requestLock();
   }, [locationStatus, requestLock]);
+
+  // Safety net for when the geofence's exit event never fired (e.g. the app
+  // was killed before it could): whenever this screen loads and there's no
+  // pending checkout, make sure no stale geofence is still being monitored.
+  useEffect(() => {
+    if (!groupLoading && !checkinsLoading && !needsCheckout) {
+      stopCheckoutGeofence();
+    }
+  }, [groupLoading, checkinsLoading, needsCheckout]);
 
   const handleCapture = async () => {
     if (!cameraRef.current || !location || !group || !session) return;

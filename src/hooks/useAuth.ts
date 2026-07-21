@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/state/authStore';
+import { registerForPushNotificationsAsync } from '@/lib/notifications/pushToken';
 import type { Profile } from '@/lib/supabase/types';
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -18,6 +19,7 @@ export function useAuthBootstrap() {
   const setSession = useAuthStore((s) => s.setSession);
   const setProfile = useAuthStore((s) => s.setProfile);
   const setInitializing = useAuthStore((s) => s.setInitializing);
+  const userId = useAuthStore((s) => s.session?.user.id);
 
   useEffect(() => {
     let isMounted = true;
@@ -40,6 +42,12 @@ export function useAuthBootstrap() {
       subscription.subscription.unsubscribe();
     };
   }, [setSession, setProfile, setInitializing]);
+
+  useEffect(() => {
+    if (userId) {
+      registerForPushNotificationsAsync(userId);
+    }
+  }, [userId]);
 }
 
 export function useAuth() {

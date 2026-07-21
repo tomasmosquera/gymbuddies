@@ -24,8 +24,7 @@ src/
   state/                  Stores de Zustand (sesión, grupo activo, borrador de check-in)
   components/ui/          Componentes visuales reutilizables
 supabase/
-  migrations/             Esquema SQL completo, RLS, triggers, funciones, cron (0001–0011)
-  functions/               Edge Function opcional para notificaciones push
+  migrations/             Esquema SQL completo, RLS, triggers, funciones, cron (0001–0027)
 tests/domain/             Pruebas unitarias de la lógica pura
 ```
 
@@ -65,9 +64,9 @@ La app viene lista con todo el esquema de base de datos, pero necesitas tu propi
    ```
    No es obligatorio: los tipos ya incluidos en el repo fueron escritos a mano para calzar exactamente con las migraciones.
 
-### Notificaciones push (opcional)
+### Notificaciones push
 
-`supabase/functions/weekly-evaluation` envía una notificación push cuando alguien queda en `needs_recharge`. No está conectada por defecto porque requiere desplegar la Edge Function y programarla con `pg_net` (ver comentarios dentro del archivo). El job semanal principal (el que sí descuenta saldos) **no depende de esto** — corre directo en SQL vía `pg_cron`.
+Todo el envío de notificaciones vive en Postgres (migración `0027_push_notifications.sql`): un helper genérico `send_push_notification()` que llama a la API de Expo directamente vía `pg_net`, invocado desde los mismos triggers/RPCs que ya manejan cada evento (recargas, propuestas de regla, excusas, salidas del grupo, evaluación semanal, recordatorio nocturno de check-in). No hay Edge Functions involucradas. Del lado del cliente, la app registra el `expo_push_token` de cada usuario en `profiles` al iniciar sesión — sin eso, `send_push_notification()` simplemente no tiene a quién enviarle.
 
 ## Correr la app
 
