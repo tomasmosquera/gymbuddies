@@ -100,7 +100,7 @@ export function formatBogotaDateTime(date: Date): string {
 export function isWithinClockDriftTolerance(
   capturedAt: Date,
   serverNow: Date,
-  toleranceSeconds = 600
+  toleranceSeconds = 14400
 ): boolean {
   const driftSeconds = Math.abs((serverNow.getTime() - capturedAt.getTime()) / 1000);
   return driftSeconds <= toleranceSeconds;

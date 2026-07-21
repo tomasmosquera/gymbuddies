@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -82,31 +83,49 @@ export default function AdminTransactionsScreen() {
   const { group, isLoading: groupLoading } = useActiveGroup();
   const [transactions, setTransactions] = useState<PendingTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!group) return;
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('wallet_transactions')
-      .select('*, profile:profiles(full_name)')
-      .eq('group_id', group.id)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!group) return;
+      if (opts?.silent) setIsRefreshing(true);
+      else setIsLoading(true);
+      const { data, error } = await supabase
+        .from('wallet_transactions')
+        .select('*, profile:profiles!user_id(full_name)')
+        .eq('group_id', group.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
 
-    if (!error && data) {
-      setTransactions(
-        (data as unknown as (WalletTransaction & { profile: { full_name: string } })[]).map((t) => ({
-          ...t,
-          member_name: t.profile.full_name,
-        }))
-      );
-    }
-    setIsLoading(false);
-  }, [group]);
+      if (error) {
+        Alert.alert('No se pudieron cargar las transferencias', error.message);
+      } else if (data) {
+        try {
+          setTransactions(
+            (data as unknown as (WalletTransaction & { profile: { full_name: string } | null })[]).map((t) => ({
+              ...t,
+              member_name: t.profile?.full_name ?? 'Miembro',
+            }))
+          );
+        } catch (err) {
+          Alert.alert('Error inesperado al procesar las transferencias', err instanceof Error ? err.message : String(err));
+        }
+      }
+      setIsLoading(false);
+      setIsRefreshing(false);
+    },
+    [group]
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // Refetches every time this screen gains focus (not just on first mount) —
+  // otherwise a pending transaction submitted while the admin already had
+  // this screen open earlier in the stack never appears without a pull-to-
+  // refresh or a full app restart.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   if (groupLoading || isLoading || !group) {
     return (
@@ -121,10 +140,12 @@ export default function AdminTransactionsScreen() {
       contentContainerStyle={styles.container}
       data={transactions}
       keyExtractor={(item) => item.id}
-      onRefresh={refresh}
-      refreshing={false}
+      onRefresh={() => refresh({ silent: true })}
+      refreshing={isRefreshing}
       ListEmptyComponent={<EmptyState title="Sin pendientes" description="No hay transferencias por confirmar." />}
-      renderItem={({ item }) => <PendingTransactionRow transaction={item} onDecided={refresh} />}
+      renderItem={({ item }) => (
+        <PendingTransactionRow transaction={item} onDecided={() => refresh({ silent: true })} />
+      )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />
   );

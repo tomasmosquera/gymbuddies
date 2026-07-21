@@ -67,11 +67,20 @@ export default function CheckinCameraScreen() {
   if (todayCheckin && needsCheckout && !checkoutRequested) {
     return (
       <View style={styles.center}>
+        <View style={styles.stepsRow}>
+          <View style={styles.stepPill}>
+            <Text style={styles.stepPillText}>1. Llegada ✓</Text>
+          </View>
+          <Text style={styles.stepsArrow}>→</Text>
+          <View style={[styles.stepPill, styles.stepPillPending]}>
+            <Text style={styles.stepPillText}>2. Salida</Text>
+          </View>
+        </View>
         <EmptyState
-          title="Check-in inicial hecho ✓"
-          description={`Entraste a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Cuando termines de entrenar, registra tu salida.`}
+          title="Paso 2: foto de salida"
+          description={`Registraste tu llegada a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Este grupo pide una segunda foto cuando termines de entrenar, para medir cuánto duró tu sesión — tócala cuando estés por irte del gimnasio.`}
         />
-        <Button label="Registrar salida 🏁" onPress={() => setCheckoutRequested(true)} />
+        <Button label="Tomar foto de salida 🏁" onPress={() => setCheckoutRequested(true)} />
       </View>
     );
   }
@@ -81,7 +90,11 @@ export default function CheckinCameraScreen() {
       <View style={styles.center}>
         <EmptyState
           title="Ya hiciste check-in hoy 💪"
-          description="Puedes volver a tomar la foto de hoy si quieres reemplazarla."
+          description={
+            checkoutRequired
+              ? 'Ya registraste tu llegada y tu salida hoy. Puedes volver a tomar la foto de llegada si quieres reemplazarla.'
+              : 'Puedes volver a tomar la foto de hoy si quieres reemplazarla.'
+          }
         />
         <Button label="Volver a tomar la foto" variant="secondary" onPress={() => setRetakeRequested(true)} />
       </View>
@@ -127,11 +140,9 @@ export default function CheckinCameraScreen() {
     <View style={styles.flex}>
       <CameraView ref={cameraRef} style={styles.camera} facing="back" />
       <View style={styles.overlay}>
-        {isCheckoutFlow ? (
-          <View style={styles.modePill}>
-            <Text style={styles.modePillText}>Foto de salida</Text>
-          </View>
-        ) : null}
+        <View style={styles.modePill}>
+          <Text style={styles.modePillText}>{isCheckoutFlow ? 'Foto de salida 🏁' : 'Foto de llegada 📸'}</Text>
+        </View>
         <View style={styles.statusPill}>
           {isLocked ? (
             <Text style={styles.statusText}>📍 Ubicación lista</Text>
@@ -166,6 +177,16 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  stepsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: '#123424',
+  },
+  stepPillPending: { backgroundColor: colors.surfaceAlt },
+  stepPillText: { color: colors.text, fontWeight: '700', fontSize: 13 },
+  stepsArrow: { color: colors.textMuted },
   camera: { flex: 1 },
   overlay: {
     position: 'absolute',

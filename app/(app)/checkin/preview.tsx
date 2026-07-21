@@ -91,18 +91,16 @@ export default function CheckinPreviewScreen() {
       const path = checkinPhotoPath(group.id, session.user.id, checkinDate);
       await uploadImage('checkins', path, flattenedUri);
 
-      const { error } = draft.existingCheckinId
-        ? await supabase
-            .from('checkins')
-            .update({
-              captured_at: draft.capturedAt,
-              latitude: draft.latitude,
-              longitude: draft.longitude,
-              location_accuracy_m: draft.accuracyMeters,
-              photo_path: path,
-            })
-            .eq('id', draft.existingCheckinId)
-        : await supabase.from('checkins').insert({
+      // Upsert on the (group_id, user_id, checkin_date) unique constraint
+      // instead of manually branching on draft.existingCheckinId: if that id
+      // is ever stale/missing (e.g. re-entering this flow after navigating
+      // back) a plain insert would collide with today's already-existing row
+      // and fail with a duplicate-key error — upsert resolves to an update
+      // in that case instead of erroring.
+      const { error } = await supabase
+        .from('checkins')
+        .upsert(
+          {
             group_id: group.id,
             user_id: session.user.id,
             captured_at: draft.capturedAt,
@@ -110,13 +108,17 @@ export default function CheckinPreviewScreen() {
             longitude: draft.longitude,
             location_accuracy_m: draft.accuracyMeters,
             photo_path: path,
-          });
+          },
+          { onConflict: 'group_id,user_id,checkin_date' }
+        );
       if (error) throw new Error(error.message);
 
       setDraft(null);
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
-        'Tu día de hoy ya cuenta.'
+        group.require_checkout_photo
+          ? 'Tu día de hoy ya cuenta. Cuando termines de entrenar, vuelve a esta app y registra tu foto de salida.'
+          : 'Tu día de hoy ya cuenta.'
       );
       router.replace('/home');
     } catch (err) {
@@ -142,7 +144,7 @@ export default function CheckinPreviewScreen() {
       <View style={styles.actions}>
         <Button label="Repetir foto" variant="secondary" onPress={handleRetake} disabled={isSubmitting} />
         <Button
-          label={draft.mode === 'checkout' ? 'Confirmar salida' : 'Confirmar check-in'}
+          label={draft.mode === 'checkout' ? 'Confirmar foto de salida' : 'Confirmar foto de llegada'}
           onPress={handleConfirm}
           loading={isSubmitting}
         />

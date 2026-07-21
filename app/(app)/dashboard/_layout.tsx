@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { colors } from '@/constants/theme';
 
-export default function WalletStackLayout() {
+export default function DashboardStackLayout() {
   return (
     <Stack
       screenOptions={{
@@ -11,8 +11,7 @@ export default function WalletStackLayout() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Mi saldo' }} />
-      <Stack.Screen name="recharge" options={{ title: 'Recargar' }} />
+      <Stack.Screen name="index" options={{ title: 'Dashboard del grupo' }} />
     </Stack>
   );
 }

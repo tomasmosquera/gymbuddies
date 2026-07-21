@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -120,32 +121,45 @@ export default function ExcuseAdminScreen() {
   const { group, isLoading: groupLoading } = useActiveGroup();
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!group) return;
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('excuse_requests')
-      .select('*, profile:profiles(full_name)')
-      .eq('group_id', group.id)
-      .eq('status', 'pending')
-      .in('excuse_type', ['travel', 'medical'])
-      .order('created_at', { ascending: true });
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!group) return;
+      if (opts?.silent) setIsRefreshing(true);
+      else setIsLoading(true);
+      const { data, error } = await supabase
+        .from('excuse_requests')
+        .select('*, profile:profiles!user_id(full_name)')
+        .eq('group_id', group.id)
+        .eq('status', 'pending')
+        .in('excuse_type', ['travel', 'medical'])
+        .order('created_at', { ascending: true });
 
-    if (!error && data) {
-      setRequests(
-        (data as unknown as (ExcuseRequest & { profile: { full_name: string } })[]).map((r) => ({
-          ...r,
-          member_name: r.profile.full_name,
-        }))
-      );
-    }
-    setIsLoading(false);
-  }, [group]);
+      if (error) {
+        Alert.alert('No se pudieron cargar las excusas', error.message);
+      } else if (data) {
+        setRequests(
+          (data as unknown as (ExcuseRequest & { profile: { full_name: string } | null })[]).map((r) => ({
+            ...r,
+            member_name: r.profile?.full_name ?? 'Miembro',
+          }))
+        );
+      }
+      setIsLoading(false);
+      setIsRefreshing(false);
+    },
+    [group]
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // Refetches every time this screen gains focus — otherwise a new excuse
+  // request submitted while the admin already had this screen open earlier
+  // in the stack never appears without a pull-to-refresh or app restart.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   if (groupLoading || isLoading || !group) {
     return (
@@ -160,10 +174,10 @@ export default function ExcuseAdminScreen() {
       contentContainerStyle={styles.container}
       data={requests}
       keyExtractor={(item) => item.id}
-      onRefresh={refresh}
-      refreshing={false}
+      onRefresh={() => refresh({ silent: true })}
+      refreshing={isRefreshing}
       ListEmptyComponent={<EmptyState title="Sin pendientes" description="No hay excusas de viaje o médicas por revisar." />}
-      renderItem={({ item }) => <PendingRequestRow request={item} onDecided={refresh} />}
+      renderItem={({ item }) => <PendingRequestRow request={item} onDecided={() => refresh({ silent: true })} />}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />
   );

@@ -89,15 +89,21 @@ describe('nextMondayAfter', () => {
 });
 
 describe('isWithinClockDriftTolerance', () => {
-  it('accepts a capture within the default 10 minute tolerance', () => {
+  it('accepts a capture within the default 4 hour tolerance', () => {
     const now = new Date('2026-07-17T12:00:00Z');
     const captured = new Date('2026-07-17T11:55:00Z');
     expect(isWithinClockDriftTolerance(captured, now)).toBe(true);
   });
 
+  it('accepts a realistic checkout gap — a long workout plus time to walk out, wait for GPS, and review the photo before confirming', () => {
+    const now = new Date('2026-07-17T12:00:00Z');
+    const captured = new Date('2026-07-17T08:30:00Z'); // 3.5 hours earlier
+    expect(isWithinClockDriftTolerance(captured, now)).toBe(true);
+  });
+
   it('rejects a capture reported far in the past or future', () => {
     const now = new Date('2026-07-17T12:00:00Z');
-    expect(isWithinClockDriftTolerance(new Date('2026-07-17T11:00:00Z'), now)).toBe(false);
-    expect(isWithinClockDriftTolerance(new Date('2026-07-17T13:00:00Z'), now)).toBe(false);
+    expect(isWithinClockDriftTolerance(new Date('2026-07-17T06:00:00Z'), now)).toBe(false); // 6 hours earlier
+    expect(isWithinClockDriftTolerance(new Date('2026-07-17T18:00:00Z'), now)).toBe(false); // 6 hours later
   });
 });

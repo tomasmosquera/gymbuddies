@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -89,7 +90,19 @@ export default function WalletScreen() {
     [transactions, filter]
   );
 
-  if (groupLoading || walletLoading || !group || !membership) {
+  // Refetches every time this screen gains focus — a penalty applied or a
+  // recharge confirmed while this screen was already open earlier in the
+  // stack otherwise never shows up without a pull-to-refresh or app restart.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  // Only the essentials gate the whole screen — refetching on focus should
+  // update the list in place, never blank out the balance/summary while a
+  // background fetch is in flight.
+  if (groupLoading || !group || !membership) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -103,14 +116,14 @@ export default function WalletScreen() {
       data={filteredTransactions}
       keyExtractor={(item) => item.id}
       onRefresh={refresh}
-      refreshing={false}
+      refreshing={walletLoading}
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={styles.balanceLabel}>Saldo disponible</Text>
           <Text style={styles.balance}>
             {group.currency} {membership.balance.toLocaleString('es-CO')}
           </Text>
-          <Button label="Registrar recarga" onPress={() => router.push('/wallet/recharge')} />
+          <Button label="Registrar recarga" onPress={() => router.push('/profile/wallet-recharge')} />
 
           <Card style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Resumen de penalizaciones</Text>

@@ -35,8 +35,8 @@ export default function AppLayout() {
         options={{ title: 'Check-in', tabBarIcon: ({ focused }) => <TabIcon symbol="📸" focused={focused} /> }}
       />
       <Tabs.Screen
-        name="wallet"
-        options={{ title: 'Saldo', tabBarIcon: ({ focused }) => <TabIcon symbol="💰" focused={focused} /> }}
+        name="dashboard"
+        options={{ title: 'Dashboard', tabBarIcon: ({ focused }) => <TabIcon symbol="📊" focused={focused} /> }}
       />
       <Tabs.Screen
         name="rules"

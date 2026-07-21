@@ -12,10 +12,13 @@ export default function ProfileStackLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Perfil' }} />
+      <Stack.Screen name="wallet" options={{ title: 'Mi saldo' }} />
+      <Stack.Screen name="wallet-recharge" options={{ title: 'Recargar' }} />
       <Stack.Screen name="admin" options={{ title: 'Administrar grupo' }} />
       <Stack.Screen name="admin-transactions" options={{ title: 'Confirmar transferencias' }} />
       <Stack.Screen name="admin-photos" options={{ title: 'Moderar fotos' }} />
       <Stack.Screen name="admin-attendance" options={{ title: 'Asignar días' }} />
+      <Stack.Screen name="admin-edit-group" options={{ title: 'Editar grupo' }} />
     </Stack>
   );
 }

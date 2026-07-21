@@ -92,6 +92,20 @@ export default function ProfileScreen() {
         </Card>
       ) : null}
 
+      {group && membership ? (
+        <Card style={styles.walletCard}>
+          <View style={styles.walletRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Tu saldo</Text>
+              <Text style={styles.balance}>
+                {group.currency} {membership.balance.toLocaleString('es-CO')}
+              </Text>
+            </View>
+            <Button label="Ver mi saldo" variant="secondary" onPress={() => router.push('/profile/wallet')} />
+          </View>
+        </Card>
+      ) : null}
+
       <Button label="Cambiar de grupo" variant="secondary" onPress={() => router.push('/group-select')} />
 
       {membership?.role === 'admin' ? (
@@ -138,4 +152,7 @@ const styles = StyleSheet.create({
   groupName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   role: { color: colors.textMuted, marginTop: 2 },
   leaveCard: { gap: spacing.sm },
+  walletCard: { gap: spacing.sm },
+  walletRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  balance: { ...typography.heading, color: colors.text, marginTop: 2 },
 });

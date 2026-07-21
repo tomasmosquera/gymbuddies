@@ -121,7 +121,7 @@ export default function HomeScreen() {
           <Text style={styles.hint}>Puedes fallar {remainingFails} día(s) más antes de necesitar recargar.</Text>
         ) : null}
         {membership.status === 'needs_recharge' ? (
-          <Button label="Recargar saldo" variant="danger" onPress={() => router.push('/wallet/recharge')} />
+          <Button label="Recargar saldo" variant="danger" onPress={() => router.push('/profile/wallet-recharge')} />
         ) : null}
       </Card>
 
@@ -191,16 +191,39 @@ export default function HomeScreen() {
       </Card>
 
       {isCurrentWeek && !todayCheckin ? (
-        <Button label="Hacer check-in de hoy 📸" onPress={() => router.push('/checkin')} />
+        <Button
+          label={group.require_checkout_photo ? 'Foto de llegada al gym 📸' : 'Hacer check-in de hoy 📸'}
+          onPress={() => router.push('/checkin')}
+        />
       ) : isCurrentWeek && todayCheckin && group.require_checkout_photo && !todayCheckin.checkout_captured_at ? (
         <Card style={styles.doneCard}>
-          <Text style={styles.doneText}>Check-in inicial hecho ✓</Text>
-          <Text style={styles.hint}>Cuando termines de entrenar, registra tu salida.</Text>
-          <Button label="Registrar salida 🏁" onPress={() => router.push('/checkin')} />
+          <View style={styles.stepsRow}>
+            <View style={styles.stepPill}>
+              <Text style={styles.stepPillText}>1. Llegada ✓</Text>
+            </View>
+            <Text style={styles.stepsArrow}>→</Text>
+            <View style={[styles.stepPill, styles.stepPillPending]}>
+              <Text style={styles.stepPillText}>2. Salida</Text>
+            </View>
+          </View>
+          <Text style={styles.hint}>Cuando termines de entrenar, toma tu foto de salida para que cuente la duración.</Text>
+          <Button label="Tomar foto de salida 🏁" onPress={() => router.push('/checkin')} />
         </Card>
       ) : isCurrentWeek && todayCheckin ? (
         <Card style={styles.doneCard}>
-          <Text style={styles.doneText}>Ya hiciste check-in hoy ✓</Text>
+          {group.require_checkout_photo && todayCheckin.checkout_captured_at ? (
+            <View style={styles.stepsRow}>
+              <View style={styles.stepPill}>
+                <Text style={styles.stepPillText}>1. Llegada ✓</Text>
+              </View>
+              <Text style={styles.stepsArrow}>→</Text>
+              <View style={styles.stepPill}>
+                <Text style={styles.stepPillText}>2. Salida ✓</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.doneText}>Ya hiciste check-in hoy ✓</Text>
+          )}
           {group.require_checkout_photo && todayCheckin.checkout_captured_at ? (
             <View style={styles.workoutInfo}>
               <Text style={styles.workoutMinutes}>Entrenaste {todayCheckin.workout_minutes} minuto(s)</Text>
@@ -229,7 +252,6 @@ export default function HomeScreen() {
         isRefreshing={leaderboardLoading}
       />
 
-      <Button label="Ver fotos del grupo esta semana 🖼️" variant="secondary" onPress={() => router.push('/checkin/gallery')} />
       <Button label="Solicitar excusa (viaje, médica u otra)" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
     </ScrollView>
   );
@@ -283,6 +305,16 @@ const styles = StyleSheet.create({
   dayLabelToday: { color: colors.primary, fontWeight: '700' },
   doneCard: { gap: spacing.sm },
   doneText: { color: colors.success, fontWeight: '600', textAlign: 'center' },
+  stepsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  stepPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: '#123424',
+  },
+  stepPillPending: { backgroundColor: colors.surfaceAlt },
+  stepPillText: { color: colors.text, fontWeight: '700', fontSize: 13 },
+  stepsArrow: { color: colors.textMuted },
   doneActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
   workoutInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   workoutMinutes: { color: colors.text, fontWeight: '600' },
