@@ -24,7 +24,7 @@ export function useReverseGeocode(latitude: number | null, longitude: number | n
   return locationText;
 }
 
-/** One labeled photo (llegada/salida) with its captured time and reverse-geocoded location. */
+/** One labeled photo (inicial/final) with its captured time and reverse-geocoded location. */
 export function CheckinPhotoColumn({
   label,
   photoPath,

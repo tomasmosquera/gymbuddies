@@ -36,10 +36,6 @@ export default function Index() {
     return <Redirect href="/create-group" />;
   }
 
-  if (activeMembership.status === 'pending_deposit') {
-    return <Redirect href="/deposit" />;
-  }
-
   return <Redirect href="/home" />;
 }
 

@@ -76,14 +76,14 @@ export default function CheckinPreviewScreen() {
           p_location_accuracy_m: draft.accuracyMeters,
           p_photo_path: path,
         });
-        if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la salida');
+        if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
 
         await cancelCheckoutReminders(draft.existingCheckinId);
         setDraft(null);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
         Alert.alert(
-          'Salida registrada 🏁',
+          'Foto final registrada 🏁',
           `Entrenaste ${minutes} minuto(s).${isShort ? ` No alcanzaste el mínimo de ${group.min_workout_minutes} minutos.` : ''}`
         );
         router.replace('/home');
@@ -93,29 +93,22 @@ export default function CheckinPreviewScreen() {
       const path = checkinPhotoPath(group.id, session.user.id, checkinDate);
       await uploadImage('checkins', path, flattenedUri);
 
-      // Upsert on the (group_id, user_id, checkin_date) unique constraint
-      // instead of manually branching on draft.existingCheckinId: if that id
-      // is ever stale/missing (e.g. re-entering this flow after navigating
-      // back) a plain insert would collide with today's already-existing row
-      // and fail with a duplicate-key error — upsert resolves to an update
-      // in that case instead of erroring.
-      const { data: checkinRow, error } = await supabase
-        .from('checkins')
-        .upsert(
-          {
-            group_id: group.id,
-            user_id: session.user.id,
-            captured_at: draft.capturedAt,
-            latitude: draft.latitude,
-            longitude: draft.longitude,
-            location_accuracy_m: draft.accuracyMeters,
-            photo_path: path,
-          },
-          { onConflict: 'group_id,user_id,checkin_date' }
-        )
-        .select('id')
-        .single();
-      if (error) throw new Error(error.message);
+      // submit_checkin upserts on (group_id, user_id, checkin_date) server-side
+      // (SECURITY DEFINER, bypassing the client role's column grants): a plain
+      // client-side upsert doesn't work here because PostgREST's generated
+      // ON CONFLICT DO UPDATE sets every payload column, including group_id/
+      // user_id, which aren't grant-covered and raise "permission denied for
+      // table checkins" — the same reason submit_workout_checkout above is
+      // an RPC rather than a raw client update.
+      const { data: checkinRow, error } = await supabase.rpc('submit_checkin', {
+        p_group_id: group.id,
+        p_captured_at: draft.capturedAt,
+        p_latitude: draft.latitude,
+        p_longitude: draft.longitude,
+        p_location_accuracy_m: draft.accuracyMeters,
+        p_photo_path: path,
+      });
+      if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
 
       if (group.require_checkout_photo) {
         await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude);
@@ -124,13 +117,13 @@ export default function CheckinPreviewScreen() {
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
         group.require_checkout_photo
-          ? 'Tu día de hoy ya cuenta. Cuando termines de entrenar, vuelve a esta app y registra tu foto de salida.'
+          ? 'Tu día de hoy ya cuenta. Cuando termines de entrenar, vuelve a esta app y registra tu foto final.'
           : 'Tu día de hoy ya cuenta.'
       );
       router.replace('/home');
     } catch (err) {
       Alert.alert(
-        draft.mode === 'checkout' ? 'No se pudo registrar la salida' : 'No se pudo registrar el check-in',
+        draft.mode === 'checkout' ? 'No se pudo registrar la foto final' : 'No se pudo registrar el check-in',
         err instanceof Error ? err.message : 'Intenta de nuevo'
       );
     } finally {
@@ -151,7 +144,7 @@ export default function CheckinPreviewScreen() {
       <View style={styles.actions}>
         <Button label="Repetir foto" variant="secondary" onPress={handleRetake} disabled={isSubmitting} />
         <Button
-          label={draft.mode === 'checkout' ? 'Confirmar foto de salida' : 'Confirmar foto de llegada'}
+          label={draft.mode === 'checkout' ? 'Confirmar foto final' : 'Confirmar foto inicial'}
           onPress={handleConfirm}
           loading={isSubmitting}
         />

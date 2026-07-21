@@ -8,6 +8,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
+import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
+import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
+import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { colors, spacing, typography } from '@/constants/theme';
 
 const CHANGE_LABELS: Record<string, string> = {
@@ -16,7 +19,7 @@ const CHANGE_LABELS: Record<string, string> = {
   weekly_penalty_cap: 'Tope de multa por semana',
   exit_fee_amount: 'Cuota por salir sin aviso',
   exit_notice_days: 'Días de aviso para salir sin costo',
-  require_checkout_photo: 'Foto de salida requerida',
+  require_checkout_photo: 'Foto final requerida',
   min_workout_minutes: 'Duración mínima del entreno (min)',
 };
 
@@ -55,9 +58,17 @@ export default function RulesScreen() {
     castVote: castExcuseVote,
     refresh: refreshExcuseVote,
   } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
+  const {
+    challenges,
+    isLoading: challengesLoading,
+    refresh: refreshChallenges,
+    castVote: castChallengeVote,
+    adminDecide,
+  } = usePhotoChallenges(group?.id ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
 
-  if (groupLoading || proposalLoading || excuseVoteLoading || !group || !membership) {
+  if (groupLoading || proposalLoading || excuseVoteLoading || challengesLoading || !group || !membership) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -83,16 +94,33 @@ export default function RulesScreen() {
     }
   };
 
+  const handleChallengeVote = async (challengeId: string, vote: 'yes' | 'no') => {
+    try {
+      await castChallengeVote(challengeId, vote);
+    } catch (err) {
+      Alert.alert('No se pudo votar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
+  const handleAdminDecide = async (challengeId: string, valid: boolean) => {
+    try {
+      await adminDecide(challengeId, valid);
+    } catch (err) {
+      Alert.alert('No se pudo decidir', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refreshGroup(), refreshProposal(), refreshExcuseVote()]);
+      await Promise.all([refreshGroup(), refreshProposal(), refreshExcuseVote(), refreshChallenges()]);
     } finally {
       setIsRefreshing(false);
     }
   };
 
   return (
+    <>
     <ScrollView
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
@@ -126,7 +154,7 @@ export default function RulesScreen() {
           <Text style={styles.ruleValue}>{group.exit_notice_days}</Text>
         </View>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Foto de salida requerida</Text>
+          <Text style={styles.ruleLabel}>Foto final requerida</Text>
           <Text style={styles.ruleValue}>{group.require_checkout_photo ? 'Sí' : 'No'}</Text>
         </View>
         {group.require_checkout_photo ? (
@@ -214,6 +242,56 @@ export default function RulesScreen() {
         </Card>
       ) : null}
 
+      {challenges.map((challenge) => {
+        const myVote = challenge.votes.find((v) => v.user_id === session?.user.id) ?? null;
+        const isTarget = challenge.target_user_id === session?.user.id;
+        const yesCount = challenge.votes.filter((v) => v.vote === 'yes').length;
+        const noCount = challenge.votes.filter((v) => v.vote === 'no').length;
+        return (
+          <Card key={challenge.id} style={styles.proposalCard}>
+            <View style={styles.proposalHeader}>
+              <Text style={styles.cardTitle}>Votación de foto en curso</Text>
+              <Badge label={`Cierra ${new Date(challenge.voting_closes_at).toLocaleDateString('es-CO')}`} />
+            </View>
+            <Text style={styles.changeText}>
+              ¿Es válido el check-in de {challenge.checkin?.profile.full_name ?? 'este miembro'}?
+            </Text>
+            {challenge.reason ? <Text style={styles.changeText}>Motivo: {challenge.reason}</Text> : null}
+            {challenge.checkin ? (
+              <View style={styles.challengePhotoRow}>
+                <CheckinPhotoColumn
+                  label="Foto Inicial"
+                  photoPath={challenge.checkin.photo_path}
+                  capturedAt={challenge.checkin.captured_at}
+                  latitude={challenge.checkin.latitude}
+                  longitude={challenge.checkin.longitude}
+                  onPress={() => setViewingPhotoPath(challenge.checkin!.photo_path)}
+                />
+              </View>
+            ) : null}
+            <Text style={styles.tally}>
+              {yesCount} a favor de invalidar · {noCount} en contra · se necesitan {challenge.required_votes} votos
+            </Text>
+            {isTarget ? (
+              <Text style={styles.myVote}>Es tu foto — no puedes votar en esta votación.</Text>
+            ) : myVote ? (
+              <Text style={styles.myVote}>Ya votaste: {myVote.vote === 'yes' ? 'inválida' : 'válida'}</Text>
+            ) : (
+              <View style={styles.voteButtons}>
+                <Button label="Votar inválida" variant="secondary" onPress={() => handleChallengeVote(challenge.id, 'yes')} />
+                <Button label="Votar válida" onPress={() => handleChallengeVote(challenge.id, 'no')} />
+              </View>
+            )}
+            {isAdmin ? (
+              <View style={styles.voteButtons}>
+                <Button label="Admin: invalidar ahora" variant="secondary" onPress={() => handleAdminDecide(challenge.id, false)} />
+                <Button label="Admin: validar ahora" variant="secondary" onPress={() => handleAdminDecide(challenge.id, true)} />
+              </View>
+            ) : null}
+          </Card>
+        );
+      })}
+
       <View style={styles.actionButtons}>
         <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
         {isAdmin ? (
@@ -221,6 +299,12 @@ export default function RulesScreen() {
         ) : null}
       </View>
     </ScrollView>
+    <CheckinPhotoModal
+      visible={viewingPhotoPath !== null}
+      photoPath={viewingPhotoPath}
+      onClose={() => setViewingPhotoPath(null)}
+    />
+    </>
   );
 }
 
@@ -240,4 +324,5 @@ const styles = StyleSheet.create({
   voteButtons: { gap: spacing.sm, marginTop: spacing.sm },
   emptyText: { color: colors.textMuted, textAlign: 'center' },
   actionButtons: { gap: spacing.sm },
+  challengePhotoRow: { flexDirection: 'row', width: '50%' },
 });

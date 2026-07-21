@@ -126,7 +126,7 @@ export default function CreateGroupScreen() {
             error={errors.exitNoticeDays}
           />
           <View style={styles.toggleField}>
-            <Text style={styles.toggleLabel}>¿Exigir foto de salida al terminar el entreno?</Text>
+            <Text style={styles.toggleLabel}>¿Exigir foto final al terminar el entreno?</Text>
             <SegmentedControl options={YES_NO_OPTIONS} value={requireCheckoutPhoto} onChange={setRequireCheckoutPhoto} />
           </View>
           <TextField

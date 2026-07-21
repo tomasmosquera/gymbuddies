@@ -24,6 +24,7 @@ export default function CheckinCameraScreen() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [retakeRequested, setRetakeRequested] = useState(false);
   const [checkoutRequested, setCheckoutRequested] = useState(false);
+  const [facing, setFacing] = useState<'front' | 'back'>('back');
 
   const checkoutRequired = group?.require_checkout_photo ?? false;
   const needsCheckout = checkoutRequired && !!todayCheckin && !todayCheckin.checkout_captured_at;
@@ -79,18 +80,18 @@ export default function CheckinCameraScreen() {
       <View style={styles.center}>
         <View style={styles.stepsRow}>
           <View style={styles.stepPill}>
-            <Text style={styles.stepPillText}>1. Llegada ✓</Text>
+            <Text style={styles.stepPillText}>1. Foto Inicial ✓</Text>
           </View>
           <Text style={styles.stepsArrow}>→</Text>
           <View style={[styles.stepPill, styles.stepPillPending]}>
-            <Text style={styles.stepPillText}>2. Salida</Text>
+            <Text style={styles.stepPillText}>2. Foto Final</Text>
           </View>
         </View>
         <EmptyState
-          title="Paso 2: foto de salida"
-          description={`Registraste tu llegada a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Este grupo pide una segunda foto cuando termines de entrenar, para medir cuánto duró tu sesión — tócala cuando estés por irte del gimnasio.`}
+          title="Paso 2: foto final"
+          description={`Registraste tu foto inicial a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Este grupo pide una segunda foto cuando termines de entrenar, para medir cuánto duró tu sesión — tócala cuando estés por irte del gimnasio.`}
         />
-        <Button label="Tomar foto de salida 🏁" onPress={() => setCheckoutRequested(true)} />
+        <Button label="Tomar foto final 🏁" onPress={() => setCheckoutRequested(true)} />
       </View>
     );
   }
@@ -102,7 +103,7 @@ export default function CheckinCameraScreen() {
           title="Ya hiciste check-in hoy 💪"
           description={
             checkoutRequired
-              ? 'Ya registraste tu llegada y tu salida hoy. Puedes volver a tomar la foto de llegada si quieres reemplazarla.'
+              ? 'Ya registraste tu foto inicial y tu foto final hoy. Puedes volver a tomar la foto inicial si quieres reemplazarla.'
               : 'Puedes volver a tomar la foto de hoy si quieres reemplazarla.'
           }
         />
@@ -148,10 +149,17 @@ export default function CheckinCameraScreen() {
 
   return (
     <View style={styles.flex}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+      <CameraView ref={cameraRef} style={styles.camera} facing={facing} />
+      <Pressable
+        accessibilityRole="button"
+        style={styles.flipButton}
+        onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+      >
+        <Text style={styles.flipButtonText}>🔄</Text>
+      </Pressable>
       <View style={styles.overlay}>
         <View style={styles.modePill}>
-          <Text style={styles.modePillText}>{isCheckoutFlow ? 'Foto de salida 🏁' : 'Foto de llegada 📸'}</Text>
+          <Text style={styles.modePillText}>{isCheckoutFlow ? 'Foto Final 🏁' : 'Foto Inicial 📸'}</Text>
         </View>
         <View style={styles.statusPill}>
           {isLocked ? (
@@ -198,6 +206,18 @@ const styles = StyleSheet.create({
   stepPillText: { color: colors.text, fontWeight: '700', fontSize: 13 },
   stepsArrow: { color: colors.textMuted },
   camera: { flex: 1 },
+  flipButton: {
+    position: 'absolute',
+    top: spacing.xl,
+    right: spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  flipButtonText: { fontSize: 20 },
   overlay: {
     position: 'absolute',
     bottom: 0,

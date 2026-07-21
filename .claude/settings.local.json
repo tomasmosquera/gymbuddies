@@ -23,7 +23,11 @@
       "Bash(node -e \"console.log\\('expo-clipboard:', require\\('./package.json'\\).dependencies['expo-clipboard'] || 'no instalado'\\)\")",
       "Bash(cp \"app/\\(app\\)/wallet/index.tsx\" \"app/\\(app\\)/profile/wallet.tsx\")",
       "Bash(cp \"app/\\(app\\)/wallet/recharge.tsx\" \"app/\\(app\\)/profile/wallet-recharge.tsx\")",
-      "Bash(npm view *)"
+      "Bash(npm view *)",
+      "Bash(npx eas *)",
+      "Bash(tee /tmp/eas_ios_build.log)",
+      "Bash(tee /tmp/eas_android_build.log)",
+      "Bash(tee /tmp/eas_ios_submit.log)"
     ],
     "additionalDirectories": [
       "\\tmp"

@@ -167,6 +167,32 @@ export type ExcuseVote = {
   voted_at: string;
 };
 
+export type PhotoChallengeStatus = 'pending' | 'invalid' | 'valid';
+
+export type PhotoChallenge = {
+  id: string;
+  group_id: string;
+  checkin_id: string;
+  target_user_id: string;
+  challenged_by: string;
+  reason: string | null;
+  status: PhotoChallengeStatus;
+  required_votes: number;
+  member_count_snapshot: number;
+  voting_closes_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  created_at: string;
+};
+
+export type PhotoChallengeVote = {
+  id: string;
+  challenge_id: string;
+  user_id: string;
+  vote: VoteChoice;
+  voted_at: string;
+};
+
 export type AttendanceOverride = {
   id: string;
   group_id: string;
@@ -222,12 +248,11 @@ export type Database = {
         Insert: never;
         Update: Partial<Pick<GroupMember, 'role' | 'status'>>;
       } & NoRelationships;
-      checkins: {
-        Row: Checkin;
-        Insert: Pick<Checkin, 'group_id' | 'user_id' | 'captured_at' | 'latitude' | 'longitude' | 'location_accuracy_m' | 'photo_path'>;
-        // Only a same-day self re-capture is allowed (checkins_update_self_today, 0012).
-        Update: Partial<Pick<Checkin, 'captured_at' | 'latitude' | 'longitude' | 'location_accuracy_m' | 'photo_path'>>;
-      } & NoRelationships;
+      // All writes go through submit_checkin/submit_workout_checkout (0028) —
+      // a raw client upsert can't be used here since PostgREST's generated
+      // ON CONFLICT DO UPDATE sets every payload column, including group_id/
+      // user_id, which aren't (and shouldn't be) column-granted.
+      checkins: { Row: Checkin; Insert: never; Update: never } & NoRelationships;
       wallet_transactions: {
         Row: WalletTransaction;
         Insert: Pick<WalletTransaction, 'group_id' | 'user_id' | 'type' | 'amount' | 'status' | 'receipt_path'>;
@@ -245,6 +270,8 @@ export type Database = {
       weekly_evaluation_runs: { Row: WeeklyEvaluationRun; Insert: never; Update: never } & NoRelationships;
       weekly_evaluation_results: { Row: WeeklyEvaluationResult; Insert: never; Update: never } & NoRelationships;
       attendance_overrides: { Row: AttendanceOverride; Insert: never; Update: never } & NoRelationships;
+      photo_challenges: { Row: PhotoChallenge; Insert: never; Update: never } & NoRelationships;
+      photo_challenge_votes: { Row: PhotoChallengeVote; Insert: never; Update: never } & NoRelationships;
     };
     Views: Record<string, never>;
     Functions: {
@@ -269,6 +296,10 @@ export type Database = {
       propose_rule_change: {
         Args: { p_group_id: string; p_changes: RuleProposalChanges; p_apply_immediately?: boolean };
         Returns: RuleProposal;
+      };
+      apply_rule_change_direct: {
+        Args: { p_group_id: string; p_changes: RuleProposalChanges };
+        Returns: Group;
       };
       cast_vote: { Args: { p_proposal_id: string; p_vote: VoteChoice }; Returns: RuleVote };
       create_excuse_request: {
@@ -297,9 +328,31 @@ export type Database = {
         Returns: AttendanceOverride;
       };
       clear_attendance_override: { Args: { p_group_id: string; p_user_id: string; p_date: string }; Returns: void };
+      create_photo_challenge: {
+        Args: { p_checkin_id: string; p_reason?: string | null };
+        Returns: PhotoChallenge;
+      };
+      cast_photo_challenge_vote: { Args: { p_challenge_id: string; p_vote: VoteChoice }; Returns: PhotoChallengeVote };
+      admin_decide_photo_challenge: { Args: { p_challenge_id: string; p_valid: boolean }; Returns: PhotoChallenge };
+      close_expired_photo_challenges: { Args: Record<string, never>; Returns: void };
+      admin_adjust_balance: {
+        Args: { p_group_id: string; p_user_id: string; p_amount: number; p_note?: string | null };
+        Returns: WalletTransaction;
+      };
       submit_workout_checkout: {
         Args: {
           p_checkin_id: string;
+          p_captured_at: string;
+          p_latitude: number;
+          p_longitude: number;
+          p_location_accuracy_m: number | null;
+          p_photo_path: string;
+        };
+        Returns: Checkin;
+      };
+      submit_checkin: {
+        Args: {
+          p_group_id: string;
           p_captured_at: string;
           p_latitude: number;
           p_longitude: number;

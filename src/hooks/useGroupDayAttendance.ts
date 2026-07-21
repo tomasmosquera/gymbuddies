@@ -109,7 +109,10 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       }
       const completedCount = completedUserIds.size;
       const excusedCount = excusedByDate.get(date)?.size ?? 0;
-      const notTrainedCount = Math.max(activeMemberCount - completedCount - excusedCount, 0);
+      // Today isn't over yet — anyone who hasn't checked in still can, so
+      // nobody can be counted as "failed" until the day has actually passed.
+      const notTrainedCount =
+        date === todayString ? 0 : Math.max(activeMemberCount - completedCount - excusedCount, 0);
 
       return { date, activeMemberCount, completedCount, excusedCount, notTrainedCount };
     });

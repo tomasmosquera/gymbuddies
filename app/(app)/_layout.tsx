@@ -15,7 +15,6 @@ export default function AppLayout() {
   if (isInitializing || isLoading) return null;
   if (!isSignedIn) return <Redirect href="/sign-in" />;
   if (!membership) return <Redirect href="/create-group" />;
-  if (membership.status === 'pending_deposit') return <Redirect href="/deposit" />;
 
   return (
     <Tabs

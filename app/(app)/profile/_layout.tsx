@@ -18,6 +18,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="admin-transactions" options={{ title: 'Confirmar transferencias' }} />
       <Stack.Screen name="admin-photos" options={{ title: 'Moderar fotos' }} />
       <Stack.Screen name="admin-attendance" options={{ title: 'Asignar días' }} />
+      <Stack.Screen name="admin-adjust-balance" options={{ title: 'Ajustar saldo' }} />
       <Stack.Screen name="admin-edit-group" options={{ title: 'Editar grupo' }} />
     </Stack>
   );

@@ -59,7 +59,7 @@ function CheckinModerationRow({
       </Text>
       <View style={styles.photosRow}>
         <CheckinPhotoColumn
-          label="Llegada"
+          label="Foto Inicial"
           photoPath={checkin.photo_path}
           capturedAt={checkin.captured_at}
           latitude={checkin.latitude}
@@ -67,7 +67,7 @@ function CheckinModerationRow({
           onPress={() => onPressPhoto(checkin.photo_path)}
         />
         <CheckinPhotoColumn
-          label="Salida"
+          label="Foto Final"
           photoPath={checkin.checkout_photo_path}
           capturedAt={checkin.checkout_captured_at}
           latitude={checkin.checkout_latitude}

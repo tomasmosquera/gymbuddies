@@ -14,6 +14,11 @@ const TIMING_OPTIONS: { key: 'immediate' | 'next_week'; label: string }[] = [
   { key: 'immediate', label: 'De inmediato' },
 ];
 
+const APPLY_MODE_OPTIONS: { key: 'vote' | 'direct'; label: string }[] = [
+  { key: 'vote', label: 'Proponer y votar' },
+  { key: 'direct', label: 'Aplicar directamente' },
+];
+
 const CHECKOUT_TOGGLE_OPTIONS: { key: 'no_change' | 'yes' | 'no'; label: string }[] = [
   { key: 'no_change', label: 'Sin cambio' },
   { key: 'yes', label: 'Sí' },
@@ -21,7 +26,8 @@ const CHECKOUT_TOGGLE_OPTIONS: { key: 'no_change' | 'yes' | 'no'; label: string 
 ];
 
 export default function ProposeRuleChangeScreen() {
-  const { group } = useActiveGroup();
+  const { group, membership } = useActiveGroup();
+  const isAdmin = membership?.role === 'admin';
   const [minDaysPerWeek, setMinDaysPerWeek] = useState('');
   const [penaltyAmount, setPenaltyAmount] = useState('');
   const [weeklyPenaltyCap, setWeeklyPenaltyCap] = useState('');
@@ -30,6 +36,7 @@ export default function ProposeRuleChangeScreen() {
   const [requireCheckoutPhoto, setRequireCheckoutPhoto] = useState<'no_change' | 'yes' | 'no'>('no_change');
   const [minWorkoutMinutes, setMinWorkoutMinutes] = useState('');
   const [timing, setTiming] = useState<'immediate' | 'next_week'>('next_week');
+  const [applyMode, setApplyMode] = useState<'vote' | 'direct'>('vote');
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,19 +59,32 @@ export default function ProposeRuleChangeScreen() {
     setError(undefined);
     setIsSubmitting(true);
     try {
+      const p_changes = {
+        ...(result.data.minDaysPerWeek !== undefined && { min_days_per_week: result.data.minDaysPerWeek }),
+        ...(result.data.penaltyAmount !== undefined && { penalty_amount: result.data.penaltyAmount }),
+        ...(result.data.weeklyPenaltyCap !== undefined && { weekly_penalty_cap: result.data.weeklyPenaltyCap }),
+        ...(result.data.exitFeeAmount !== undefined && { exit_fee_amount: result.data.exitFeeAmount }),
+        ...(result.data.exitNoticeDays !== undefined && { exit_notice_days: result.data.exitNoticeDays }),
+        ...(result.data.requireCheckoutPhoto !== undefined && {
+          require_checkout_photo: result.data.requireCheckoutPhoto,
+        }),
+        ...(result.data.minWorkoutMinutes !== undefined && { min_workout_minutes: result.data.minWorkoutMinutes }),
+      };
+
+      if (isAdmin && applyMode === 'direct') {
+        const { error: rpcError } = await supabase.rpc('apply_rule_change_direct', {
+          p_group_id: group.id,
+          p_changes,
+        });
+        if (rpcError) throw new Error(rpcError.message);
+        Alert.alert('Reglas actualizadas', 'El cambio ya está vigente — no requirió votación.');
+        router.replace('/rules');
+        return;
+      }
+
       const { error: rpcError } = await supabase.rpc('propose_rule_change', {
         p_group_id: group.id,
-        p_changes: {
-          ...(result.data.minDaysPerWeek !== undefined && { min_days_per_week: result.data.minDaysPerWeek }),
-          ...(result.data.penaltyAmount !== undefined && { penalty_amount: result.data.penaltyAmount }),
-          ...(result.data.weeklyPenaltyCap !== undefined && { weekly_penalty_cap: result.data.weeklyPenaltyCap }),
-          ...(result.data.exitFeeAmount !== undefined && { exit_fee_amount: result.data.exitFeeAmount }),
-          ...(result.data.exitNoticeDays !== undefined && { exit_notice_days: result.data.exitNoticeDays }),
-          ...(result.data.requireCheckoutPhoto !== undefined && {
-            require_checkout_photo: result.data.requireCheckoutPhoto,
-          }),
-          ...(result.data.minWorkoutMinutes !== undefined && { min_workout_minutes: result.data.minWorkoutMinutes }),
-        },
+        p_changes,
         p_apply_immediately: timing === 'immediate',
       });
       if (rpcError) throw new Error(rpcError.message);
@@ -76,7 +96,7 @@ export default function ProposeRuleChangeScreen() {
       );
       router.replace('/rules');
     } catch (err) {
-      Alert.alert('No se pudo enviar la propuesta', err instanceof Error ? err.message : 'Intenta de nuevo');
+      Alert.alert('No se pudo enviar el cambio', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsSubmitting(false);
     }
@@ -86,10 +106,17 @@ export default function ProposeRuleChangeScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.subtitle}>
-          Deja en blanco lo que no quieras cambiar. La propuesta necesita mayoría de votos a favor para aplicarse.
+          Deja en blanco lo que no quieras cambiar — se queda igual a como está hoy.
+          {isAdmin && applyMode === 'vote' ? ' La propuesta necesita mayoría de votos a favor para aplicarse.' : ''}
         </Text>
 
         <View style={styles.form}>
+          {isAdmin ? (
+            <View style={styles.timingField}>
+              <Text style={styles.timingLabel}>¿Cómo quieres aplicar este cambio?</Text>
+              <SegmentedControl options={APPLY_MODE_OPTIONS} value={applyMode} onChange={setApplyMode} />
+            </View>
+          ) : null}
           <TextField
             label="Nuevos días mínimos por semana"
             value={minDaysPerWeek}
@@ -126,7 +153,7 @@ export default function ProposeRuleChangeScreen() {
             placeholder={group ? String(group.exit_notice_days) : ''}
           />
           <View style={styles.timingField}>
-            <Text style={styles.timingLabel}>¿Exigir foto de salida al terminar el entreno?</Text>
+            <Text style={styles.timingLabel}>¿Exigir foto final al terminar el entreno?</Text>
             <SegmentedControl
               options={CHECKOUT_TOGGLE_OPTIONS}
               value={requireCheckoutPhoto}
@@ -140,12 +167,18 @@ export default function ProposeRuleChangeScreen() {
             keyboardType="numeric"
             placeholder={group ? String(group.min_workout_minutes) : ''}
           />
-          <View style={styles.timingField}>
-            <Text style={styles.timingLabel}>¿Cuándo debe aplicar el cambio si se aprueba?</Text>
-            <SegmentedControl options={TIMING_OPTIONS} value={timing} onChange={setTiming} />
-          </View>
+          {!isAdmin || applyMode === 'vote' ? (
+            <View style={styles.timingField}>
+              <Text style={styles.timingLabel}>¿Cuándo debe aplicar el cambio si se aprueba?</Text>
+              <SegmentedControl options={TIMING_OPTIONS} value={timing} onChange={setTiming} />
+            </View>
+          ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button label="Enviar propuesta" onPress={handleSubmit} loading={isSubmitting} />
+          <Button
+            label={isAdmin && applyMode === 'direct' ? 'Aplicar cambio' : 'Enviar propuesta'}
+            onPress={handleSubmit}
+            loading={isSubmitting}
+          />
           <Button label="Cancelar" variant="secondary" onPress={() => router.replace('/rules')} disabled={isSubmitting} />
         </View>
       </ScrollView>

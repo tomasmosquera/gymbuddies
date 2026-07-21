@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -22,8 +22,33 @@ export default function DepositScreen() {
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isCheckingExisting, setIsCheckingExisting] = useState(true);
 
-  if (isLoading || !group || !membership || !session) {
+  useEffect(() => {
+    if (!group || !session) return;
+    let isMounted = true;
+    supabase
+      .from('wallet_transactions')
+      .select('id')
+      .eq('group_id', group.id)
+      .eq('user_id', session.user.id)
+      .eq('type', 'initial_deposit')
+      .eq('status', 'pending')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!isMounted) return;
+        if (data) {
+          setPendingTransactionId(data.id);
+          setJustSubmitted(true);
+        }
+        setIsCheckingExisting(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [group, session]);
+
+  if (isLoading || isCheckingExisting || !group || !membership || !session) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />

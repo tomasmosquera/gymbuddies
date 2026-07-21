@@ -260,6 +260,7 @@ export default function AdminGroupScreen() {
           <Text style={styles.sectionTitle}>Herramientas</Text>
           <Button label="Moderar fotos de la semana" variant="secondary" onPress={() => router.push('/profile/admin-photos')} />
           <Button label="Asignar día válido/fallado" variant="secondary" onPress={() => router.push('/profile/admin-attendance')} />
+          <Button label="Ajustar saldo de un jugador" variant="secondary" onPress={() => router.push('/profile/admin-adjust-balance')} />
 
           <Text style={styles.sectionTitle}>Miembros ({members.length})</Text>
         </View>

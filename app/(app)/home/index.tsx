@@ -13,6 +13,9 @@ import { useCheckins } from '@/hooks/useCheckins';
 import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { useRuleProposal } from '@/hooks/useRuleProposal';
+import { useExcuseVote } from '@/hooks/useExcuseVote';
+import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import { getWeekBounds, toBogotaDateString, weekDates } from '@/lib/domain/dateUtils';
 import { failsRemaining } from '@/lib/domain/walletState';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -46,8 +49,17 @@ export default function HomeScreen() {
     viewedDate
   );
   const { rowsByPeriod, isLoading: leaderboardLoading, refresh: refreshLeaderboard } = useLeaderboard(group?.id ?? null);
+  const { proposal, myVote: myRuleVote } = useRuleProposal(group?.id ?? null, session?.user.id ?? null);
+  const { request: excuseVoteRequest, myVote: myExcuseVote } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
+  const { challenges: openChallenges } = usePhotoChallenges(group?.id ?? null);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const pendingVoteCount =
+    (proposal && !myRuleVote ? 1 : 0) +
+    (excuseVoteRequest && !myExcuseVote ? 1 : 0) +
+    openChallenges.filter((c) => c.target_user_id !== session?.user.id && !c.votes.some((v) => v.user_id === session?.user.id))
+      .length;
 
   const todayString = toBogotaDateString(new Date());
   const { weekStart, weekEnd } = getWeekBounds(viewedDate);
@@ -105,6 +117,17 @@ export default function HomeScreen() {
         <Text style={styles.groupName}>{group.name}</Text>
         <Text style={styles.inviteCode}>Código: {group.invite_code}</Text>
       </View>
+
+      {pendingVoteCount > 0 ? (
+        <Pressable onPress={() => router.push('/rules')}>
+          <Card style={styles.voteBanner}>
+            <Text style={styles.voteBannerText}>
+              🗳️ Tienes {pendingVoteCount} votación{pendingVoteCount === 1 ? '' : 'es'} pendiente
+              {pendingVoteCount === 1 ? '' : 's'} — toca para ir a votar
+            </Text>
+          </Card>
+        </Pressable>
+      ) : null}
 
       <Card style={styles.statusCard}>
         <View style={styles.statusRow}>
@@ -192,33 +215,33 @@ export default function HomeScreen() {
 
       {isCurrentWeek && !todayCheckin ? (
         <Button
-          label={group.require_checkout_photo ? 'Foto de llegada al gym 📸' : 'Hacer check-in de hoy 📸'}
+          label={group.require_checkout_photo ? 'Foto inicial 📸' : 'Hacer check-in de hoy 📸'}
           onPress={() => router.push('/checkin')}
         />
       ) : isCurrentWeek && todayCheckin && group.require_checkout_photo && !todayCheckin.checkout_captured_at ? (
         <Card style={styles.doneCard}>
           <View style={styles.stepsRow}>
             <View style={styles.stepPill}>
-              <Text style={styles.stepPillText}>1. Llegada ✓</Text>
+              <Text style={styles.stepPillText}>1. Foto Inicial ✓</Text>
             </View>
             <Text style={styles.stepsArrow}>→</Text>
             <View style={[styles.stepPill, styles.stepPillPending]}>
-              <Text style={styles.stepPillText}>2. Salida</Text>
+              <Text style={styles.stepPillText}>2. Foto Final</Text>
             </View>
           </View>
-          <Text style={styles.hint}>Cuando termines de entrenar, toma tu foto de salida para que cuente la duración.</Text>
-          <Button label="Tomar foto de salida 🏁" onPress={() => router.push('/checkin')} />
+          <Text style={styles.hint}>Cuando termines de entrenar, toma tu foto final para que cuente la duración.</Text>
+          <Button label="Tomar foto final 🏁" onPress={() => router.push('/checkin')} />
         </Card>
       ) : isCurrentWeek && todayCheckin ? (
         <Card style={styles.doneCard}>
           {group.require_checkout_photo && todayCheckin.checkout_captured_at ? (
             <View style={styles.stepsRow}>
               <View style={styles.stepPill}>
-                <Text style={styles.stepPillText}>1. Llegada ✓</Text>
+                <Text style={styles.stepPillText}>1. Foto Inicial ✓</Text>
               </View>
               <Text style={styles.stepsArrow}>→</Text>
               <View style={styles.stepPill}>
-                <Text style={styles.stepPillText}>2. Salida ✓</Text>
+                <Text style={styles.stepPillText}>2. Foto Final ✓</Text>
               </View>
             </View>
           ) : (
@@ -272,6 +295,8 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   groupName: { ...typography.title, color: colors.text },
   inviteCode: { color: colors.textMuted, marginTop: 2 },
+  voteBanner: { backgroundColor: colors.primary },
+  voteBannerText: { color: colors.primaryText, fontWeight: '700', fontSize: 13 },
   statusCard: { gap: spacing.sm },
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   balanceLabel: { color: colors.textMuted },
