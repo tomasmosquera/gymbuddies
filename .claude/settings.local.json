@@ -27,7 +27,12 @@
       "Bash(npx eas *)",
       "Bash(tee /tmp/eas_ios_build.log)",
       "Bash(tee /tmp/eas_android_build.log)",
-      "Bash(tee /tmp/eas_ios_submit.log)"
+      "Bash(tee /tmp/eas_ios_submit.log)",
+      "Bash(tee /tmp/eas_ios_build2.log)",
+      "Bash(tee /tmp/eas_ios_submit2.log)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://api.expo.dev)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://expo.dev)",
+      "Bash(tee /tmp/eas_ios_submit3.log)"
     ],
     "additionalDirectories": [
       "\\tmp"

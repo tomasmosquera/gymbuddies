@@ -11,18 +11,24 @@ import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
-import { useGroupDayAttendance, type DayAttendance } from '@/hooks/useGroupDayAttendance';
+import { useGroupDayAttendance, type DayAttendance, type MemberAttendance } from '@/hooks/useGroupDayAttendance';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
 import { colors, spacing, typography } from '@/constants/theme';
 
 type Period = 'week' | 'month' | 'all';
+type ViewMode = 'days' | 'members';
 
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: 'week', label: 'Semana' },
   { key: 'month', label: 'Mes' },
   { key: 'all', label: 'Acumulado' },
+];
+
+const VIEW_MODE_OPTIONS: { key: ViewMode; label: string }[] = [
+  { key: 'days', label: 'Día por día' },
+  { key: 'members', label: 'Integrante por integrante' },
 ];
 
 const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -153,13 +159,98 @@ function DayRow({
   );
 }
 
+function MemberRow({
+  member,
+  isExpanded,
+  days,
+  checkinsByDate,
+  minWorkoutMinutes,
+  currentUserId,
+  challengedCheckinIds,
+  todayString,
+  onToggle,
+  onPressPhoto,
+  onChallenge,
+}: {
+  member: MemberAttendance;
+  isExpanded: boolean;
+  days: DayAttendance[];
+  checkinsByDate: Map<string, GroupCheckinWithProfile[]>;
+  minWorkoutMinutes: number;
+  currentUserId: string | null;
+  challengedCheckinIds: Set<string>;
+  todayString: string;
+  onToggle: () => void;
+  onPressPhoto: (path: string) => void;
+  onChallenge: (checkin: GroupCheckinWithProfile) => void;
+}) {
+  const decidedDays = member.completedCount + member.failedCount;
+  const compliancePercent = decidedDays > 0 ? Math.round((member.completedCount / decidedDays) * 100) : null;
+
+  return (
+    <Card style={styles.dayCard}>
+      <Pressable onPress={onToggle} style={styles.dayHeader}>
+        <Text style={styles.dayLabel} numberOfLines={1}>
+          {member.full_name}
+        </Text>
+        <View style={styles.dayStats}>
+          <Text style={[styles.dayStat, styles.dayStatGood]}>{member.completedCount} ✓</Text>
+          {member.excusedCount > 0 ? (
+            <Text style={[styles.dayStat, styles.dayStatNeutral]}>{member.excusedCount} 🌴</Text>
+          ) : null}
+          {member.failedCount > 0 ? <Text style={[styles.dayStat, styles.dayStatBad]}>{member.failedCount} ✗</Text> : null}
+          {compliancePercent !== null ? <Text style={styles.dayStatTotal}>{compliancePercent}%</Text> : null}
+        </View>
+      </Pressable>
+      {isExpanded ? (
+        <View style={styles.checkinsList}>
+          {days.map((day) => {
+            const status = member.dailyStatus[day.date];
+            if (!status) return null; // before this member's activation, or today (not decided yet)
+
+            if (status === 'completed') {
+              const checkin = checkinsByDate.get(day.date)?.find((c) => c.user_id === member.user_id);
+              if (!checkin) return null;
+              return (
+                <View key={day.date}>
+                  <Text style={styles.memberDayLabel}>{formatDayLabel(day.date, todayString)}</Text>
+                  <DayCheckinRow
+                    checkin={checkin}
+                    minWorkoutMinutes={minWorkoutMinutes}
+                    isOwnCheckin={member.user_id === currentUserId}
+                    isChallenged={challengedCheckinIds.has(checkin.id)}
+                    onPressPhoto={onPressPhoto}
+                    onChallenge={() => onChallenge(checkin)}
+                  />
+                </View>
+              );
+            }
+
+            return (
+              <View key={day.date} style={styles.memberDayRow}>
+                <Text style={styles.memberDayLabel}>{formatDayLabel(day.date, todayString)}</Text>
+                <Badge
+                  label={status === 'excused' ? 'Excusado 🌴' : 'Fallado ✗'}
+                  tone={status === 'excused' ? 'neutral' : 'danger'}
+                />
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
 export default function DashboardScreen() {
   const { session } = useAuth();
   const { group, isLoading: groupLoading } = useActiveGroup();
   const { challenges, createChallenge, refresh: refreshChallenges } = usePhotoChallenges(group?.id ?? null);
   const challengedCheckinIds = useMemo(() => new Set(challenges.map((c) => c.checkin_id)), [challenges]);
   const [period, setPeriod] = useState<Period>('week');
+  const [viewMode, setViewMode] = useState<ViewMode>('days');
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [challengeTarget, setChallengeTarget] = useState<GroupCheckinWithProfile | null>(null);
   const [challengeReason, setChallengeReason] = useState('');
@@ -180,7 +271,7 @@ export default function DashboardScreen() {
     return { rangeStart: start, rangeEnd: todayString };
   }, [period, group?.created_at, todayString]);
 
-  const { days, checkinsByDate, isLoading, refresh } = useGroupDayAttendance(
+  const { days, members, checkinsByDate, isLoading, refresh } = useGroupDayAttendance(
     group?.id ?? null,
     rangeStart,
     rangeEnd
@@ -236,51 +327,84 @@ export default function DashboardScreen() {
   );
   const compliancePercent = totals.possible > 0 ? Math.round((totals.completed / totals.possible) * 100) : null;
 
+  const listHeader = (
+    <View style={styles.header}>
+      <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
+      <Card style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Cómo le ha ido al grupo</Text>
+        {compliancePercent === null ? (
+          <Text style={styles.summaryHint}>Todavía no hay datos en este período.</Text>
+        ) : (
+          <>
+            <Text style={styles.compliance}>{compliancePercent}%</Text>
+            <Text style={styles.summaryHint}>
+              {totals.completed} entrenados · {totals.excused} excusados · {totals.notTrained} fallados (de{' '}
+              {totals.possible} día-miembro posibles)
+            </Text>
+          </>
+        )}
+      </Card>
+      <SegmentedControl options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
+      <Text style={styles.sectionTitle}>
+        {viewMode === 'days' ? 'Día por día — toca uno para ver las fotos' : 'Integrante por integrante'}
+      </Text>
+    </View>
+  );
+
   return (
     <>
-      <FlatList
-        contentContainerStyle={styles.container}
-        data={days}
-        keyExtractor={(item) => item.date}
-        onRefresh={refresh}
-        refreshing={isLoading}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
-            <Card style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>Cómo le ha ido al grupo</Text>
-              {compliancePercent === null ? (
-                <Text style={styles.summaryHint}>Todavía no hay datos en este período.</Text>
-              ) : (
-                <>
-                  <Text style={styles.compliance}>{compliancePercent}%</Text>
-                  <Text style={styles.summaryHint}>
-                    {totals.completed} entrenados · {totals.excused} excusados · {totals.notTrained} fallados (de{' '}
-                    {totals.possible} día-miembro posibles)
-                  </Text>
-                </>
-              )}
-            </Card>
-            <Text style={styles.sectionTitle}>Día por día — toca uno para ver las fotos</Text>
-          </View>
-        }
-        ListEmptyComponent={<EmptyState title="Sin datos" description="No hay días para mostrar en este período." />}
-        renderItem={({ item }) => (
-          <DayRow
-            day={item}
-            todayString={todayString}
-            isExpanded={expandedDate === item.date}
-            checkins={checkinsByDate.get(item.date) ?? []}
-            minWorkoutMinutes={group.min_workout_minutes}
-            currentUserId={session?.user.id ?? null}
-            challengedCheckinIds={challengedCheckinIds}
-            onToggle={() => setExpandedDate((d) => (d === item.date ? null : item.date))}
-            onPressPhoto={setViewingPhotoPath}
-            onChallenge={handleChallenge}
-          />
-        )}
-        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-      />
+      {viewMode === 'days' ? (
+        <FlatList
+          contentContainerStyle={styles.container}
+          data={days}
+          keyExtractor={(item) => item.date}
+          onRefresh={refresh}
+          refreshing={isLoading}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={<EmptyState title="Sin datos" description="No hay días para mostrar en este período." />}
+          renderItem={({ item }) => (
+            <DayRow
+              day={item}
+              todayString={todayString}
+              isExpanded={expandedDate === item.date}
+              checkins={checkinsByDate.get(item.date) ?? []}
+              minWorkoutMinutes={group.min_workout_minutes}
+              currentUserId={session?.user.id ?? null}
+              challengedCheckinIds={challengedCheckinIds}
+              onToggle={() => setExpandedDate((d) => (d === item.date ? null : item.date))}
+              onPressPhoto={setViewingPhotoPath}
+              onChallenge={handleChallenge}
+            />
+          )}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+        />
+      ) : (
+        <FlatList
+          contentContainerStyle={styles.container}
+          data={members}
+          keyExtractor={(item) => item.user_id}
+          onRefresh={refresh}
+          refreshing={isLoading}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={<EmptyState title="Sin datos" description="No hay integrantes para mostrar." />}
+          renderItem={({ item }) => (
+            <MemberRow
+              member={item}
+              days={days}
+              checkinsByDate={checkinsByDate}
+              isExpanded={expandedMemberId === item.user_id}
+              minWorkoutMinutes={group.min_workout_minutes}
+              currentUserId={session?.user.id ?? null}
+              challengedCheckinIds={challengedCheckinIds}
+              todayString={todayString}
+              onToggle={() => setExpandedMemberId((id) => (id === item.user_id ? null : item.user_id))}
+              onPressPhoto={setViewingPhotoPath}
+              onChallenge={handleChallenge}
+            />
+          )}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+        />
+      )}
       <CheckinPhotoModal
         visible={viewingPhotoPath !== null}
         photoPath={viewingPhotoPath}
@@ -343,6 +467,15 @@ const styles = StyleSheet.create({
   dayStatBad: { color: colors.danger },
   dayStatTotal: { color: colors.textMuted, fontSize: 13 },
   checkinsList: { gap: spacing.md, marginTop: spacing.xs },
+  memberDayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  memberDayLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   emptyDayText: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
   checkinRow: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   checkinNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

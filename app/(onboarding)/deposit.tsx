@@ -98,7 +98,11 @@ export default function DepositScreen() {
         .single();
       if (insertError) throw new Error(insertError.message);
       setPendingTransactionId(inserted?.id ?? null);
-      setJustSubmitted(true);
+      Alert.alert(
+        'Comprobante enviado',
+        'El admin del grupo debe confirmar tu transferencia — mientras tanto ya puedes usar la app normalmente.',
+        [{ text: 'Ir a Inicio', onPress: () => router.replace('/home') }]
+      );
     } catch (err) {
       Alert.alert('No se pudo registrar el depósito', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
@@ -124,15 +128,6 @@ export default function DepositScreen() {
     }
   };
 
-  const handleCheckStatus = async () => {
-    await refresh();
-    if (membership.status === 'pending_deposit') {
-      Alert.alert('Todavía pendiente', 'El admin del grupo aún no ha confirmado tu transferencia.');
-    } else {
-      router.replace('/home');
-    }
-  };
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Depósito inicial</Text>
@@ -152,7 +147,7 @@ export default function DepositScreen() {
         <Card style={styles.pendingCard}>
           <Text style={styles.pendingTitle}>Comprobante enviado</Text>
           <Text style={styles.pendingText}>
-            El admin del grupo debe confirmar tu transferencia antes de que puedas empezar a hacer check-ins.
+            El admin del grupo debe confirmar tu transferencia. Mientras tanto, ya puedes usar la app normalmente.
           </Text>
           {membership.role === 'admin' && pendingTransactionId ? (
             <>
@@ -162,7 +157,7 @@ export default function DepositScreen() {
               <Button label="Confirmar mi depósito" onPress={handleSelfConfirm} loading={isConfirming} />
             </>
           ) : null}
-          <Button label="Revisar de nuevo" onPress={handleCheckStatus} variant="secondary" />
+          <Button label="Ir a Inicio" onPress={() => router.replace('/home')} />
         </Card>
       ) : (
         <View style={styles.form}>

@@ -11,6 +11,16 @@ export interface DayAttendance {
   notTrainedCount: number;
 }
 
+export interface MemberAttendance {
+  user_id: string;
+  full_name: string;
+  completedCount: number;
+  excusedCount: number;
+  failedCount: number;
+  activeDaysCount: number;
+  dailyStatus: Record<string, 'completed' | 'excused' | 'failed'>;
+}
+
 function addOneDay(dateString: string): string {
   const d = new Date(`${dateString}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -18,19 +28,23 @@ function addOneDay(dateString: string): string {
 }
 
 /**
- * Day-by-day group attendance for the range [rangeStart, rangeEnd] (clamped
- * to not go past today) — how many active members trained, were excused, or
- * simply didn't show up each day, plus the raw check-ins (with profiles)
- * per day for the photo/location/duration drill-down.
+ * Group attendance for the range [rangeStart, rangeEnd] (clamped to not go
+ * past today), pivoted two ways from the same fetch: day-by-day (how many
+ * active members trained/were excused/didn't show up each day) and
+ * member-by-member (how each individual member did across the whole range)
+ * — plus the raw check-ins (with profiles) per day for the photo/location/
+ * duration drill-down.
  */
 export function useGroupDayAttendance(groupId: string | null, rangeStart: string, rangeEnd: string) {
   const [days, setDays] = useState<DayAttendance[]>([]);
+  const [members, setMembers] = useState<MemberAttendance[]>([]);
   const [checkinsByDate, setCheckinsByDate] = useState<Map<string, GroupCheckinWithProfile[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!groupId) {
       setDays([]);
+      setMembers([]);
       setCheckinsByDate(new Map());
       setIsLoading(false);
       return;
@@ -38,7 +52,10 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     setIsLoading(true);
 
     const [membersRes, checkinsRes, excusedRes, overridesRes] = await Promise.all([
-      supabase.from('group_members').select('user_id, status, activated_at, joined_at').eq('group_id', groupId),
+      supabase
+        .from('group_members')
+        .select('user_id, status, activated_at, joined_at, profile:profiles(full_name)')
+        .eq('group_id', groupId),
       supabase
         .from('checkins')
         .select('*, profile:profiles(full_name)')
@@ -59,7 +76,14 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         .lte('override_date', rangeEnd),
     ]);
 
-    const members = (membersRes.data ?? []).filter((m) => m.status === 'active' || m.status === 'needs_recharge');
+    const activeMembers = (membersRes.data ?? []).filter(
+      (m) => m.status === 'active' || m.status === 'needs_recharge'
+    ) as unknown as {
+      user_id: string;
+      activated_at: string | null;
+      joined_at: string;
+      profile: { full_name: string };
+    }[];
     const checkins = (checkinsRes.data ?? []) as unknown as GroupCheckinWithProfile[];
 
     const byDate = new Map<string, GroupCheckinWithProfile[]>();
@@ -91,13 +115,14 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       allDates.push(cursor);
     }
 
+    const activatedDateOf = (m: { activated_at: string | null; joined_at: string }): string | null => {
+      const activatedAt = m.activated_at ?? m.joined_at;
+      return activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+    };
+
     const dayStats: DayAttendance[] = allDates.map((date) => {
-      const activeMemberCount = members.filter((m) => {
-        const activatedAt = m.activated_at ?? m.joined_at;
-        // Timestamps are stored in UTC — slicing the ISO string would take the
-        // UTC calendar date, which is a day ahead of the Bogota date for any
-        // activation between 7pm and midnight Bogota time.
-        const activatedDate = activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+      const activeMemberCount = activeMembers.filter((m) => {
+        const activatedDate = activatedDateOf(m);
         return !activatedDate || activatedDate <= date;
       }).length;
 
@@ -119,7 +144,52 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
 
     dayStats.sort((a, b) => (a.date < b.date ? 1 : -1)); // most recent first
 
+    const memberStats: MemberAttendance[] = activeMembers.map((m) => {
+      const activatedDate = activatedDateOf(m);
+      let completedCount = 0;
+      let excusedCount = 0;
+      let failedCount = 0;
+      let activeDaysCount = 0;
+      const dailyStatus: Record<string, 'completed' | 'excused' | 'failed'> = {};
+
+      for (const date of allDates) {
+        if (activatedDate && activatedDate > date) continue;
+        activeDaysCount++;
+
+        const dayOverrides = overridesByDate.get(date);
+        const hasFailedOverride = dayOverrides?.failed.has(m.user_id) ?? false;
+        const hasValidOverride = dayOverrides?.valid.has(m.user_id) ?? false;
+        const hasCheckin = (byDate.get(date) ?? []).some((c) => c.user_id === m.user_id);
+        const isCompleted = (hasCheckin || hasValidOverride) && !hasFailedOverride;
+        const isExcused = excusedByDate.get(date)?.has(m.user_id) ?? false;
+
+        if (isCompleted) {
+          completedCount++;
+          dailyStatus[date] = 'completed';
+        } else if (isExcused) {
+          excusedCount++;
+          dailyStatus[date] = 'excused';
+        } else if (date !== todayString) {
+          failedCount++;
+          dailyStatus[date] = 'failed';
+        }
+      }
+
+      return {
+        user_id: m.user_id,
+        full_name: m.profile.full_name,
+        completedCount,
+        excusedCount,
+        failedCount,
+        activeDaysCount,
+        dailyStatus,
+      };
+    });
+
+    memberStats.sort((a, b) => b.completedCount - a.completedCount);
+
     setDays(dayStats);
+    setMembers(memberStats);
     setCheckinsByDate(byDate);
     setIsLoading(false);
   }, [groupId, rangeStart, rangeEnd]);
@@ -128,5 +198,5 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     refresh();
   }, [refresh]);
 
-  return { days, checkinsByDate, isLoading, refresh };
+  return { days, members, checkinsByDate, isLoading, refresh };
 }

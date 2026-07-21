@@ -9,7 +9,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.gymbuddiestm.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Gym Buddies necesita la cámara para verificar tus check-ins en el gimnasio en el momento en que ocurren.",
