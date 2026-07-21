@@ -10,10 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gymbuddies.app",
+      "bundleIdentifier": "com.gymbuddiestm.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Gym Buddies necesita la cámara para verificar tus check-ins en el gimnasio en el momento en que ocurren.",
-        "NSLocationWhenInUseUsageDescription": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio."
+        "NSLocationWhenInUseUsageDescription": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
