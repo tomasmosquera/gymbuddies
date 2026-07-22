@@ -68,7 +68,8 @@
         {
           "photosPermission": "Gym Buddies necesita acceso a tus fotos para adjuntar el comprobante de tu transferencia."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

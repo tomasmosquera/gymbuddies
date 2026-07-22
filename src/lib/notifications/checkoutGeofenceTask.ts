@@ -1,6 +1,7 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import { GeofencingEventType, stopGeofencingAsync } from 'expo-location';
+import { getRemindersEnabledCache } from './reminderPreference';
 
 /**
  * Imported once for its side effect (in app/_layout.tsx) — defineTask must
@@ -14,13 +15,15 @@ TaskManager.defineTask(CHECKOUT_GEOFENCE_TASK, async ({ data, error }) => {
   const { eventType } = data as { eventType: GeofencingEventType };
   if (eventType !== GeofencingEventType.Exit) return;
 
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Gym Buddies',
-      body: 'Parece que ya te alejaste del gimnasio — no olvides tomar tu foto de salida.',
-    },
-    trigger: null,
-  }).catch(() => {});
+  if (await getRemindersEnabledCache()) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Gym Buddies',
+        body: 'Parece que ya te alejaste del gimnasio — no olvides tomar tu foto de salida.',
+      },
+      trigger: null,
+    }).catch(() => {});
+  }
 
   // One-shot per pending checkout — the reminder already fired.
   await stopGeofencingAsync(CHECKOUT_GEOFENCE_TASK).catch(() => {});

@@ -32,34 +32,7 @@ const STATUS_TONE: Record<GroupMemberStatus, 'neutral' | 'success' | 'warning' |
   removed: 'neutral',
 };
 
-function MemberRow({ member, onRemoved }: { member: GroupMemberWithProfile; onRemoved: () => void }) {
-  const [isRemoving, setIsRemoving] = useState(false);
-  const canRemove = member.role !== 'admin' && member.status !== 'removed';
-
-  const confirmRemove = () => {
-    Alert.alert(
-      'Sacar del grupo',
-      `¿Sacar a ${member.profile.full_name} del grupo? No podrá volver a entrar con el código de invitación.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sacar', style: 'destructive', onPress: handleRemove },
-      ]
-    );
-  };
-
-  const handleRemove = async () => {
-    setIsRemoving(true);
-    try {
-      const { error } = await supabase.rpc('admin_remove_member', { p_member_id: member.id });
-      if (error) throw new Error(error.message);
-      onRemoved();
-    } catch (err) {
-      Alert.alert('No se pudo sacar al miembro', err instanceof Error ? err.message : 'Intenta de nuevo');
-    } finally {
-      setIsRemoving(false);
-    }
-  };
-
+function MemberRow({ member }: { member: GroupMemberWithProfile }) {
   return (
     <Card style={styles.row}>
       <View style={styles.rowMain}>
@@ -71,9 +44,6 @@ function MemberRow({ member, onRemoved }: { member: GroupMemberWithProfile; onRe
         </View>
         <Badge label={STATUS_LABELS[member.status]} tone={STATUS_TONE[member.status]} />
       </View>
-      {canRemove ? (
-        <Button label="Sacar del grupo" variant="danger" onPress={confirmRemove} loading={isRemoving} />
-      ) : null}
     </Card>
   );
 }
@@ -259,13 +229,12 @@ export default function AdminGroupScreen() {
 
           <Text style={styles.sectionTitle}>Herramientas</Text>
           <Button label="Moderar fotos de la semana" variant="secondary" onPress={() => router.push('/profile/admin-photos')} />
-          <Button label="Asignar día válido/fallado" variant="secondary" onPress={() => router.push('/profile/admin-attendance')} />
-          <Button label="Ajustar saldo de un jugador" variant="secondary" onPress={() => router.push('/profile/admin-adjust-balance')} />
+          <Button label="Administrar Miembros" variant="secondary" onPress={() => router.push('/profile/admin-members')} />
 
           <Text style={styles.sectionTitle}>Miembros ({members.length})</Text>
         </View>
       }
-      renderItem={({ item }) => <MemberRow member={item} onRemoved={refreshMembers} />}
+      renderItem={({ item }) => <MemberRow member={item} />}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />
   );

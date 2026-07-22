@@ -98,6 +98,11 @@ export default function DepositScreen() {
         .single();
       if (insertError) throw new Error(insertError.message);
       setPendingTransactionId(inserted?.id ?? null);
+      // Set regardless of what happens to the alert below (e.g. dismissed via
+      // Android's back button instead of its "Ir a Inicio" button) — a
+      // pending transaction now exists either way, so the form must not
+      // stay submittable and risk a duplicate receipt.
+      setJustSubmitted(true);
       Alert.alert(
         'Comprobante enviado',
         'El admin del grupo debe confirmar tu transferencia — mientras tanto ya puedes usar la app normalmente.',

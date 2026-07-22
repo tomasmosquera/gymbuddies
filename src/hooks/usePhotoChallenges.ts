@@ -6,6 +6,7 @@ import type { GroupCheckinWithProfile } from './useGroupWeekCheckins';
 export interface PhotoChallengeWithVotes extends PhotoChallenge {
   votes: PhotoChallengeVote[];
   checkin: GroupCheckinWithProfile | null;
+  challengerName: string | null;
 }
 
 /** Every open (pending) photo challenge in a group, each with its own votes. */
@@ -29,12 +30,16 @@ export function usePhotoChallenges(groupId: string | null) {
 
     const ids = (challengeData ?? []).map((c) => c.id);
     const checkinIds = (challengeData ?? []).map((c) => c.checkin_id);
-    const [{ data: voteData }, { data: checkinData }] = await Promise.all([
+    const challengerIds = (challengeData ?? []).map((c) => c.challenged_by);
+    const [{ data: voteData }, { data: checkinData }, { data: challengerData }] = await Promise.all([
       ids.length > 0
         ? supabase.from('photo_challenge_votes').select('*').in('challenge_id', ids)
         : Promise.resolve({ data: [] }),
       checkinIds.length > 0
         ? supabase.from('checkins').select('*, profile:profiles(full_name)').in('id', checkinIds)
+        : Promise.resolve({ data: [] }),
+      challengerIds.length > 0
+        ? supabase.from('profiles').select('id, full_name').in('id', challengerIds)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -42,6 +47,7 @@ export function usePhotoChallenges(groupId: string | null) {
       ...c,
       votes: (voteData ?? []).filter((v) => v.challenge_id === c.id),
       checkin: ((checkinData ?? []) as unknown as GroupCheckinWithProfile[]).find((k) => k.id === c.checkin_id) ?? null,
+      challengerName: (challengerData ?? []).find((p) => p.id === c.challenged_by)?.full_name ?? null,
     }));
     setChallenges(withVotes);
     setIsLoading(false);

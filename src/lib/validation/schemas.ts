@@ -1,17 +1,30 @@
 import { z } from 'zod';
 import { isValidInviteCode, normalizeInviteCode } from '@/lib/domain/inviteCode';
 
+export const passwordSchema = z.string().min(8, 'La contraseña debe tener al menos 8 caracteres');
+
 export const signUpSchema = z.object({
   fullName: z.string().trim().min(2, 'Ingresa tu nombre completo'),
   phone: z.string().trim().min(7, 'Ingresa un número de teléfono válido').optional().or(z.literal('')),
   email: z.string().trim().email('Correo inválido'),
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  password: passwordSchema,
 });
 
 export const signInSchema = z.object({
   email: z.string().trim().email('Correo inválido'),
   password: z.string().min(1, 'Ingresa tu contraseña'),
 });
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Ingresa tu contraseña actual'),
+    newPassword: passwordSchema,
+    confirmPassword: z.string().min(1, 'Confirma tu nueva contraseña'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Las contraseñas nuevas no coinciden',
+    path: ['confirmPassword'],
+  });
 
 export const createGroupSchema = z.object({
   name: z.string().trim().min(3, 'El nombre debe tener al menos 3 caracteres').max(60),

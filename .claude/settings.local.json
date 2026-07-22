@@ -32,7 +32,27 @@
       "Bash(tee /tmp/eas_ios_submit2.log)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://api.expo.dev)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://expo.dev)",
-      "Bash(tee /tmp/eas_ios_submit3.log)"
+      "Bash(tee /tmp/eas_ios_submit3.log)",
+      "Bash(node -e \"console.log\\(require\\('@supabase/supabase-js/package.json'\\).version\\)\")",
+      "Bash(mkdir -p .tmp-test)",
+      "Bash(cp \"/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/e2a1037e-db37-4375-8e0a-b8f0a0924ccb/scratchpad/test-delete-account.mjs\" .tmp-test/test-delete-account.mjs)",
+      "Bash(export SUPABASE_URL=\"https://iaiyntjmchndfmnvhbfm.supabase.co\")",
+      "Bash(export ANON_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhaXludGptY2huZGZtbnZoYmZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyOTUyMjAsImV4cCI6MjA5OTg3MTIyMH0.JneqzreWOfCsYLEUslTRaDs1ZE1kvDRyr2z3XHdvgbM\")",
+      "Bash(export SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhaXludGptY2huZGZtbnZoYmZtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDI5NTIyMCwiZXhwIjoyMDk5ODcxMjIwfQ.DcfH4Z_GftHlvLsbg4QA4wd25s7glHPLLqY0Ej8mhcY\")",
+      "Bash(node .tmp-test/test-delete-account.mjs)",
+      "Bash(node .tmp-test/finish-delete-test.mjs \"test-delete-a-1784647903959@example.com\" \"test-delete-b-1784647903959@example.com\")",
+      "Bash(npx jest *)",
+      "Bash(npx expo-doctor *)",
+      "Bash(tee /tmp/eas_ios_build3.log)",
+      "Bash(tee /tmp/eas_android_build2.log)",
+      "Bash(tee /tmp/eas_ios_submit4.log)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://google.com)",
+      "Bash(nslookup api.expo.dev)",
+      "Bash(tee /tmp/eas_ios_submit5.log)",
+      "Bash(rm -f /tmp/test_pending_deposit*.sql)",
+      "Bash(rm -f /tmp/test_photo_notif*.sql)",
+      "Bash(rm -f /tmp/test_0042*.sql)",
+      "Bash(rm -f /tmp/test_0043*.sql)"
     ],
     "additionalDirectories": [
       "\\tmp"

@@ -22,12 +22,16 @@ export type ExcuseType = 'travel' | 'medical' | 'other';
 export type ExcuseRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export type AttendanceOverrideStatus = 'valid' | 'failed';
 
+export type NotificationCategory = 'group_activity' | 'money' | 'votes' | 'reminders' | 'admin_actions';
+
+export type NotificationPreferences = Record<NotificationCategory, boolean>;
+
 export type Profile = {
   id: string;
   full_name: string;
   phone: string | null;
   avatar_url: string | null;
-  expo_push_token: string | null;
+  notification_preferences: NotificationPreferences;
   created_at: string;
 };
 
@@ -236,7 +240,7 @@ export type Database = {
       profiles: {
         Row: Profile;
         Insert: never;
-        Update: Partial<Pick<Profile, 'full_name' | 'phone' | 'avatar_url' | 'expo_push_token'>>;
+        Update: Partial<Pick<Profile, 'full_name' | 'phone' | 'avatar_url' | 'notification_preferences'>>;
       } & NoRelationships;
       groups: {
         Row: Group;
@@ -321,7 +325,11 @@ export type Database = {
       run_weekly_evaluation: { Args: Record<string, never>; Returns: WeeklyEvaluationRun[] };
       close_expired_proposals: { Args: Record<string, never>; Returns: void };
       admin_remove_member: { Args: { p_member_id: string }; Returns: GroupMember };
+      admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
+      register_push_token: { Args: { p_token: string }; Returns: void };
+      unregister_push_token: { Args: { p_token: string }; Returns: void };
       admin_delete_checkin: { Args: { p_checkin_id: string }; Returns: void };
+      delete_own_checkin: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_wallet_transaction: { Args: { p_transaction_id: string }; Returns: void };
       set_attendance_override: {
         Args: { p_group_id: string; p_user_id: string; p_date: string; p_status: AttendanceOverrideStatus; p_note?: string | null };
@@ -339,6 +347,7 @@ export type Database = {
         Args: { p_group_id: string; p_user_id: string; p_amount: number; p_note?: string | null };
         Returns: WalletTransaction;
       };
+      delete_own_account: { Args: Record<string, never>; Returns: void };
       submit_workout_checkout: {
         Args: {
           p_checkin_id: string;

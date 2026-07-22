@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -67,6 +68,18 @@ export default function RulesScreen() {
   } = usePhotoChallenges(group?.id ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
+
+  // This tab stays mounted across switches — without refetching on focus,
+  // a proposal/excuse/photo vote resolved or cast elsewhere would keep
+  // showing stale state here until a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      refreshGroup();
+      refreshProposal();
+      refreshExcuseVote();
+      refreshChallenges();
+    }, [refreshGroup, refreshProposal, refreshExcuseVote, refreshChallenges])
+  );
 
   if (groupLoading || proposalLoading || excuseVoteLoading || challengesLoading || !group || !membership) {
     return (
@@ -193,9 +206,9 @@ export default function RulesScreen() {
             </View>
           )}
         </Card>
-      ) : isAdmin ? (
+      ) : (
         <Button label="Proponer cambio de reglas" variant="secondary" onPress={() => router.push('/rules/propose')} />
-      ) : null}
+      )}
 
       {upcomingChange ? (
         <Card style={styles.proposalCard}>
@@ -256,6 +269,7 @@ export default function RulesScreen() {
             <Text style={styles.changeText}>
               ¿Es válido el check-in de {challenge.checkin?.profile.full_name ?? 'este miembro'}?
             </Text>
+            <Text style={styles.tally}>Retado por: {challenge.challengerName ?? 'un miembro del grupo'}</Text>
             {challenge.reason ? <Text style={styles.changeText}>Motivo: {challenge.reason}</Text> : null}
             {challenge.checkin ? (
               <View style={styles.challengePhotoRow}>

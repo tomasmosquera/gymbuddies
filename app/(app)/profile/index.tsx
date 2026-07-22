@@ -137,6 +137,13 @@ export default function ProfileScreen() {
         </Card>
       ) : null}
 
+      <Card style={styles.accountCard}>
+        <Text style={styles.sectionTitle}>Cuenta</Text>
+        <Button label="Notificaciones y ubicación" variant="secondary" onPress={() => router.push('/profile/permissions')} />
+        <Button label="Cambiar contraseña" variant="secondary" onPress={() => router.push('/profile/change-password')} />
+        <Button label="Eliminar cuenta" variant="danger" onPress={() => router.push('/profile/delete-account')} />
+      </Card>
+
       <Button label="Cerrar sesión" variant="danger" onPress={signOut} />
     </ScrollView>
   );
@@ -155,4 +162,5 @@ const styles = StyleSheet.create({
   walletCard: { gap: spacing.sm },
   walletRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   balance: { ...typography.heading, color: colors.text, marginTop: 2 },
+  accountCard: { gap: spacing.sm },
 });

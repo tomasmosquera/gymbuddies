@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -49,11 +50,43 @@ export default function HomeScreen() {
     viewedDate
   );
   const { rowsByPeriod, isLoading: leaderboardLoading, refresh: refreshLeaderboard } = useLeaderboard(group?.id ?? null);
-  const { proposal, myVote: myRuleVote } = useRuleProposal(group?.id ?? null, session?.user.id ?? null);
-  const { request: excuseVoteRequest, myVote: myExcuseVote } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
-  const { challenges: openChallenges } = usePhotoChallenges(group?.id ?? null);
+  const { proposal, myVote: myRuleVote, refresh: refreshProposal } = useRuleProposal(
+    group?.id ?? null,
+    session?.user.id ?? null
+  );
+  const {
+    request: excuseVoteRequest,
+    myVote: myExcuseVote,
+    refresh: refreshExcuseVote,
+  } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
+  const { challenges: openChallenges, refresh: refreshChallenges } = usePhotoChallenges(group?.id ?? null);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Tabs stay mounted across switches, so returning to Home after taking a
+  // photo (or voting elsewhere) never re-triggers each hook's mount-only
+  // fetch on its own — without this, today's check-in step, the vote
+  // banner, and the leaderboard could all sit stale until a manual
+  // pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      refreshGroup();
+      refreshCheckins();
+      refreshOverrides();
+      refreshLeaderboard();
+      refreshProposal();
+      refreshExcuseVote();
+      refreshChallenges();
+    }, [
+      refreshGroup,
+      refreshCheckins,
+      refreshOverrides,
+      refreshLeaderboard,
+      refreshProposal,
+      refreshExcuseVote,
+      refreshChallenges,
+    ])
+  );
 
   const pendingVoteCount =
     (proposal && !myRuleVote ? 1 : 0) +
