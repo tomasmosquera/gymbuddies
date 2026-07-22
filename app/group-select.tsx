@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useMyMemberships, type MembershipWithGroup } from '@/hooks/useMyMemberships';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
-import { colors, spacing } from '@/constants/theme';
+import { colors, spacing, typography } from '@/constants/theme';
 
 export default function GroupSelectScreen() {
   const { memberships, isLoading } = useMyMemberships();
@@ -34,6 +34,17 @@ export default function GroupSelectScreen() {
       contentContainerStyle={styles.container}
       data={memberships}
       keyExtractor={(item) => item.id}
+      ListHeaderComponent={
+        memberships.length === 0 ? (
+          <View style={styles.welcome}>
+            <Text style={styles.welcomeTitle}>¡Bienvenido a Gym Buddies! 💪</Text>
+            <Text style={styles.welcomeText}>
+              Todavía no perteneces a ningún grupo. Crea uno nuevo o únete a uno existente con un código de
+              invitación.
+            </Text>
+          </View>
+        ) : null
+      }
       renderItem={({ item }) => (
         <Pressable onPress={() => handleSelect(item)}>
           <Card style={[styles.row, item.group_id === activeGroupId && styles.rowActive]}>
@@ -49,7 +60,11 @@ export default function GroupSelectScreen() {
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       ListFooterComponent={
         <View style={styles.footer}>
-          <Button label="Crear otro grupo" variant="secondary" onPress={() => router.push('/create-group')} />
+          <Button
+            label={memberships.length === 0 ? 'Crear un grupo nuevo' : 'Crear otro grupo'}
+            variant="secondary"
+            onPress={() => router.push('/create-group')}
+          />
           <Button label="Unirme con un código" variant="secondary" onPress={() => router.push('/join-group')} />
         </View>
       }
@@ -65,4 +80,7 @@ const styles = StyleSheet.create({
   groupName: { color: colors.text, fontWeight: '700', fontSize: 16 },
   role: { color: colors.textMuted, marginTop: 2 },
   footer: { gap: spacing.sm, marginTop: spacing.lg },
+  welcome: { gap: spacing.sm, marginBottom: spacing.lg },
+  welcomeTitle: { ...typography.title, fontSize: 22, color: colors.text },
+  welcomeText: { color: colors.textMuted, fontSize: 15 },
 });

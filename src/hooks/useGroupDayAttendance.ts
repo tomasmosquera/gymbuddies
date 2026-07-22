@@ -76,15 +76,25 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         .lte('override_date', rangeEnd),
     ]);
 
-    const activeMembers = (membersRes.data ?? []).filter(
-      (m) => m.status === 'active' || m.status === 'needs_recharge'
-    ) as unknown as {
+    const allMembersRaw = (membersRes.data ?? []) as unknown as {
       user_id: string;
+      status: string;
       activated_at: string | null;
       joined_at: string;
       profile: { full_name: string };
     }[];
+    const activeMembers = allMembersRaw.filter((m) => m.status === 'active' || m.status === 'needs_recharge');
     const checkins = (checkinsRes.data ?? []) as unknown as GroupCheckinWithProfile[];
+
+    // Every member's activation date, regardless of current status — a
+    // check-in dated before it doesn't count, even if the admin backdated
+    // activated_at (or marked the day 'failed') *after* the photo was
+    // already taken, e.g. to retroactively invalidate early check-ins.
+    const activatedDateByUserId = new Map<string, string | null>();
+    for (const m of allMembersRaw) {
+      const activatedAt = m.activated_at ?? m.joined_at;
+      activatedDateByUserId.set(m.user_id, activatedAt ? toBogotaDateString(new Date(activatedAt)) : null);
+    }
 
     const byDate = new Map<string, GroupCheckinWithProfile[]>();
     for (const c of checkins) {
@@ -115,18 +125,20 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       allDates.push(cursor);
     }
 
-    const activatedDateOf = (m: { activated_at: string | null; joined_at: string }): string | null => {
-      const activatedAt = m.activated_at ?? m.joined_at;
-      return activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
-    };
-
     const dayStats: DayAttendance[] = allDates.map((date) => {
       const activeMemberCount = activeMembers.filter((m) => {
-        const activatedDate = activatedDateOf(m);
+        const activatedDate = activatedDateByUserId.get(m.user_id);
         return !activatedDate || activatedDate <= date;
       }).length;
 
-      const completedUserIds = new Set((byDate.get(date) ?? []).map((c) => c.user_id));
+      const completedUserIds = new Set(
+        (byDate.get(date) ?? [])
+          .filter((c) => {
+            const activatedDate = activatedDateByUserId.get(c.user_id);
+            return !activatedDate || activatedDate <= date;
+          })
+          .map((c) => c.user_id)
+      );
       const dayOverrides = overridesByDate.get(date);
       if (dayOverrides) {
         for (const uid of dayOverrides.valid) completedUserIds.add(uid);
@@ -145,7 +157,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     dayStats.sort((a, b) => (a.date < b.date ? 1 : -1)); // most recent first
 
     const memberStats: MemberAttendance[] = activeMembers.map((m) => {
-      const activatedDate = activatedDateOf(m);
+      const activatedDate = activatedDateByUserId.get(m.user_id) ?? null;
       let completedCount = 0;
       let excusedCount = 0;
       let failedCount = 0;
@@ -188,9 +200,24 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
 
     memberStats.sort((a, b) => b.completedCount - a.completedCount);
 
+    // What every consumer (Día por día, Calendario) should treat as "this
+    // person actually trained that day" — excludes a check-in that's been
+    // overridden to 'failed' (e.g. a photo challenge or admin correction) or
+    // that landed before the member's activation date, same rule the
+    // per-member dailyStatus above already applies.
+    const visibleByDate = new Map<string, GroupCheckinWithProfile[]>();
+    for (const [date, list] of byDate) {
+      const visible = list.filter((c) => {
+        if (overridesByDate.get(date)?.failed.has(c.user_id)) return false;
+        const activatedDate = activatedDateByUserId.get(c.user_id);
+        return !activatedDate || activatedDate <= date;
+      });
+      if (visible.length > 0) visibleByDate.set(date, visible);
+    }
+
     setDays(dayStats);
     setMembers(memberStats);
-    setCheckinsByDate(byDate);
+    setCheckinsByDate(visibleByDate);
     setIsLoading(false);
   }, [groupId, rangeStart, rangeEnd]);
 

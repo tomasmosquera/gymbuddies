@@ -45,8 +45,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radii.pill,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   segmentActive: { backgroundColor: colors.primary },
-  label: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  label: { color: colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   labelActive: { color: colors.primaryText },
 });

@@ -14,7 +14,7 @@ export default function AppLayout() {
 
   if (isInitializing || isLoading) return null;
   if (!isSignedIn) return <Redirect href="/sign-in" />;
-  if (!membership) return <Redirect href="/create-group" />;
+  if (!membership) return <Redirect href="/group-select" />;
 
   return (
     <Tabs

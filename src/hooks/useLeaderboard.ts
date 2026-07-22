@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
 
+function activatedDateOf(m: { activated_at: string | null; joined_at: string }): string | null {
+  const activatedAt = m.activated_at ?? m.joined_at;
+  return activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+}
+
 export type LeaderboardPeriod = 'week' | 'month' | 'all';
 
 export interface LeaderboardRow {
@@ -96,7 +101,7 @@ export function useLeaderboard(groupId: string | null) {
     const [membersRes, checkinsRes, excusedRes, overridesRes, resultsRes] = await Promise.all([
       supabase
         .from('group_members')
-        .select('user_id, balance, profile:profiles(full_name), group:groups(min_days_per_week)')
+        .select('user_id, balance, activated_at, joined_at, profile:profiles(full_name), group:groups(min_days_per_week)')
         .eq('group_id', groupId)
         .in('status', ['active', 'needs_recharge']),
       supabase
@@ -128,6 +133,8 @@ export function useLeaderboard(groupId: string | null) {
     const members = (membersRes.data ?? []) as unknown as {
       user_id: string;
       balance: number;
+      activated_at: string | null;
+      joined_at: string;
       profile: { full_name: string } | null;
       group: { min_days_per_week: number } | null;
     }[];
@@ -139,11 +146,21 @@ export function useLeaderboard(groupId: string | null) {
     }));
     setRoster(rosterEntries);
 
-    // This week's completed set = check-ins ∪ 'valid' overrides, minus 'failed'
-    // overrides (a failed override always wins, even over a real check-in) —
-    // same rule run_weekly_evaluation itself applies.
+    // A check-in dated before the member's own activation date doesn't
+    // count — same rule the dashboard's attendance view applies, and the
+    // same reason it can drift out of sync with a check-in: the admin can
+    // backdate activated_at (or mark a day 'failed') after the photo was
+    // already taken, e.g. to retroactively invalidate early check-ins.
+    const activatedDateByUserId = new Map<string, string | null>();
+    for (const m of members) activatedDateByUserId.set(m.user_id, activatedDateOf(m));
+
+    // This week's completed set = check-ins (on/after activation) ∪ 'valid'
+    // overrides, minus 'failed' overrides (a failed override always wins,
+    // even over a real check-in) — same rule run_weekly_evaluation applies.
     const checkinDatesByUser = new Map<string, Set<string>>();
     for (const c of checkinsRes.data ?? []) {
+      const activatedDate = activatedDateByUserId.get(c.user_id);
+      if (activatedDate && activatedDate > c.checkin_date) continue;
       if (!checkinDatesByUser.has(c.user_id)) checkinDatesByUser.set(c.user_id, new Set());
       checkinDatesByUser.get(c.user_id)!.add(c.checkin_date);
     }

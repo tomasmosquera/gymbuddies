@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -15,10 +15,10 @@ import { useGroupDayAttendance, type DayAttendance, type MemberAttendance } from
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 type Period = 'week' | 'month' | 'all';
-type ViewMode = 'days' | 'members';
+type ViewMode = 'days' | 'members' | 'calendar';
 
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: 'week', label: 'Semana' },
@@ -27,11 +27,13 @@ const PERIOD_OPTIONS: { key: Period; label: string }[] = [
 ];
 
 const VIEW_MODE_OPTIONS: { key: ViewMode; label: string }[] = [
-  { key: 'days', label: 'Día por día' },
-  { key: 'members', label: 'Integrante por integrante' },
+  { key: 'days', label: 'Por día' },
+  { key: 'members', label: 'Por miembro' },
+  { key: 'calendar', label: 'Calendario' },
 ];
 
 const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const WEEKDAY_SHORT_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 const MONTH_NAMES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
@@ -43,6 +45,87 @@ function formatDayLabel(dateString: string, todayString: string): string {
   const jsDay = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0=Sun..6=Sat
   const isoIndex = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon..6=Sun
   return `${WEEKDAY_NAMES[isoIndex]} ${day} de ${MONTH_NAMES[month - 1]}`;
+}
+
+function getInitials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** Monday-start weeks covering the whole month, padded with `null` for days outside it. */
+function buildCalendarWeeks(year: number, month: number): (string | null)[][] {
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay(); // 0=Sun..6=Sat
+  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1; // Monday-start offset
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  const cells: (string | null)[] = new Array(leadingBlanks).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+function CalendarGrid({
+  weeks,
+  checkinsByDate,
+  todayString,
+  onPressDay,
+}: {
+  weeks: (string | null)[][];
+  checkinsByDate: Map<string, GroupCheckinWithProfile[]>;
+  todayString: string;
+  onPressDay: (date: string) => void;
+}) {
+  return (
+    <Card style={styles.calendarCard}>
+      <View style={styles.calendarWeekRow}>
+        {WEEKDAY_SHORT_NAMES.map((w) => (
+          <Text key={w} style={styles.calendarWeekdayText}>
+            {w}
+          </Text>
+        ))}
+      </View>
+      {weeks.map((week, i) => (
+        <View key={i} style={styles.calendarWeekRow}>
+          {week.map((date, j) => {
+            if (!date) return <View key={j} style={styles.calendarCellEmpty} />;
+            const dayNum = Number(date.split('-')[2]);
+            const checkins = checkinsByDate.get(date) ?? [];
+            const isToday = date === todayString;
+            const isFuture = date > todayString;
+            return (
+              <Pressable
+                key={j}
+                style={[styles.calendarCell, isToday && styles.calendarCellToday]}
+                onPress={() => onPressDay(date)}
+                disabled={isFuture}
+              >
+                <Text style={[styles.calendarDayNumber, isToday && styles.calendarDayNumberToday]}>{dayNum}</Text>
+                <View style={styles.calendarBadgeWrap}>
+                  {checkins.slice(0, 4).map((c) => (
+                    <View key={c.id} style={styles.calendarInitialBadge}>
+                      <Text style={styles.calendarInitialText}>{getInitials(c.profile.full_name)}</Text>
+                    </View>
+                  ))}
+                  {checkins.length > 4 ? (
+                    <View style={styles.calendarInitialBadge}>
+                      <Text style={styles.calendarInitialText}>+{checkins.length - 4}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </Card>
+  );
 }
 
 function DayCheckinRow({
@@ -251,6 +334,7 @@ export default function DashboardScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('days');
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [expandedCalendarDate, setExpandedCalendarDate] = useState<string | null>(null);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [challengeTarget, setChallengeTarget] = useState<GroupCheckinWithProfile | null>(null);
   const [challengeReason, setChallengeReason] = useState('');
@@ -258,7 +342,28 @@ export default function DashboardScreen() {
 
   const todayString = toBogotaDateString(new Date());
 
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const [year, month] = todayString.split('-').map(Number);
+    return { year, month };
+  });
+  const canGoToNextMonth =
+    calendarMonth.year < Number(todayString.split('-')[0]) ||
+    (calendarMonth.year === Number(todayString.split('-')[0]) && calendarMonth.month < Number(todayString.split('-')[1]));
+  const goPrevMonth = () =>
+    setCalendarMonth((c) => (c.month === 1 ? { year: c.year - 1, month: 12 } : { year: c.year, month: c.month - 1 }));
+  const goNextMonth = () =>
+    setCalendarMonth((c) => (c.month === 12 ? { year: c.year + 1, month: 1 } : { year: c.year, month: c.month + 1 }));
+  const calendarWeeks = useMemo(
+    () => buildCalendarWeeks(calendarMonth.year, calendarMonth.month),
+    [calendarMonth]
+  );
+
   const { rangeStart, rangeEnd } = useMemo(() => {
+    if (viewMode === 'calendar') {
+      const mm = String(calendarMonth.month).padStart(2, '0');
+      const lastDay = new Date(Date.UTC(calendarMonth.year, calendarMonth.month, 0)).getUTCDate();
+      return { rangeStart: `${calendarMonth.year}-${mm}-01`, rangeEnd: `${calendarMonth.year}-${mm}-${String(lastDay).padStart(2, '0')}` };
+    }
     if (period === 'week') {
       const { weekStart, weekEnd } = getWeekBounds(new Date());
       return { rangeStart: weekStart, rangeEnd: weekEnd };
@@ -269,7 +374,7 @@ export default function DashboardScreen() {
     }
     const start = group?.created_at ? toBogotaDateString(new Date(group.created_at)) : todayString;
     return { rangeStart: start, rangeEnd: todayString };
-  }, [period, group?.created_at, todayString]);
+  }, [viewMode, calendarMonth, period, group?.created_at, todayString]);
 
   const { days, members, checkinsByDate, isLoading, refresh } = useGroupDayAttendance(
     group?.id ?? null,
@@ -316,6 +421,11 @@ export default function DashboardScreen() {
     );
   }
 
+  // Days with nobody active yet (group didn't exist, or everyone joined
+  // later) carry no information — hide them from "Por día" instead of
+  // padding the list with empty rows.
+  const visibleDays = days.filter((d) => d.activeMemberCount > 0);
+
   const totals = days.reduce(
     (acc, d) => ({
       completed: acc.completed + d.completedCount,
@@ -329,7 +439,21 @@ export default function DashboardScreen() {
 
   const listHeader = (
     <View style={styles.header}>
-      <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
+      {viewMode === 'calendar' ? (
+        <View style={styles.monthNavRow}>
+          <Pressable onPress={goPrevMonth} style={styles.monthNavButton}>
+            <Text style={styles.monthNavButtonText}>◀</Text>
+          </Pressable>
+          <Text style={styles.monthNavLabel}>
+            {MONTH_NAMES[calendarMonth.month - 1]} {calendarMonth.year}
+          </Text>
+          <Pressable onPress={goNextMonth} disabled={!canGoToNextMonth} style={styles.monthNavButton}>
+            <Text style={[styles.monthNavButtonText, !canGoToNextMonth && styles.monthNavButtonTextDisabled]}>▶</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
+      )}
       <Card style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Cómo le ha ido al grupo</Text>
         {compliancePercent === null ? (
@@ -345,9 +469,13 @@ export default function DashboardScreen() {
         )}
       </Card>
       <SegmentedControl options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
-      <Text style={styles.sectionTitle}>
-        {viewMode === 'days' ? 'Día por día — toca uno para ver las fotos' : 'Integrante por integrante'}
-      </Text>
+      {viewMode !== 'calendar' ? (
+        <Text style={styles.sectionTitle}>
+          {viewMode === 'days' ? 'Por día — toca uno para ver las fotos' : 'Por miembro'}
+        </Text>
+      ) : (
+        <Text style={styles.sectionTitle}>Toca un día para ver quién entrenó</Text>
+      )}
     </View>
   );
 
@@ -356,7 +484,7 @@ export default function DashboardScreen() {
       {viewMode === 'days' ? (
         <FlatList
           contentContainerStyle={styles.container}
-          data={days}
+          data={visibleDays}
           keyExtractor={(item) => item.date}
           onRefresh={refresh}
           refreshing={isLoading}
@@ -378,7 +506,7 @@ export default function DashboardScreen() {
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         />
-      ) : (
+      ) : viewMode === 'members' ? (
         <FlatList
           contentContainerStyle={styles.container}
           data={members}
@@ -404,7 +532,58 @@ export default function DashboardScreen() {
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.container}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor={colors.primary} />}
+        >
+          {listHeader}
+          <CalendarGrid
+            weeks={calendarWeeks}
+            checkinsByDate={checkinsByDate}
+            todayString={todayString}
+            onPressDay={setExpandedCalendarDate}
+          />
+        </ScrollView>
       )}
+      <Modal
+        visible={expandedCalendarDate !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExpandedCalendarDate(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Card style={styles.modalCard}>
+            <View style={styles.dayHeader}>
+              <Text style={styles.modalTitle}>
+                {expandedCalendarDate ? formatDayLabel(expandedCalendarDate, todayString) : ''}
+              </Text>
+              <Pressable onPress={() => setExpandedCalendarDate(null)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              {expandedCalendarDate && (checkinsByDate.get(expandedCalendarDate)?.length ?? 0) > 0 ? (
+                <View style={styles.checkinsList}>
+                  {checkinsByDate.get(expandedCalendarDate)!.map((c) => (
+                    <DayCheckinRow
+                      key={c.id}
+                      checkin={c}
+                      minWorkoutMinutes={group.min_workout_minutes}
+                      isOwnCheckin={c.user_id === session?.user.id}
+                      isChallenged={challengedCheckinIds.has(c.id)}
+                      onPressPhoto={setViewingPhotoPath}
+                      onChallenge={() => handleChallenge(c)}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.emptyDayText}>Nadie entrenó este día.</Text>
+              )}
+            </ScrollView>
+          </Card>
+        </View>
+      </Modal>
       <CheckinPhotoModal
         visible={viewingPhotoPath !== null}
         photoPath={viewingPhotoPath}
@@ -447,10 +626,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
-  modalCard: { width: '100%', gap: spacing.md },
+  modalCard: { width: '100%', gap: spacing.md, maxHeight: '80%' },
   modalTitle: { ...typography.heading, color: colors.text },
   modalBody: { color: colors.textMuted, fontSize: 13 },
   modalActions: { flexDirection: 'row', gap: spacing.sm },
+  modalClose: { color: colors.textMuted, fontSize: 18, padding: spacing.xs },
+  modalScroll: { flexGrow: 0 },
+  monthNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  monthNavButton: { padding: spacing.sm },
+  monthNavButtonText: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  monthNavButtonTextDisabled: { color: colors.border },
+  monthNavLabel: { ...typography.heading, fontSize: 16, color: colors.text, textTransform: 'capitalize' },
+  calendarCard: { gap: spacing.xs },
+  calendarWeekRow: { flexDirection: 'row' },
+  calendarWeekdayText: {
+    flex: 1,
+    textAlign: 'center',
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    paddingBottom: spacing.xs,
+  },
+  calendarCellEmpty: { flex: 1, minHeight: 56 },
+  calendarCell: {
+    flex: 1,
+    minHeight: 56,
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    gap: 2,
+    borderRadius: radii.sm,
+  },
+  calendarCellToday: { backgroundColor: colors.surfaceAlt },
+  calendarDayNumber: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  calendarDayNumberToday: { color: colors.primary },
+  calendarBadgeWrap: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 2, maxWidth: 48 },
+  calendarInitialBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarInitialText: { color: colors.primaryText, fontSize: 8, fontWeight: '700' },
   header: { gap: spacing.md, marginBottom: spacing.md },
   summaryCard: { gap: spacing.xs },
   summaryTitle: { ...typography.heading, fontSize: 15, color: colors.text },

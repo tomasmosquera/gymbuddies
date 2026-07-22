@@ -33,7 +33,7 @@ export default function Index() {
   }
 
   if (!activeMembership) {
-    return <Redirect href="/create-group" />;
+    return <Redirect href="/group-select" />;
   }
 
   return <Redirect href="/home" />;
