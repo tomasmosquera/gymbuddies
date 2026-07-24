@@ -52,7 +52,12 @@
       "Bash(rm -f /tmp/test_pending_deposit*.sql)",
       "Bash(rm -f /tmp/test_photo_notif*.sql)",
       "Bash(rm -f /tmp/test_0042*.sql)",
-      "Bash(rm -f /tmp/test_0043*.sql)"
+      "Bash(rm -f /tmp/test_0043*.sql)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api *)"
     ],
     "additionalDirectories": [
       "\\tmp"

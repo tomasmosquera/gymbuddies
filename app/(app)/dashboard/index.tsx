@@ -15,6 +15,8 @@ import { useGroupDayAttendance, type DayAttendance, type MemberAttendance } from
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { REACTION_EMOJIS, aggregateReactionCounts } from '@/lib/domain/reactions';
+import type { CheckinReaction } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 type Period = 'week' | 'month' | 'all';
@@ -128,20 +130,89 @@ function CalendarGrid({
   );
 }
 
+function ReactionRow({
+  reactions,
+  currentUserId,
+  readOnly,
+  onReact,
+  onRemoveReaction,
+}: {
+  reactions: CheckinReaction[];
+  currentUserId: string | null;
+  readOnly: boolean;
+  onReact: (emoji: string) => void;
+  onRemoveReaction: () => void;
+}) {
+  const counts = aggregateReactionCounts(reactions);
+  const myReaction = reactions.find((r) => r.user_id === currentUserId)?.emoji ?? null;
+
+  if (readOnly) {
+    const activeEmojis = REACTION_EMOJIS.filter((emoji) => counts[emoji]);
+    if (activeEmojis.length === 0) return null;
+    return (
+      <View style={styles.reactionBar}>
+        {activeEmojis.map((emoji) => (
+          <View key={emoji} style={styles.reactionBubble}>
+            <Text style={styles.reactionEmoji}>{emoji}</Text>
+            <View style={styles.reactionBadge}>
+              <Text style={styles.reactionBadgeText}>{counts[emoji]}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.reactionBar}>
+      {REACTION_EMOJIS.map((emoji) => {
+        const isMine = myReaction === emoji;
+        const count = counts[emoji] ?? 0;
+        return (
+          <Pressable
+            key={emoji}
+            onPress={() => (isMine ? onRemoveReaction() : onReact(emoji))}
+            style={({ pressed }) => [
+              styles.reactionBubble,
+              isMine && styles.reactionBubbleActive,
+              pressed && styles.reactionBubblePressed,
+            ]}
+          >
+            <Text style={styles.reactionEmoji}>{emoji}</Text>
+            {count > 0 ? (
+              <View style={[styles.reactionBadge, isMine && styles.reactionBadgeActive]}>
+                <Text style={styles.reactionBadgeText}>{count}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function DayCheckinRow({
   checkin,
   minWorkoutMinutes,
   isOwnCheckin,
   isChallenged,
+  reactions,
+  currentUserId,
   onPressPhoto,
   onChallenge,
+  onReact,
+  onRemoveReaction,
 }: {
   checkin: GroupCheckinWithProfile;
   minWorkoutMinutes: number;
   isOwnCheckin: boolean;
   isChallenged: boolean;
+  reactions: CheckinReaction[];
+  currentUserId: string | null;
   onPressPhoto: (path: string) => void;
   onChallenge: () => void;
+  onReact: (emoji: string) => void;
+  onRemoveReaction: () => void;
 }) {
   const hasCheckout = !!checkin.checkout_photo_path;
   const isShort = hasCheckout && checkin.workout_minutes !== null && checkin.workout_minutes < minWorkoutMinutes;
@@ -178,8 +249,17 @@ function DayCheckinRow({
           {isShort ? <Badge label="Corto" tone="warning" /> : null}
         </View>
       ) : null}
+      <ReactionRow
+        reactions={reactions}
+        currentUserId={currentUserId}
+        readOnly={isOwnCheckin}
+        onReact={onReact}
+        onRemoveReaction={onRemoveReaction}
+      />
       {!isOwnCheckin && !isChallenged ? (
-        <Button label="Pedir votación para invalidar" variant="secondary" onPress={onChallenge} />
+        <View style={styles.challengeButtonWrap}>
+          <Button label="Pedir votación para invalidar" variant="secondary" onPress={onChallenge} />
+        </View>
       ) : null}
     </View>
   );
@@ -193,9 +273,12 @@ function DayRow({
   minWorkoutMinutes,
   currentUserId,
   challengedCheckinIds,
+  reactionsByCheckinId,
   onToggle,
   onPressPhoto,
   onChallenge,
+  onReact,
+  onRemoveReaction,
 }: {
   day: DayAttendance;
   todayString: string;
@@ -204,9 +287,12 @@ function DayRow({
   minWorkoutMinutes: number;
   currentUserId: string | null;
   challengedCheckinIds: Set<string>;
+  reactionsByCheckinId: Map<string, CheckinReaction[]>;
   onToggle: () => void;
   onPressPhoto: (path: string) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
+  onReact: (checkinId: string, emoji: string) => void;
+  onRemoveReaction: (checkinId: string) => void;
 }) {
   return (
     <Card style={styles.dayCard}>
@@ -229,8 +315,12 @@ function DayRow({
                 minWorkoutMinutes={minWorkoutMinutes}
                 isOwnCheckin={c.user_id === currentUserId}
                 isChallenged={challengedCheckinIds.has(c.id)}
+                reactions={reactionsByCheckinId.get(c.id) ?? []}
+                currentUserId={currentUserId}
                 onPressPhoto={onPressPhoto}
                 onChallenge={() => onChallenge(c)}
+                onReact={(emoji) => onReact(c.id, emoji)}
+                onRemoveReaction={() => onRemoveReaction(c.id)}
               />
             ))}
           </View>
@@ -250,10 +340,13 @@ function MemberRow({
   minWorkoutMinutes,
   currentUserId,
   challengedCheckinIds,
+  reactionsByCheckinId,
   todayString,
   onToggle,
   onPressPhoto,
   onChallenge,
+  onReact,
+  onRemoveReaction,
 }: {
   member: MemberAttendance;
   isExpanded: boolean;
@@ -262,10 +355,13 @@ function MemberRow({
   minWorkoutMinutes: number;
   currentUserId: string | null;
   challengedCheckinIds: Set<string>;
+  reactionsByCheckinId: Map<string, CheckinReaction[]>;
   todayString: string;
   onToggle: () => void;
   onPressPhoto: (path: string) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
+  onReact: (checkinId: string, emoji: string) => void;
+  onRemoveReaction: (checkinId: string) => void;
 }) {
   const decidedDays = member.completedCount + member.failedCount;
   const compliancePercent = decidedDays > 0 ? Math.round((member.completedCount / decidedDays) * 100) : null;
@@ -302,8 +398,12 @@ function MemberRow({
                     minWorkoutMinutes={minWorkoutMinutes}
                     isOwnCheckin={member.user_id === currentUserId}
                     isChallenged={challengedCheckinIds.has(checkin.id)}
+                    reactions={reactionsByCheckinId.get(checkin.id) ?? []}
+                    currentUserId={currentUserId}
                     onPressPhoto={onPressPhoto}
                     onChallenge={() => onChallenge(checkin)}
+                    onReact={(emoji) => onReact(checkin.id, emoji)}
+                    onRemoveReaction={() => onRemoveReaction(checkin.id)}
                   />
                 </View>
               );
@@ -376,11 +476,8 @@ export default function DashboardScreen() {
     return { rangeStart: start, rangeEnd: todayString };
   }, [viewMode, calendarMonth, period, group?.created_at, todayString]);
 
-  const { days, members, checkinsByDate, isLoading, refresh } = useGroupDayAttendance(
-    group?.id ?? null,
-    rangeStart,
-    rangeEnd
-  );
+  const { days, members, checkinsByDate, reactionsByCheckinId, isLoading, refresh, react, removeReaction } =
+    useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd);
 
   useFocusEffect(
     useCallback(() => {
@@ -410,6 +507,22 @@ export default function DashboardScreen() {
       Alert.alert('No se pudo abrir la votación', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsSubmittingChallenge(false);
+    }
+  };
+
+  const handleReact = async (checkinId: string, emoji: string) => {
+    try {
+      await react(checkinId, emoji);
+    } catch (err) {
+      Alert.alert('No se pudo reaccionar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
+  const handleRemoveReaction = async (checkinId: string) => {
+    try {
+      await removeReaction(checkinId);
+    } catch (err) {
+      Alert.alert('No se pudo quitar la reacción', err instanceof Error ? err.message : 'Intenta de nuevo');
     }
   };
 
@@ -499,9 +612,12 @@ export default function DashboardScreen() {
               minWorkoutMinutes={group.min_workout_minutes}
               currentUserId={session?.user.id ?? null}
               challengedCheckinIds={challengedCheckinIds}
+              reactionsByCheckinId={reactionsByCheckinId}
               onToggle={() => setExpandedDate((d) => (d === item.date ? null : item.date))}
               onPressPhoto={setViewingPhotoPath}
               onChallenge={handleChallenge}
+              onReact={handleReact}
+              onRemoveReaction={handleRemoveReaction}
             />
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -524,10 +640,13 @@ export default function DashboardScreen() {
               minWorkoutMinutes={group.min_workout_minutes}
               currentUserId={session?.user.id ?? null}
               challengedCheckinIds={challengedCheckinIds}
+              reactionsByCheckinId={reactionsByCheckinId}
               todayString={todayString}
               onToggle={() => setExpandedMemberId((id) => (id === item.user_id ? null : item.user_id))}
               onPressPhoto={setViewingPhotoPath}
               onChallenge={handleChallenge}
+              onReact={handleReact}
+              onRemoveReaction={handleRemoveReaction}
             />
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -572,8 +691,12 @@ export default function DashboardScreen() {
                       minWorkoutMinutes={group.min_workout_minutes}
                       isOwnCheckin={c.user_id === session?.user.id}
                       isChallenged={challengedCheckinIds.has(c.id)}
+                      reactions={reactionsByCheckinId.get(c.id) ?? []}
+                      currentUserId={session?.user.id ?? null}
                       onPressPhoto={setViewingPhotoPath}
                       onChallenge={() => handleChallenge(c)}
+                      onReact={(emoji) => handleReact(c.id, emoji)}
+                      onRemoveReaction={() => handleRemoveReaction(c.id)}
                     />
                   ))}
                 </View>
@@ -701,4 +824,43 @@ const styles = StyleSheet.create({
   photosRow: { flexDirection: 'row', gap: spacing.md },
   durationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   duration: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  reactionBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    paddingTop: spacing.sm,
+    marginTop: 2,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  challengeButtonWrap: { marginTop: spacing.xs },
+  reactionBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactionBubbleActive: { backgroundColor: 'rgba(61, 220, 151, 0.18)', borderColor: colors.primary },
+  reactionBubblePressed: { transform: [{ scale: 0.9 }], opacity: 0.85 },
+  reactionEmoji: { fontSize: 20 },
+  reactionBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: radii.pill,
+    backgroundColor: colors.textMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.surface,
+  },
+  reactionBadgeActive: { backgroundColor: colors.primary },
+  reactionBadgeText: { color: colors.background, fontSize: 10, fontWeight: '800' },
 });

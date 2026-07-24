@@ -1,4 +1,5 @@
 import {
+  enumerateDates,
   formatBogotaDateTime,
   getWeekBounds,
   isWithinClockDriftTolerance,
@@ -19,6 +20,25 @@ describe('weekDates', () => {
       '2026-07-18',
       '2026-07-19',
     ]);
+  });
+});
+
+describe('enumerateDates', () => {
+  it('returns every date inclusive, ascending', () => {
+    expect(enumerateDates('2026-07-30', '2026-08-02')).toEqual([
+      '2026-07-30',
+      '2026-07-31',
+      '2026-08-01',
+      '2026-08-02',
+    ]);
+  });
+
+  it('returns a single-element array when start equals end', () => {
+    expect(enumerateDates('2026-07-30', '2026-07-30')).toEqual(['2026-07-30']);
+  });
+
+  it('returns an empty array when start is after end', () => {
+    expect(enumerateDates('2026-08-01', '2026-07-30')).toEqual([]);
   });
 });
 

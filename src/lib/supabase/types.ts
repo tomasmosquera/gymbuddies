@@ -197,6 +197,15 @@ export type PhotoChallengeVote = {
   voted_at: string;
 };
 
+export type CheckinReaction = {
+  id: string;
+  group_id: string;
+  checkin_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+};
+
 export type AttendanceOverride = {
   id: string;
   group_id: string;
@@ -276,6 +285,7 @@ export type Database = {
       attendance_overrides: { Row: AttendanceOverride; Insert: never; Update: never } & NoRelationships;
       photo_challenges: { Row: PhotoChallenge; Insert: never; Update: never } & NoRelationships;
       photo_challenge_votes: { Row: PhotoChallengeVote; Insert: never; Update: never } & NoRelationships;
+      checkin_reactions: { Row: CheckinReaction; Insert: never; Update: never } & NoRelationships;
     };
     Views: Record<string, never>;
     Functions: {
@@ -328,6 +338,8 @@ export type Database = {
       admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       register_push_token: { Args: { p_token: string }; Returns: void };
       unregister_push_token: { Args: { p_token: string }; Returns: void };
+      react_to_checkin: { Args: { p_checkin_id: string; p_emoji: string }; Returns: CheckinReaction };
+      remove_reaction: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_checkin: { Args: { p_checkin_id: string }; Returns: void };
       delete_own_checkin: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_wallet_transaction: { Args: { p_transaction_id: string }; Returns: void };

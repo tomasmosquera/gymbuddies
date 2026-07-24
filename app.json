@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gym Buddies",
     "slug": "gymbuddies",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "gymbuddies",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

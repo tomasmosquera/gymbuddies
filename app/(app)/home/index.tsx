@@ -49,7 +49,12 @@ export default function HomeScreen() {
     session?.user.id ?? null,
     viewedDate
   );
-  const { rowsByPeriod, isLoading: leaderboardLoading, refresh: refreshLeaderboard } = useLeaderboard(group?.id ?? null);
+  const {
+    rowsByPeriod,
+    lastClosedWeek,
+    isLoading: leaderboardLoading,
+    refresh: refreshLeaderboard,
+  } = useLeaderboard(group?.id ?? null);
   const { proposal, myVote: myRuleVote, refresh: refreshProposal } = useRuleProposal(
     group?.id ?? null,
     session?.user.id ?? null
@@ -303,6 +308,7 @@ export default function HomeScreen() {
 
       <LeaderboardCard
         rowsByPeriod={rowsByPeriod}
+        lastClosedWeek={lastClosedWeek}
         currentUserId={session?.user.id ?? null}
         currency={group.currency}
         isRefreshing={leaderboardLoading}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { toBogotaDateString } from '@/lib/domain/dateUtils';
+import { classifyMemberDay } from '@/lib/domain/attendance';
+import type { CheckinReaction } from '@/lib/supabase/types';
 import type { GroupCheckinWithProfile } from './useGroupWeekCheckins';
 
 export interface DayAttendance {
@@ -39,6 +41,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
   const [days, setDays] = useState<DayAttendance[]>([]);
   const [members, setMembers] = useState<MemberAttendance[]>([]);
   const [checkinsByDate, setCheckinsByDate] = useState<Map<string, GroupCheckinWithProfile[]>>(new Map());
+  const [reactionsByCheckinId, setReactionsByCheckinId] = useState<Map<string, CheckinReaction[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -46,12 +49,13 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       setDays([]);
       setMembers([]);
       setCheckinsByDate(new Map());
+      setReactionsByCheckinId(new Map());
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
 
-    const [membersRes, checkinsRes, excusedRes, overridesRes] = await Promise.all([
+    const [membersRes, checkinsRes, excusedRes, overridesRes, reactionsRes] = await Promise.all([
       supabase
         .from('group_members')
         .select('user_id, status, activated_at, joined_at, profile:profiles(full_name)')
@@ -74,7 +78,16 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         .eq('group_id', groupId)
         .gte('override_date', rangeStart)
         .lte('override_date', rangeEnd),
+      supabase.from('checkin_reactions').select('*').eq('group_id', groupId),
     ]);
+
+    const reactionsByCheckin = new Map<string, CheckinReaction[]>();
+    for (const r of reactionsRes.data ?? []) {
+      const list = reactionsByCheckin.get(r.checkin_id) ?? [];
+      list.push(r);
+      reactionsByCheckin.set(r.checkin_id, list);
+    }
+    setReactionsByCheckinId(reactionsByCheckin);
 
     const allMembersRaw = (membersRes.data ?? []) as unknown as {
       user_id: string;
@@ -169,22 +182,22 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         activeDaysCount++;
 
         const dayOverrides = overridesByDate.get(date);
-        const hasFailedOverride = dayOverrides?.failed.has(m.user_id) ?? false;
-        const hasValidOverride = dayOverrides?.valid.has(m.user_id) ?? false;
-        const hasCheckin = (byDate.get(date) ?? []).some((c) => c.user_id === m.user_id);
-        const isCompleted = (hasCheckin || hasValidOverride) && !hasFailedOverride;
-        const isExcused = excusedByDate.get(date)?.has(m.user_id) ?? false;
+        const status = classifyMemberDay({
+          hasCheckin: (byDate.get(date) ?? []).some((c) => c.user_id === m.user_id),
+          hasValidOverride: dayOverrides?.valid.has(m.user_id) ?? false,
+          hasFailedOverride: dayOverrides?.failed.has(m.user_id) ?? false,
+          isExcused: excusedByDate.get(date)?.has(m.user_id) ?? false,
+        });
 
-        if (isCompleted) {
-          completedCount++;
-          dailyStatus[date] = 'completed';
-        } else if (isExcused) {
-          excusedCount++;
-          dailyStatus[date] = 'excused';
-        } else if (date !== todayString) {
-          failedCount++;
-          dailyStatus[date] = 'failed';
-        }
+        // Today isn't over yet — anyone who hasn't checked in still can, so
+        // it never counts as "failed" until the day has actually passed
+        // (but it can still show as completed/excused today, same as before).
+        if (status === 'failed' && date === todayString) continue;
+
+        dailyStatus[date] = status;
+        if (status === 'completed') completedCount++;
+        else if (status === 'excused') excusedCount++;
+        else failedCount++;
       }
 
       return {
@@ -225,5 +238,38 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     refresh();
   }, [refresh]);
 
-  return { days, members, checkinsByDate, isLoading, refresh };
+  // Deliberately doesn't touch isLoading — that flag drives the screen's
+  // pull-to-refresh spinner, and reacting shouldn't visually shift the
+  // whole list down every time someone taps an emoji.
+  const refreshReactions = useCallback(async () => {
+    if (!groupId) return;
+    const { data } = await supabase.from('checkin_reactions').select('*').eq('group_id', groupId);
+    const reactionsByCheckin = new Map<string, CheckinReaction[]>();
+    for (const r of data ?? []) {
+      const list = reactionsByCheckin.get(r.checkin_id) ?? [];
+      list.push(r);
+      reactionsByCheckin.set(r.checkin_id, list);
+    }
+    setReactionsByCheckinId(reactionsByCheckin);
+  }, [groupId]);
+
+  const react = useCallback(
+    async (checkinId: string, emoji: string) => {
+      const { error } = await supabase.rpc('react_to_checkin', { p_checkin_id: checkinId, p_emoji: emoji });
+      if (error) throw new Error(error.message);
+      await refreshReactions();
+    },
+    [refreshReactions]
+  );
+
+  const removeReaction = useCallback(
+    async (checkinId: string) => {
+      const { error } = await supabase.rpc('remove_reaction', { p_checkin_id: checkinId });
+      if (error) throw new Error(error.message);
+      await refreshReactions();
+    },
+    [refreshReactions]
+  );
+
+  return { days, members, checkinsByDate, reactionsByCheckinId, isLoading, refresh, react, removeReaction };
 }

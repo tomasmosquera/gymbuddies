@@ -59,6 +59,19 @@ export function weekDates(weekStart: string): string[] {
   return Array.from({ length: 7 }, (_, i) => formatDate(startMs + i * DAY_MS));
 }
 
+/** Every calendar date string from `start` to `end` inclusive, ascending (empty if start > end). */
+export function enumerateDates(start: string, end: string): string[] {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const startMs = Date.UTC(sy, sm - 1, sd);
+  const endMs = Date.UTC(ey, em - 1, ed);
+  const dates: string[] = [];
+  for (let ms = startMs; ms <= endMs; ms += DAY_MS) {
+    dates.push(formatDate(ms));
+  }
+  return dates;
+}
+
 /**
  * Matches run_weekly_evaluation()'s definition of "the week that just
  * ended": yesterday's Bogota date back through the Monday before it.

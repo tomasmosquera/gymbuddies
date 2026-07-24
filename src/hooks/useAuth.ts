@@ -56,6 +56,7 @@ export function useAuth() {
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const isInitializing = useAuthStore((s) => s.isInitializing);
+  const setProfile = useAuthStore((s) => s.setProfile);
 
   const signUp = useCallback(async (email: string, password: string, fullName: string, phone?: string) => {
     const { error } = await supabase.auth.signUp({
@@ -93,6 +94,21 @@ export function useAuth() {
     [session]
   );
 
+  const updateProfile = useCallback(
+    async (fullName: string, phone: string | null) => {
+      if (!session) throw new Error('No hay sesión activa');
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ full_name: fullName, phone })
+        .eq('id', session.user.id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      setProfile(data);
+    },
+    [session, setProfile]
+  );
+
   const deleteAccount = useCallback(
     async (currentPassword: string) => {
       const email = session?.user.email;
@@ -115,6 +131,7 @@ export function useAuth() {
     signIn,
     signOut,
     updatePassword,
+    updateProfile,
     deleteAccount,
   };
 }

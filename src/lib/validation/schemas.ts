@@ -15,6 +15,11 @@ export const signInSchema = z.object({
   password: z.string().min(1, 'Ingresa tu contraseña'),
 });
 
+export const updateProfileSchema = z.object({
+  fullName: z.string().trim().min(2, 'Ingresa tu nombre completo'),
+  phone: z.string().trim().min(7, 'Ingresa un número de teléfono válido').optional().or(z.literal('')),
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Ingresa tu contraseña actual'),
