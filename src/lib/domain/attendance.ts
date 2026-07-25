@@ -49,3 +49,58 @@ export function tallyAttendance(statuses: readonly DayAttendanceStatus[]): Atten
   }
   return { completedCount, excusedCount, failedCount, decidedDays: completedCount + failedCount };
 }
+
+/** completedCount / (completedCount + failedCount) as a 0-100 percent, or null if there are no decided days yet. */
+export function consistencyPercent(completedCount: number, failedCount: number): number | null {
+  const decided = completedCount + failedCount;
+  return decided > 0 ? Math.round((completedCount / decided) * 100) : null;
+}
+
+export interface MemberConsistencyInput {
+  userId: string;
+  completedCount: number;
+  failedCount: number;
+  /** Sum of workout minutes in the period being ranked — only ever used as a tiebreak, and only when useDurationTiebreak is true. */
+  totalWorkoutMinutes: number;
+}
+
+/**
+ * Ranks members by consistency percent (never by balance/money) — standard
+ * competition ranking, so tied members share a rank and the next distinct
+ * value skips accordingly (1, 1, 3, ...). Workout duration only ever breaks
+ * a percent tie, and only when `useDurationTiebreak` is true — i.e. the
+ * group requires checkout photos, the only way duration is ever recorded.
+ * When false, percent ties stay fully shared. Members with no decided days
+ * (percent null) always rank last, tied with each other.
+ */
+export function rankMembersByConsistency(
+  members: readonly MemberConsistencyInput[],
+  useDurationTiebreak: boolean
+): Map<string, number> {
+  const withPercent = members.map((m) => ({ ...m, percent: consistencyPercent(m.completedCount, m.failedCount) }));
+  const sorted = [...withPercent].sort((a, b) => {
+    const aPercent = a.percent ?? -1;
+    const bPercent = b.percent ?? -1;
+    if (aPercent !== bPercent) return bPercent - aPercent;
+    return useDurationTiebreak ? b.totalWorkoutMinutes - a.totalWorkoutMinutes : 0;
+  });
+  const rankByUserId = new Map<string, number>();
+  let rank = 0;
+  let seen = 0;
+  let lastKey: string | null = null;
+  for (const m of sorted) {
+    seen++;
+    const key = useDurationTiebreak ? `${m.percent}|${m.totalWorkoutMinutes}` : `${m.percent}`;
+    if (lastKey === null || key !== lastKey) {
+      rank = seen;
+      lastKey = key;
+    }
+    rankByUserId.set(m.userId, rank);
+  }
+  return rankByUserId;
+}
+
+/** Every userId tied for rank 1 in an already-computed rank map. */
+export function determineTopRanked(rankByUserId: ReadonlyMap<string, number>): string[] {
+  return [...rankByUserId.entries()].filter(([, rank]) => rank === 1).map(([userId]) => userId);
+}

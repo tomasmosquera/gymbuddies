@@ -2,9 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { ExcuseRequest, ExcuseVote } from '@/lib/supabase/types';
 
-/** The group's currently open "other"-type excuse vote, if any, plus the caller's own vote. */
+export interface ExcuseVoteRequest extends ExcuseRequest {
+  member_name: string;
+}
+
+/** The group's currently open excuse vote (any type the admin sent to a vote), if any, plus the caller's own vote. */
 export function useExcuseVote(groupId: string | null, userId: string | null) {
-  const [request, setRequest] = useState<ExcuseRequest | null>(null);
+  const [request, setRequest] = useState<ExcuseVoteRequest | null>(null);
   const [votes, setVotes] = useState<ExcuseVote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -18,13 +22,14 @@ export function useExcuseVote(groupId: string | null, userId: string | null) {
     setIsLoading(true);
     const { data: requestData } = await supabase
       .from('excuse_requests')
-      .select('*')
+      .select('*, profile:profiles!user_id(full_name)')
       .eq('group_id', groupId)
-      .eq('excuse_type', 'other')
       .eq('status', 'pending')
+      .not('voting_closes_at', 'is', null)
       .maybeSingle();
 
-    setRequest(requestData ?? null);
+    const typedRequest = requestData as unknown as (ExcuseRequest & { profile: { full_name: string } | null }) | null;
+    setRequest(typedRequest ? { ...typedRequest, member_name: typedRequest.profile?.full_name ?? 'Miembro' } : null);
 
     if (requestData) {
       const { data: voteData } = await supabase.from('excuse_votes').select('*').eq('excuse_request_id', requestData.id);

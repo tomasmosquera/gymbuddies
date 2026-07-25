@@ -1,0 +1,301 @@
+import {
+  MONTHLY_CHALLENGES,
+  allWeekendsCompleted,
+  completedOnAnyHoliday,
+  computeWeeklyMvpsByWeek,
+  determineTopByCount,
+  determineWeekMvps,
+  monthHasFixedHoliday,
+  tallyMonth,
+  tallyMvpWeeksByMonth,
+  type MonthlyDayRecord,
+  type MonthlyMemberContext,
+} from '@/lib/domain/monthlyChallenges';
+
+function days(spec: [string, MonthlyDayRecord['status']][]): MonthlyDayRecord[] {
+  return spec.map(([date, status]) => ({ date, status }));
+}
+
+describe('monthly challenge catalog', () => {
+  it('has exactly 17 challenges with unique ids', () => {
+    expect(MONTHLY_CHALLENGES.length).toBe(17);
+    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(17);
+  });
+});
+
+describe('monthHasFixedHoliday', () => {
+  it('is true for a month containing a fixed holiday', () => {
+    expect(monthHasFixedHoliday('2026-12')).toBe(true); // Dec 25
+    expect(monthHasFixedHoliday('2026-07')).toBe(true); // Jul 20
+  });
+
+  it('is false for a month with no fixed holiday', () => {
+    expect(monthHasFixedHoliday('2026-02')).toBe(false);
+  });
+});
+
+describe('completedOnAnyHoliday', () => {
+  it('is true only if a holiday date is completed', () => {
+    expect(completedOnAnyHoliday(days([['2026-12-25', 'completed']]))).toBe(true);
+    expect(completedOnAnyHoliday(days([['2026-12-25', 'failed']]))).toBe(false);
+    expect(completedOnAnyHoliday(days([['2026-12-24', 'completed']]))).toBe(false);
+  });
+});
+
+describe('allWeekendsCompleted', () => {
+  it('returns null when the member has no tracked weekend that month', () => {
+    // 2026-02-01 is a Sunday with no matching Saturday in the given days.
+    expect(allWeekendsCompleted(days([['2026-02-01', 'completed']]))).toBeNull();
+  });
+
+  it('returns true only when every Saturday+Sunday pair is completed', () => {
+    // 2026-02-07/08 and 2026-02-14/15 are both Sat/Sun pairs.
+    const complete = days([
+      ['2026-02-07', 'completed'],
+      ['2026-02-08', 'completed'],
+      ['2026-02-14', 'completed'],
+      ['2026-02-15', 'completed'],
+    ]);
+    expect(allWeekendsCompleted(complete)).toBe(true);
+
+    const incomplete = days([
+      ['2026-02-07', 'completed'],
+      ['2026-02-08', 'completed'],
+      ['2026-02-14', 'completed'],
+      ['2026-02-15', 'failed'],
+    ]);
+    expect(allWeekendsCompleted(incomplete)).toBe(false);
+  });
+});
+
+describe('tallyMonth', () => {
+  it('counts completed/failed and computes percent, ignoring excused', () => {
+    expect(
+      tallyMonth(
+        days([
+          ['2026-02-01', 'completed'],
+          ['2026-02-02', 'failed'],
+          ['2026-02-03', 'excused'],
+        ])
+      )
+    ).toEqual({ completed: 1, failed: 1, percent: 50 });
+  });
+
+  it('returns 0 percent with no decided days', () => {
+    expect(tallyMonth([])).toEqual({ completed: 0, failed: 0, percent: 0 });
+  });
+});
+
+describe('determineWeekMvps', () => {
+  it('picks the highest consistency percent, no ties', () => {
+    expect(
+      determineWeekMvps(
+        [
+          { userId: 'a', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 0 },
+          { userId: 'b', completedCount: 3, failedCount: 1, totalWorkoutMinutes: 0 },
+        ],
+        false
+      )
+    ).toEqual(['a']);
+  });
+
+  it('shares the MVP on a percent tie when duration tiebreak is off (group has no checkout photos)', () => {
+    expect(
+      determineWeekMvps(
+        [
+          { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 10 },
+          { userId: 'b', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 999 },
+        ],
+        false
+      )
+    ).toEqual(['a', 'b']);
+  });
+
+  it('breaks a percent tie by total workout duration when the group requires checkout photos', () => {
+    expect(
+      determineWeekMvps(
+        [
+          { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 40 },
+          { userId: 'b', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 90 },
+        ],
+        true
+      )
+    ).toEqual(['b']);
+  });
+
+  it('shares the MVP when still tied after the duration tiebreak', () => {
+    expect(
+      determineWeekMvps(
+        [
+          { userId: 'a', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 60 },
+          { userId: 'b', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 60 },
+        ],
+        true
+      )
+    ).toEqual(['a', 'b']);
+  });
+});
+
+describe('determineTopByCount', () => {
+  it('picks the max, sharing ties', () => {
+    expect(
+      determineTopByCount([
+        { userId: 'a', count: 10 },
+        { userId: 'b', count: 10 },
+        { userId: 'c', count: 3 },
+      ])
+    ).toEqual(['a', 'b']);
+  });
+
+  it('returns nobody when everyone has 0', () => {
+    expect(
+      determineTopByCount([
+        { userId: 'a', count: 0 },
+        { userId: 'b', count: 0 },
+      ])
+    ).toEqual([]);
+  });
+});
+
+describe('computeWeeklyMvpsByWeek / tallyMvpWeeksByMonth', () => {
+  it('tallies how many weeks per month each user was MVP', () => {
+    const mvpsByWeek = computeWeeklyMvpsByWeek(
+      [
+        // Week 1: a has a clean 100%, b has a failed day (75%) — a wins.
+        { userId: 'a', weekStartDate: '2026-02-02', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 0 },
+        { userId: 'b', weekStartDate: '2026-02-02', completedCount: 3, failedCount: 1, totalWorkoutMinutes: 0 },
+        // Week 2: both 100% (no duration tiebreak) — shared.
+        { userId: 'a', weekStartDate: '2026-02-09', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 0 },
+        { userId: 'b', weekStartDate: '2026-02-09', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 0 },
+      ],
+      false
+    );
+    const tally = tallyMvpWeeksByMonth(mvpsByWeek);
+    expect(tally.get('2026-02')?.get('a')).toBe(2);
+    expect(tally.get('2026-02')?.get('b')).toBe(1);
+  });
+});
+
+function baseContext(overrides: Partial<MonthlyMemberContext> = {}): MonthlyMemberContext {
+  return {
+    completedCount: 0,
+    failedCount: 0,
+    consistencyPercent: 0,
+    closedWeeksInMonth: [],
+    monthHasFixedHoliday: false,
+    completedOnHoliday: false,
+    allWeekendsCompleted: null,
+    reactionsGivenCount: 0,
+    rank: null,
+    previousMonthRank: null,
+    isMostReactedThisMonth: false,
+    mvpWeeksThisMonth: 0,
+    groupRequiresCheckoutPhoto: false,
+    totalWorkoutMinutesInMonth: 0,
+    averageWorkoutMinutesInMonth: 0,
+    workoutSessionsWithDurationInMonth: 0,
+    isMostDurationThisMonth: false,
+    ...overrides,
+  };
+}
+
+function challenge(id: string) {
+  const found = MONTHLY_CHALLENGES.find((c) => c.id === id);
+  if (!found) throw new Error(`missing monthly challenge ${id}`);
+  return found;
+}
+
+describe('representative monthly challenge evaluations', () => {
+  it('Mes Perfecto is not applicable with no closed weeks, true only if every closed week had 0 failed days', () => {
+    expect(challenge('mes-perfecto-mensual').evaluate(baseContext())).toBeNull();
+    expect(
+      challenge('mes-perfecto-mensual').evaluate(
+        baseContext({ closedWeeksInMonth: [{ weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0 }] })
+      )
+    ).toBe(true);
+    expect(
+      challenge('mes-perfecto-mensual').evaluate(
+        baseContext({
+          closedWeeksInMonth: [
+            { weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0 },
+            { weekStartDate: '2026-02-09', failedDays: 1, penaltyCharged: 5000 },
+          ],
+        })
+      )
+    ).toBe(false);
+  });
+
+  it('Festivo Cumplido is not applicable when the month has no holiday', () => {
+    expect(challenge('festivo-cumplido').evaluate(baseContext({ monthHasFixedHoliday: false, completedOnHoliday: false }))).toBeNull();
+    expect(challenge('festivo-cumplido').evaluate(baseContext({ monthHasFixedHoliday: true, completedOnHoliday: true }))).toBe(true);
+    expect(challenge('festivo-cumplido').evaluate(baseContext({ monthHasFixedHoliday: true, completedOnHoliday: false }))).toBe(false);
+  });
+
+  it('Top del Grupo and Podio del Mes are not applicable when unranked', () => {
+    expect(challenge('top-del-grupo').evaluate(baseContext({ rank: null }))).toBeNull();
+    expect(challenge('top-del-grupo').evaluate(baseContext({ rank: 1 }))).toBe(true);
+    expect(challenge('top-del-grupo').evaluate(baseContext({ rank: 2 }))).toBe(false);
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 3 }))).toBe(true);
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 4 }))).toBe(false);
+  });
+
+  it('Comeback del Mes requires both a current and previous rank, and a strict improvement', () => {
+    expect(challenge('comeback-del-mes').evaluate(baseContext({ rank: 2, previousMonthRank: null }))).toBeNull();
+    expect(challenge('comeback-del-mes').evaluate(baseContext({ rank: 2, previousMonthRank: 4 }))).toBe(true);
+    expect(challenge('comeback-del-mes').evaluate(baseContext({ rank: 4, previousMonthRank: 2 }))).toBe(false);
+    expect(challenge('comeback-del-mes').evaluate(baseContext({ rank: 3, previousMonthRank: 3 }))).toBe(false);
+  });
+
+  it('Doble MVP requires 2+ MVP weeks, MVP al Menos Una Vez requires only 1', () => {
+    expect(challenge('mvp-al-menos-una-vez').evaluate(baseContext({ mvpWeeksThisMonth: 1 }))).toBe(true);
+    expect(challenge('doble-mvp').evaluate(baseContext({ mvpWeeksThisMonth: 1 }))).toBe(false);
+    expect(challenge('doble-mvp').evaluate(baseContext({ mvpWeeksThisMonth: 2 }))).toBe(true);
+  });
+
+  it('Mes de Hierro is not applicable when the group has no checkout photos', () => {
+    expect(
+      challenge('mes-de-hierro').evaluate(baseContext({ groupRequiresCheckoutPhoto: false, totalWorkoutMinutesInMonth: 900 }))
+    ).toBeNull();
+    expect(
+      challenge('mes-de-hierro').evaluate(baseContext({ groupRequiresCheckoutPhoto: true, totalWorkoutMinutesInMonth: 599 }))
+    ).toBe(false);
+    expect(
+      challenge('mes-de-hierro').evaluate(baseContext({ groupRequiresCheckoutPhoto: true, totalWorkoutMinutesInMonth: 600 }))
+    ).toBe(true);
+  });
+
+  it('Rey de la Duración is not applicable when the group has no checkout photos', () => {
+    expect(
+      challenge('rey-de-la-duracion').evaluate(baseContext({ groupRequiresCheckoutPhoto: false, isMostDurationThisMonth: true }))
+    ).toBeNull();
+    expect(
+      challenge('rey-de-la-duracion').evaluate(baseContext({ groupRequiresCheckoutPhoto: true, isMostDurationThisMonth: true }))
+    ).toBe(true);
+    expect(
+      challenge('rey-de-la-duracion').evaluate(baseContext({ groupRequiresCheckoutPhoto: true, isMostDurationThisMonth: false }))
+    ).toBe(false);
+  });
+
+  it('Promedio Sólido needs 3+ sessions with duration and a 40+ minute average', () => {
+    expect(
+      challenge('promedio-solido').evaluate(
+        baseContext({ groupRequiresCheckoutPhoto: false, workoutSessionsWithDurationInMonth: 5, averageWorkoutMinutesInMonth: 50 })
+      )
+    ).toBeNull();
+    expect(
+      challenge('promedio-solido').evaluate(
+        baseContext({ groupRequiresCheckoutPhoto: true, workoutSessionsWithDurationInMonth: 2, averageWorkoutMinutesInMonth: 50 })
+      )
+    ).toBeNull();
+    expect(
+      challenge('promedio-solido').evaluate(
+        baseContext({ groupRequiresCheckoutPhoto: true, workoutSessionsWithDurationInMonth: 3, averageWorkoutMinutesInMonth: 39 })
+      )
+    ).toBe(false);
+    expect(
+      challenge('promedio-solido').evaluate(
+        baseContext({ groupRequiresCheckoutPhoto: true, workoutSessionsWithDurationInMonth: 3, averageWorkoutMinutesInMonth: 40 })
+      )
+    ).toBe(true);
+  });
+});

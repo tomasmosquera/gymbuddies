@@ -10,9 +10,12 @@ interface SegmentedControlProps<T extends string> {
   options: SegmentOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  /** 'lg' makes the control taller/bolder — for a primary choice that should read as more important than a secondary filter next to it. */
+  size?: 'md' | 'lg';
 }
 
-export function SegmentedControl<T extends string>({ options, value, onChange }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({ options, value, onChange, size = 'md' }: SegmentedControlProps<T>) {
+  const isLarge = size === 'lg';
   return (
     <View style={styles.container}>
       {options.map((option) => {
@@ -22,9 +25,9 @@ export function SegmentedControl<T extends string>({ options, value, onChange }:
             key={option.key}
             accessibilityRole="button"
             onPress={() => onChange(option.key)}
-            style={[styles.segment, isActive && styles.segmentActive]}
+            style={[styles.segment, isLarge && styles.segmentLarge, isActive && styles.segmentActive]}
           >
-            <Text style={[styles.label, isActive && styles.labelActive]}>{option.label}</Text>
+            <Text style={[styles.label, isLarge && styles.labelLarge, isActive && styles.labelActive]}>{option.label}</Text>
           </Pressable>
         );
       })}
@@ -47,7 +50,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  segmentLarge: { paddingVertical: spacing.md },
   segmentActive: { backgroundColor: colors.primary },
   label: { color: colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  labelLarge: { fontSize: 15, fontWeight: '700' },
   labelActive: { color: colors.primaryText },
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
@@ -230,7 +231,7 @@ export default function CheckinCameraScreen() {
         style={styles.flipButton}
         onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
       >
-        <Text style={styles.flipButtonText}>🔄</Text>
+        <Ionicons name="camera-reverse-outline" size={24} color="#fff" />
       </Pressable>
       <View style={styles.overlay}>
         <View style={styles.modePill}>
@@ -292,7 +293,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  flipButtonText: { fontSize: 20 },
   overlay: {
     position: 'absolute',
     bottom: 0,

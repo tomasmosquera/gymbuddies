@@ -78,10 +78,8 @@ export default function ExcuseRequestScreen() {
         proofPath
       );
       Alert.alert(
-        excuseType === 'other' ? 'Excusa enviada a votación' : 'Excusa enviada',
-        excuseType === 'other'
-          ? 'El grupo tiene 72 horas para votar.'
-          : 'El admin del grupo debe revisarla y aprobarla.'
+        'Excusa enviada',
+        'El admin del grupo la va a revisar — puede aprobarla, rechazarla, o ponerla a votación de todo el grupo.'
       );
       router.replace('/rules');
     } catch (err) {
@@ -94,7 +92,8 @@ export default function ExcuseRequestScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.subtitle}>
-        Viaje y médica requieren prueba y las aprueba el admin. Otra excusa se somete a votación del grupo.
+        Viaje y médica requieren prueba. El admin revisa toda solicitud y puede aprobarla, rechazarla, o ponerla a
+        votación del grupo.
       </Text>
 
       <SegmentedControl options={TYPE_OPTIONS} value={excuseType} onChange={setExcuseType} />

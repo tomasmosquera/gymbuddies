@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { enumerateDates, getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
-import { classifyMemberDay, tallyAttendance, type DayAttendanceStatus } from '@/lib/domain/attendance';
+import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { consistencyPercent, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
+import { useGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
 
 export type LeaderboardPeriod = 'week' | 'month' | 'all';
 
 export interface LeaderboardRow {
   userId: string;
   fullName: string;
-  balance: number;
   completedDays: number;
   failedDays: number;
   /** completedDays / (completedDays + failedDays) — null until this member has any decided day yet. */
   consistencyPercent: number | null;
-  /** How many of the group's *required* days were actually missed (capped per week) — what real penalties are charged on. Always <= failedDays. */
-  chargedFailedDays: number;
-  /** completedDays - failedDays — the ranking metric: most attendance, fewest fails wins. */
-  score: number;
+  /** Money charged this period (or, for the still-open current week, a live projection) — never negative. Never used for ranking. */
+  chargedAmount: number;
+  /** Sum of workout minutes in this period — always 0 if the group doesn't require checkout photos, since duration is never recorded then. */
+  totalWorkoutMinutes: number;
+  /** 1-based rank by consistency percent, then (only if the group requires checkout photos) total workout duration. Ties share a rank; money never factors in. */
+  rank: number;
 }
 
 export interface LastClosedWeekSummary {
@@ -25,34 +27,16 @@ export interface LastClosedWeekSummary {
   losers: string[];
 }
 
-interface RosterEntry {
-  userId: string;
-  fullName: string;
-  balance: number;
-  minDaysPerWeek: number;
-  activatedDate: string | null;
-}
-
-interface DayRecord {
-  date: string;
-  status: DayAttendanceStatus;
-}
-
-function activatedDateOf(m: { activated_at: string | null; joined_at: string }): string | null {
-  const activatedAt = m.activated_at ?? m.joined_at;
-  return activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+interface GroupRankingRules {
+  penaltyAmount: number;
+  weeklyPenaltyCap: number;
+  requireCheckoutPhoto: boolean;
 }
 
 function currentMonthBounds(): { monthStart: string } {
   const todayString = toBogotaDateString(new Date());
   const [year, month] = todayString.split('-');
   return { monthStart: `${year}-${month}-01` };
-}
-
-function sortByScore(rows: LeaderboardRow[]): LeaderboardRow[] {
-  return [...rows].sort(
-    (a, b) => b.score - a.score || b.completedDays - a.completedDays || b.balance - a.balance
-  );
 }
 
 /** How many days of the current week (today included) are still available to check in. */
@@ -65,220 +49,188 @@ function daysRemainingInWeek(weekEnd: string, todayString: string): number {
 
 /**
  * Ranks a group's members for the home-screen leaderboard, day by day —
- * completedDays/failedDays/consistencyPercent use the exact same
- * classifyMemberDay rule the Dashboard's attendance view already applies
- * (see src/lib/domain/attendance.ts), so the two screens can never show
- * different numbers for "how many days did you fail" again. A day before a
- * member's own activation date is simply never in their range.
+ * completedDays/failedDays/consistencyPercent come from useGroupAttendanceRecords,
+ * which uses the exact same classifyMemberDay rule the Dashboard's attendance
+ * view already applies (see src/lib/domain/attendance.ts), so the two screens
+ * can never show different numbers for "how many days did you fail" again.
  *
- * chargedFailedDays is a different, narrower number: how many of the
- * group's *required* days (min_days_per_week, capped per week, excused
- * days already subtracted) were actually missed — the same figure
- * run_weekly_evaluation charges real penalties on. For weeks that already
- * closed this comes straight from the frozen weekly_evaluation_results; for
- * the still-open current week it's a live projection of GUARANTEED misses
- * only (days still left this week could still be completed, so nothing
- * counts here until it's mathematically impossible to reach the
- * excused-adjusted requirement anymore).
+ * Ranking itself is by consistency percent alone (never balance/money) —
+ * see rankMembersByConsistency. chargedAmount is purely informational: how
+ * much money this member owes for this period (frozen weekly_evaluation_results
+ * for closed weeks, a live guaranteed-misses-only projection for the still-open
+ * current week, converted to money via the group's penalty_amount/weekly_penalty_cap).
  */
 export function useLeaderboard(groupId: string | null) {
-  const [roster, setRoster] = useState<RosterEntry[]>([]);
-  const [dayRecordsByUser, setDayRecordsByUser] = useState<Map<string, DayRecord[]>>(new Map());
-  const [monthChargedFailedByUser, setMonthChargedFailedByUser] = useState<Record<string, number>>({});
-  const [allChargedFailedByUser, setAllChargedFailedByUser] = useState<Record<string, number>>({});
+  const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId);
+  const [monthChargedAmountByUser, setMonthChargedAmountByUser] = useState<Record<string, number>>({});
+  const [allChargedAmountByUser, setAllChargedAmountByUser] = useState<Record<string, number>>({});
+  const [workoutMinutesByUser, setWorkoutMinutesByUser] = useState<Map<string, { date: string; minutes: number }[]>>(new Map());
+  const [groupRules, setGroupRules] = useState<GroupRankingRules | null>(null);
   const [lastClosedWeek, setLastClosedWeek] = useState<LastClosedWeekSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [resultsLoading, setResultsLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refreshResults = useCallback(async () => {
     if (!groupId) {
-      setRoster([]);
-      setDayRecordsByUser(new Map());
-      setMonthChargedFailedByUser({});
-      setAllChargedFailedByUser({});
+      setMonthChargedAmountByUser({});
+      setAllChargedAmountByUser({});
+      setWorkoutMinutesByUser(new Map());
+      setGroupRules(null);
       setLastClosedWeek(null);
-      setIsLoading(false);
+      setResultsLoading(false);
       return;
     }
-    setIsLoading(true);
-    const todayString = toBogotaDateString(new Date());
+    setResultsLoading(true);
     const { monthStart } = currentMonthBounds();
+    const todayString = toBogotaDateString(new Date());
 
-    const [membersRes, checkinsRes, excusedRes, overridesRes, resultsRes] = await Promise.all([
-      supabase
-        .from('group_members')
-        .select('user_id, balance, activated_at, joined_at, profile:profiles(full_name), group:groups(min_days_per_week, created_at)')
-        .eq('group_id', groupId)
-        .in('status', ['active', 'needs_recharge']),
-      // No lower bound needed — a check-in can't predate the group itself.
-      supabase.from('checkins').select('user_id, checkin_date').eq('group_id', groupId).lte('checkin_date', todayString),
-      supabase.from('excuse_dates').select('user_id, excused_date').eq('group_id', groupId).lte('excused_date', todayString),
-      supabase
-        .from('attendance_overrides')
-        .select('user_id, override_date, status')
-        .eq('group_id', groupId)
-        .lte('override_date', todayString),
-      // All weekly_evaluation_results ever, with the run's week bounds embedded —
-      // used for chargedFailedDays (month/all) and the last-closed-week summary.
+    const [resultsRes, checkinsRes, groupRes] = await Promise.all([
       supabase
         .from('weekly_evaluation_results')
-        .select('user_id, failed_days, run:weekly_evaluation_runs(week_start_date, week_end_date)')
+        .select('user_id, failed_days, penalty_charged, run:weekly_evaluation_runs(week_start_date, week_end_date)')
         .eq('group_id', groupId),
+      supabase
+        .from('checkins')
+        .select('user_id, checkin_date, workout_minutes')
+        .eq('group_id', groupId)
+        .lte('checkin_date', todayString)
+        .not('workout_minutes', 'is', null),
+      supabase.from('groups').select('penalty_amount, weekly_penalty_cap, require_checkout_photo').eq('id', groupId).single(),
     ]);
-
-    const members = (membersRes.data ?? []) as unknown as {
-      user_id: string;
-      balance: number;
-      activated_at: string | null;
-      joined_at: string;
-      profile: { full_name: string } | null;
-      group: { min_days_per_week: number; created_at: string } | null;
-    }[];
-
-    const rosterEntries: RosterEntry[] = members.map((m) => ({
-      userId: m.user_id,
-      fullName: m.profile?.full_name ?? 'Miembro',
-      balance: m.balance,
-      minDaysPerWeek: m.group?.min_days_per_week ?? 0,
-      activatedDate: activatedDateOf(m),
-    }));
-    setRoster(rosterEntries);
-
-    const groupCreatedDate = members[0]?.group?.created_at
-      ? toBogotaDateString(new Date(members[0].group.created_at))
-      : todayString;
-
-    const checkinDatesByUser = new Map<string, Set<string>>();
-    for (const c of checkinsRes.data ?? []) {
-      if (!checkinDatesByUser.has(c.user_id)) checkinDatesByUser.set(c.user_id, new Set());
-      checkinDatesByUser.get(c.user_id)!.add(c.checkin_date);
-    }
-
-    const validOverridesByUser = new Map<string, Set<string>>();
-    const failedOverridesByUser = new Map<string, Set<string>>();
-    for (const o of overridesRes.data ?? []) {
-      const target = o.status === 'valid' ? validOverridesByUser : failedOverridesByUser;
-      if (!target.has(o.user_id)) target.set(o.user_id, new Set());
-      target.get(o.user_id)!.add(o.override_date);
-    }
-
-    const excusedDatesByUser = new Map<string, Set<string>>();
-    for (const e of excusedRes.data ?? []) {
-      if (!excusedDatesByUser.has(e.user_id)) excusedDatesByUser.set(e.user_id, new Set());
-      excusedDatesByUser.get(e.user_id)!.add(e.excused_date);
-    }
-
-    // Every day since the group existed, today included — a check-in
-    // already done today still counts right away, same as the dashboard.
-    const allDates = enumerateDates(groupCreatedDate, todayString);
-
-    const dayRecords = new Map<string, DayRecord[]>();
-    for (const m of rosterEntries) {
-      const checkinDates = checkinDatesByUser.get(m.userId);
-      const validDates = validOverridesByUser.get(m.userId);
-      const failedDates = failedOverridesByUser.get(m.userId);
-      const excusedDates = excusedDatesByUser.get(m.userId);
-      const records: DayRecord[] = [];
-      for (const date of allDates) {
-        if (m.activatedDate && m.activatedDate > date) continue;
-        const status = classifyMemberDay({
-          hasCheckin: checkinDates?.has(date) ?? false,
-          hasValidOverride: validDates?.has(date) ?? false,
-          hasFailedOverride: failedDates?.has(date) ?? false,
-          isExcused: excusedDates?.has(date) ?? false,
-        });
-        // Today isn't over yet — it can still show as completed/excused,
-        // but never as failed until the day has actually passed.
-        if (status === 'failed' && date === todayString) continue;
-        records.push({ date, status });
-      }
-      dayRecords.set(m.userId, records);
-    }
-    setDayRecordsByUser(dayRecords);
 
     const results = (resultsRes.data ?? []) as unknown as {
       user_id: string;
       failed_days: number;
+      penalty_charged: number;
       run: { week_start_date: string; week_end_date: string } | null;
     }[];
 
-    const monthChargedFailed: Record<string, number> = {};
-    const allChargedFailed: Record<string, number> = {};
+    const monthChargedAmount: Record<string, number> = {};
+    const allChargedAmount: Record<string, number> = {};
     let lastRun: { week_start_date: string; week_end_date: string } | null = null;
     for (const r of results) {
-      allChargedFailed[r.user_id] = (allChargedFailed[r.user_id] ?? 0) + r.failed_days;
+      allChargedAmount[r.user_id] = (allChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
       if (r.run && r.run.week_start_date >= monthStart) {
-        monthChargedFailed[r.user_id] = (monthChargedFailed[r.user_id] ?? 0) + r.failed_days;
+        monthChargedAmount[r.user_id] = (monthChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
       }
       if (r.run && (!lastRun || r.run.week_end_date > lastRun.week_end_date)) {
         lastRun = r.run;
       }
     }
-    setMonthChargedFailedByUser(monthChargedFailed);
-    setAllChargedFailedByUser(allChargedFailed);
+    setMonthChargedAmountByUser(monthChargedAmount);
+    setAllChargedAmountByUser(allChargedAmount);
+    setLastClosedWeek(
+      lastRun
+        ? {
+            weekStart: lastRun.week_start_date,
+            weekEnd: lastRun.week_end_date,
+            losers: results
+              .filter((r) => r.run?.week_start_date === lastRun!.week_start_date && r.run?.week_end_date === lastRun!.week_end_date)
+              .filter((r) => r.failed_days > 0)
+              .map((r) => r.user_id),
+          }
+        : null
+    );
 
-    if (lastRun) {
-      const losers = results
-        .filter((r) => r.run?.week_start_date === lastRun!.week_start_date && r.run?.week_end_date === lastRun!.week_end_date)
-        .filter((r) => r.failed_days > 0)
-        .map((r) => rosterEntries.find((m) => m.userId === r.user_id)?.fullName ?? 'Miembro');
-      setLastClosedWeek({ weekStart: lastRun.week_start_date, weekEnd: lastRun.week_end_date, losers });
-    } else {
-      setLastClosedWeek(null);
+    const nextWorkoutMinutes = new Map<string, { date: string; minutes: number }[]>();
+    for (const c of checkinsRes.data ?? []) {
+      if (c.workout_minutes === null) continue;
+      if (!nextWorkoutMinutes.has(c.user_id)) nextWorkoutMinutes.set(c.user_id, []);
+      nextWorkoutMinutes.get(c.user_id)!.push({ date: c.checkin_date, minutes: c.workout_minutes });
     }
+    setWorkoutMinutesByUser(nextWorkoutMinutes);
 
-    setIsLoading(false);
+    setGroupRules(
+      groupRes.data
+        ? {
+            penaltyAmount: groupRes.data.penalty_amount,
+            weeklyPenaltyCap: groupRes.data.weekly_penalty_cap,
+            requireCheckoutPhoto: groupRes.data.require_checkout_photo,
+          }
+        : null
+    );
+
+    setResultsLoading(false);
   }, [groupId]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refreshResults();
+  }, [refreshResults]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshRecords(), refreshResults()]);
+  }, [refreshRecords, refreshResults]);
+
+  // lastClosedWeek.losers is stored as userIds above (no name lookup at fetch
+  // time, since the results fetch and the records fetch can land in either
+  // order); resolved to names here once both are available.
+  const resolvedLastClosedWeek = useMemo<LastClosedWeekSummary | null>(() => {
+    if (!lastClosedWeek) return null;
+    return {
+      ...lastClosedWeek,
+      losers: lastClosedWeek.losers.map((userId) => records.find((m) => m.userId === userId)?.fullName ?? 'Miembro'),
+    };
+  }, [lastClosedWeek, records]);
 
   const rowsByPeriod = useMemo(() => {
     const { weekStart, weekEnd } = getWeekBounds(new Date());
     const todayString = toBogotaDateString(new Date());
     const remainingDays = daysRemainingInWeek(weekEnd, todayString);
     const { monthStart } = currentMonthBounds();
-
-    const buildRow = (m: RosterEntry, rangeStart: string, rangeEnd: string, chargedFailedDays: number): LeaderboardRow => {
-      const records = dayRecordsByUser.get(m.userId) ?? [];
-      const statuses = records
-        .filter((r) => r.date >= rangeStart && r.date <= rangeEnd)
-        .map((r) => r.status);
-      const tally = tallyAttendance(statuses);
-      return {
-        userId: m.userId,
-        fullName: m.fullName,
-        balance: m.balance,
-        completedDays: tally.completedCount,
-        failedDays: tally.failedCount,
-        consistencyPercent: tally.decidedDays > 0 ? Math.round((tally.completedCount / tally.decidedDays) * 100) : null,
-        chargedFailedDays,
-        score: tally.completedCount - tally.failedCount,
-      };
-    };
+    const useDurationTiebreak = groupRules?.requireCheckoutPhoto ?? false;
 
     // Guaranteed-misses-only projection for the still-open current week —
     // see the doc comment above for why this can't just be "required - completed".
-    const liveChargedFailed = (m: RosterEntry): number => {
-      const records = dayRecordsByUser.get(m.userId) ?? [];
-      const weekRecords = records.filter((r) => r.date >= weekStart && r.date <= weekEnd);
-      const completed = weekRecords.filter((r) => r.status === 'completed').length;
-      const excused = weekRecords.filter((r) => r.status === 'excused').length;
+    const liveChargedFailedDays = (m: MemberAttendanceRecord): number => {
+      const weekDays = m.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
+      const completed = weekDays.filter((d) => d.status === 'completed').length;
+      const excused = weekDays.filter((d) => d.status === 'excused').length;
       const effectiveRequired = Math.max(m.minDaysPerWeek - excused, 0);
       const stillNeeded = Math.max(effectiveRequired - completed, 0);
       return Math.max(stillNeeded - remainingDays, 0);
     };
 
-    const week = sortByScore(roster.map((m) => buildRow(m, weekStart, weekEnd, liveChargedFailed(m))));
-    const month = sortByScore(
-      roster.map((m) => buildRow(m, monthStart, todayString, (monthChargedFailedByUser[m.userId] ?? 0) + liveChargedFailed(m)))
-    );
-    const all = sortByScore(
-      roster.map((m) => buildRow(m, '0001-01-01', todayString, (allChargedFailedByUser[m.userId] ?? 0) + liveChargedFailed(m)))
-    );
+    const liveChargedAmount = (m: MemberAttendanceRecord): number => {
+      if (!groupRules) return 0;
+      return Math.min(liveChargedFailedDays(m) * groupRules.penaltyAmount, groupRules.weeklyPenaltyCap);
+    };
+
+    const buildRows = (rangeStart: string, rangeEnd: string, chargedAmountFn: (m: MemberAttendanceRecord) => number): LeaderboardRow[] => {
+      const raw = records.map((m) => {
+        const statuses = m.days.filter((d) => d.date >= rangeStart && d.date <= rangeEnd).map((d) => d.status);
+        const tally = tallyAttendance(statuses);
+        const totalWorkoutMinutes = (workoutMinutesByUser.get(m.userId) ?? [])
+          .filter((r) => r.date >= rangeStart && r.date <= rangeEnd)
+          .reduce((sum, r) => sum + r.minutes, 0);
+        return {
+          userId: m.userId,
+          fullName: m.fullName,
+          completedDays: tally.completedCount,
+          failedDays: tally.failedCount,
+          consistencyPercent: consistencyPercent(tally.completedCount, tally.failedCount),
+          chargedAmount: chargedAmountFn(m),
+          totalWorkoutMinutes,
+        };
+      });
+      const rankByUserId = rankMembersByConsistency(
+        raw.map((r) => ({
+          userId: r.userId,
+          completedCount: r.completedDays,
+          failedCount: r.failedDays,
+          totalWorkoutMinutes: r.totalWorkoutMinutes,
+        })),
+        useDurationTiebreak
+      );
+      return raw
+        .map((r) => ({ ...r, rank: rankByUserId.get(r.userId)! }))
+        .sort((a, b) => a.rank - b.rank || a.fullName.localeCompare(b.fullName));
+    };
+
+    const week = buildRows(weekStart, weekEnd, liveChargedAmount);
+    const month = buildRows(monthStart, todayString, (m) => (monthChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
+    const all = buildRows('0001-01-01', todayString, (m) => (allChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
 
     return { week, month, all };
-  }, [roster, dayRecordsByUser, monthChargedFailedByUser, allChargedFailedByUser]);
+  }, [records, monthChargedAmountByUser, allChargedAmountByUser, workoutMinutesByUser, groupRules]);
 
-  return { rowsByPeriod, lastClosedWeek, isLoading, refresh };
+  return { rowsByPeriod, lastClosedWeek: resolvedLastClosedWeek, isLoading: recordsLoading || resultsLoading, refresh };
 }

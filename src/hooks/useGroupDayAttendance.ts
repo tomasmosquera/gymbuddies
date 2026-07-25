@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { toBogotaDateString } from '@/lib/domain/dateUtils';
-import { classifyMemberDay } from '@/lib/domain/attendance';
+import { classifyMemberDay, rankMembersByConsistency } from '@/lib/domain/attendance';
 import type { CheckinReaction } from '@/lib/supabase/types';
 import type { GroupCheckinWithProfile } from './useGroupWeekCheckins';
 
@@ -21,6 +21,12 @@ export interface MemberAttendance {
   failedCount: number;
   activeDaysCount: number;
   dailyStatus: Record<string, 'completed' | 'excused' | 'failed'>;
+}
+
+function sumWorkoutMinutes(checkins: readonly GroupCheckinWithProfile[], userId: string): number {
+  return checkins
+    .filter((c) => c.user_id === userId && c.workout_minutes !== null)
+    .reduce((sum, c) => sum + (c.workout_minutes ?? 0), 0);
 }
 
 function addOneDay(dateString: string): string {
@@ -55,7 +61,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     }
     setIsLoading(true);
 
-    const [membersRes, checkinsRes, excusedRes, overridesRes, reactionsRes] = await Promise.all([
+    const [membersRes, checkinsRes, excusedRes, overridesRes, reactionsRes, groupRes] = await Promise.all([
       supabase
         .from('group_members')
         .select('user_id, status, activated_at, joined_at, profile:profiles(full_name)')
@@ -79,7 +85,9 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         .gte('override_date', rangeStart)
         .lte('override_date', rangeEnd),
       supabase.from('checkin_reactions').select('*').eq('group_id', groupId),
+      supabase.from('groups').select('require_checkout_photo').eq('id', groupId).single(),
     ]);
+    const useDurationTiebreak = groupRes.data?.require_checkout_photo ?? false;
 
     const reactionsByCheckin = new Map<string, CheckinReaction[]>();
     for (const r of reactionsRes.data ?? []) {
@@ -211,7 +219,21 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       };
     });
 
-    memberStats.sort((a, b) => b.completedCount - a.completedCount);
+    // Ranked by consistency percent alone (never balance/money) — duration
+    // only ever breaks a percent tie, and only when the group requires
+    // checkout photos, the sole way workout duration is ever recorded.
+    const rankByUserId = rankMembersByConsistency(
+      memberStats.map((m) => ({
+        userId: m.user_id,
+        completedCount: m.completedCount,
+        failedCount: m.failedCount,
+        totalWorkoutMinutes: sumWorkoutMinutes(checkins, m.user_id),
+      })),
+      useDurationTiebreak
+    );
+    memberStats.sort(
+      (a, b) => rankByUserId.get(a.user_id)! - rankByUserId.get(b.user_id)! || a.full_name.localeCompare(b.full_name)
+    );
 
     // What every consumer (Día por día, Calendario) should treat as "this
     // person actually trained that day" — excludes a check-in that's been

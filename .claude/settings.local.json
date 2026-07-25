@@ -57,7 +57,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(node -e \"console.log\\(require.resolve\\('@expo/vector-icons'\\)\\)\")",
+      "Bash(env)"
     ],
     "additionalDirectories": [
       "\\tmp"

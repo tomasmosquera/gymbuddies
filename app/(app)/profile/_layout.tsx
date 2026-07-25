@@ -19,6 +19,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="admin-photos" options={{ title: 'Moderar fotos' }} />
       <Stack.Screen name="admin-members" options={{ title: 'Administrar Miembros' }} />
       <Stack.Screen name="permissions" options={{ title: 'Permisos' }} />
+      <Stack.Screen name="badges" options={{ title: 'Logros' }} />
       <Stack.Screen name="edit-profile" options={{ title: 'Editar perfil' }} />
       <Stack.Screen name="change-password" options={{ title: 'Cambiar contraseña' }} />
       <Stack.Screen name="delete-account" options={{ title: 'Eliminar cuenta' }} />

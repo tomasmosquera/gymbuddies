@@ -9,9 +9,11 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { TextField } from '@/components/ui/TextField';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
+import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupDayAttendance, type DayAttendance, type MemberAttendance } from '@/hooks/useGroupDayAttendance';
+import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
@@ -198,6 +200,7 @@ function DayCheckinRow({
   isChallenged,
   reactions,
   currentUserId,
+  level,
   onPressPhoto,
   onChallenge,
   onReact,
@@ -209,6 +212,7 @@ function DayCheckinRow({
   isChallenged: boolean;
   reactions: CheckinReaction[];
   currentUserId: string | null;
+  level?: number;
   onPressPhoto: (path: string) => void;
   onChallenge: () => void;
   onReact: (emoji: string) => void;
@@ -220,9 +224,12 @@ function DayCheckinRow({
   return (
     <View style={styles.checkinRow}>
       <View style={styles.checkinNameRow}>
-        <Text style={styles.checkinName} numberOfLines={1}>
-          {checkin.profile.full_name}
-        </Text>
+        <View style={styles.checkinNameGroup}>
+          <AvatarWithLevel initials={getInitials(checkin.profile.full_name)} level={level} size={28} />
+          <Text style={styles.checkinName} numberOfLines={1}>
+            {checkin.profile.full_name}
+          </Text>
+        </View>
         {isChallenged ? <Badge label="En votación 🗳️" tone="warning" /> : null}
       </View>
       <View style={styles.photosRow}>
@@ -274,6 +281,7 @@ function DayRow({
   currentUserId,
   challengedCheckinIds,
   reactionsByCheckinId,
+  levelByUserId,
   onToggle,
   onPressPhoto,
   onChallenge,
@@ -288,6 +296,7 @@ function DayRow({
   currentUserId: string | null;
   challengedCheckinIds: Set<string>;
   reactionsByCheckinId: Map<string, CheckinReaction[]>;
+  levelByUserId: Record<string, number>;
   onToggle: () => void;
   onPressPhoto: (path: string) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
@@ -317,6 +326,7 @@ function DayRow({
                 isChallenged={challengedCheckinIds.has(c.id)}
                 reactions={reactionsByCheckinId.get(c.id) ?? []}
                 currentUserId={currentUserId}
+                level={levelByUserId[c.user_id]}
                 onPressPhoto={onPressPhoto}
                 onChallenge={() => onChallenge(c)}
                 onReact={(emoji) => onReact(c.id, emoji)}
@@ -341,6 +351,7 @@ function MemberRow({
   currentUserId,
   challengedCheckinIds,
   reactionsByCheckinId,
+  levelByUserId,
   todayString,
   onToggle,
   onPressPhoto,
@@ -356,6 +367,7 @@ function MemberRow({
   currentUserId: string | null;
   challengedCheckinIds: Set<string>;
   reactionsByCheckinId: Map<string, CheckinReaction[]>;
+  levelByUserId: Record<string, number>;
   todayString: string;
   onToggle: () => void;
   onPressPhoto: (path: string) => void;
@@ -369,9 +381,12 @@ function MemberRow({
   return (
     <Card style={styles.dayCard}>
       <Pressable onPress={onToggle} style={styles.dayHeader}>
-        <Text style={styles.dayLabel} numberOfLines={1}>
-          {member.full_name}
-        </Text>
+        <View style={styles.checkinNameGroup}>
+          <AvatarWithLevel initials={getInitials(member.full_name)} level={levelByUserId[member.user_id]} size={28} />
+          <Text style={styles.dayLabel} numberOfLines={1}>
+            {member.full_name}
+          </Text>
+        </View>
         <View style={styles.dayStats}>
           <Text style={[styles.dayStat, styles.dayStatGood]}>{member.completedCount} ✓</Text>
           {member.excusedCount > 0 ? (
@@ -400,6 +415,7 @@ function MemberRow({
                     isChallenged={challengedCheckinIds.has(checkin.id)}
                     reactions={reactionsByCheckinId.get(checkin.id) ?? []}
                     currentUserId={currentUserId}
+                    level={levelByUserId[member.user_id]}
                     onPressPhoto={onPressPhoto}
                     onChallenge={() => onChallenge(checkin)}
                     onReact={(emoji) => onReact(checkin.id, emoji)}
@@ -478,6 +494,11 @@ export default function DashboardScreen() {
 
   const { days, members, checkinsByDate, reactionsByCheckinId, isLoading, refresh, react, removeReaction } =
     useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd);
+  const { membersBadges } = useGroupBadges(group?.id ?? null);
+  const levelByUserId = useMemo(
+    () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
+    [membersBadges]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -613,6 +634,7 @@ export default function DashboardScreen() {
               currentUserId={session?.user.id ?? null}
               challengedCheckinIds={challengedCheckinIds}
               reactionsByCheckinId={reactionsByCheckinId}
+              levelByUserId={levelByUserId}
               onToggle={() => setExpandedDate((d) => (d === item.date ? null : item.date))}
               onPressPhoto={setViewingPhotoPath}
               onChallenge={handleChallenge}
@@ -641,6 +663,7 @@ export default function DashboardScreen() {
               currentUserId={session?.user.id ?? null}
               challengedCheckinIds={challengedCheckinIds}
               reactionsByCheckinId={reactionsByCheckinId}
+              levelByUserId={levelByUserId}
               todayString={todayString}
               onToggle={() => setExpandedMemberId((id) => (id === item.user_id ? null : item.user_id))}
               onPressPhoto={setViewingPhotoPath}
@@ -693,6 +716,7 @@ export default function DashboardScreen() {
                       isChallenged={challengedCheckinIds.has(c.id)}
                       reactions={reactionsByCheckinId.get(c.id) ?? []}
                       currentUserId={session?.user.id ?? null}
+                      level={levelByUserId[c.user_id]}
                       onPressPhoto={setViewingPhotoPath}
                       onChallenge={() => handleChallenge(c)}
                       onReact={(emoji) => handleReact(c.id, emoji)}
@@ -800,7 +824,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   dayCard: { gap: spacing.sm },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dayLabel: { color: colors.text, fontWeight: '700', fontSize: 15 },
+  dayLabel: { color: colors.text, fontWeight: '700', fontSize: 15, flexShrink: 1 },
   dayStats: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dayStat: { fontWeight: '700', fontSize: 13 },
   dayStatGood: { color: colors.success },
@@ -820,7 +844,8 @@ const styles = StyleSheet.create({
   emptyDayText: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
   checkinRow: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   checkinNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  checkinName: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  checkinNameGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  checkinName: { color: colors.text, fontWeight: '700', fontSize: 14, flexShrink: 1 },
   photosRow: { flexDirection: 'row', gap: spacing.md },
   durationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   duration: { color: colors.text, fontWeight: '600', fontSize: 13 },

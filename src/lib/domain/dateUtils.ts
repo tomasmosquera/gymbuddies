@@ -105,6 +105,28 @@ export function formatBogotaDateTime(date: Date): string {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
+/** Every YYYY-MM month key from `start` to `end` inclusive, ascending (empty if start > end). */
+export function enumerateMonths(startDate: string, endDate: string): string[] {
+  let [y, m] = startDate.slice(0, 7).split('-').map(Number);
+  const [ey, em] = endDate.slice(0, 7).split('-').map(Number);
+  const months: string[] = [];
+  while (y < ey || (y === ey && m <= em)) {
+    months.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return months;
+}
+
+/** The America/Bogota hour (0-23) a given instant falls in. */
+export function toBogotaHour(date: Date): number {
+  const bogotaMs = toBogotaMs(date);
+  return new Date(bogotaMs).getUTCHours();
+}
+
 /**
  * Mirrors set_checkin_date()'s clock-drift guard: a capture whose reported
  * moment is more than `toleranceSeconds` away from server time is rejected,

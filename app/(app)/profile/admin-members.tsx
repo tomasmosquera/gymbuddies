@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   subtitle: { ...typography.body, color: colors.textMuted },
-  memberList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  memberList: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm },
   memberChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

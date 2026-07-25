@@ -15,9 +15,10 @@ interface PendingRequest extends ExcuseRequest {
   member_name: string;
 }
 
-const TYPE_LABELS: Record<'travel' | 'medical', string> = {
+const TYPE_LABELS: Record<'travel' | 'medical' | 'other', string> = {
   travel: 'Viaje',
   medical: 'Médica',
+  other: 'Otro motivo',
 };
 
 /** Every calendar date string between start and end, inclusive. */
@@ -81,11 +82,35 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
     }
   };
 
+  const confirmSendToVote = () => {
+    Alert.alert(
+      'Enviar a votación',
+      `Todo el grupo votará si la excusa de ${request.member_name} se aprueba. Si gana el "sí", se excusa todo el rango solicitado (${request.requested_start_date} a ${request.requested_end_date}).`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Enviar a votación', onPress: sendToVote },
+      ]
+    );
+  };
+
+  const sendToVote = async () => {
+    setIsDeciding(true);
+    try {
+      const { error } = await supabase.rpc('send_excuse_request_to_vote', { p_request_id: request.id });
+      if (error) throw new Error(error.message);
+      onDecided();
+    } catch (err) {
+      Alert.alert('No se pudo enviar a votación', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsDeciding(false);
+    }
+  };
+
   return (
     <Card style={styles.row}>
       <View style={styles.rowHeader}>
         <Text style={styles.rowTitle}>{request.member_name}</Text>
-        <Badge label={TYPE_LABELS[request.excuse_type as 'travel' | 'medical']} />
+        <Badge label={TYPE_LABELS[request.excuse_type as 'travel' | 'medical' | 'other']} />
       </View>
       <Text style={styles.rowSubtitle}>
         {request.requested_start_date} a {request.requested_end_date}
@@ -113,6 +138,7 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
         <Button label="Aprobar" onPress={approve} loading={isDeciding} />
         <Button label="Rechazar" variant="danger" onPress={reject} loading={isDeciding} />
       </View>
+      <Button label="Enviar a votación del grupo" variant="secondary" onPress={confirmSendToVote} loading={isDeciding} />
     </Card>
   );
 }
@@ -133,7 +159,7 @@ export default function ExcuseAdminScreen() {
         .select('*, profile:profiles!user_id(full_name)')
         .eq('group_id', group.id)
         .eq('status', 'pending')
-        .in('excuse_type', ['travel', 'medical'])
+        .is('voting_closes_at', null)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -176,7 +202,7 @@ export default function ExcuseAdminScreen() {
       keyExtractor={(item) => item.id}
       onRefresh={() => refresh({ silent: true })}
       refreshing={isRefreshing}
-      ListEmptyComponent={<EmptyState title="Sin pendientes" description="No hay excusas de viaje o médicas por revisar." />}
+      ListEmptyComponent={<EmptyState title="Sin pendientes" description="No hay excusas por revisar." />}
       renderItem={({ item }) => <PendingRequestRow request={item} onDecided={() => refresh({ silent: true })} />}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />

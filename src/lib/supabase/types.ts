@@ -329,6 +329,7 @@ export type Database = {
       };
       approve_excuse_request: { Args: { p_request_id: string; p_excused_dates: string[] }; Returns: ExcuseRequest };
       reject_excuse_request: { Args: { p_request_id: string; p_decision_note?: string | null }; Returns: ExcuseRequest };
+      send_excuse_request_to_vote: { Args: { p_request_id: string }; Returns: ExcuseRequest };
       cast_excuse_vote: { Args: { p_request_id: string; p_vote: VoteChoice }; Returns: ExcuseVote };
       close_expired_excuse_votes: { Args: Record<string, never>; Returns: void };
       process_scheduled_leaves: { Args: Record<string, never>; Returns: void };

@@ -14,6 +14,7 @@ import { useCheckins } from '@/hooks/useCheckins';
 import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
@@ -55,6 +56,11 @@ export default function HomeScreen() {
     isLoading: leaderboardLoading,
     refresh: refreshLeaderboard,
   } = useLeaderboard(group?.id ?? null);
+  const { membersBadges } = useGroupBadges(group?.id ?? null);
+  const levelByUserId = useMemo(
+    () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
+    [membersBadges]
+  );
   const { proposal, myVote: myRuleVote, refresh: refreshProposal } = useRuleProposal(
     group?.id ?? null,
     session?.user.id ?? null
@@ -311,6 +317,7 @@ export default function HomeScreen() {
         lastClosedWeek={lastClosedWeek}
         currentUserId={session?.user.id ?? null}
         currency={group.currency}
+        levelByUserId={levelByUserId}
         isRefreshing={leaderboardLoading}
       />
 

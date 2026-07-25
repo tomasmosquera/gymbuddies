@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
 import type { LastClosedWeekSummary, LeaderboardPeriod, LeaderboardRow } from '@/hooks/useLeaderboard';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -10,6 +11,8 @@ interface LeaderboardCardProps {
   lastClosedWeek: LastClosedWeekSummary | null;
   currentUserId: string | null;
   currency: string;
+  /** Badge/XP level per member (see useGroupBadges) — shown as a bubble overlapping the avatar. */
+  levelByUserId?: Record<string, number>;
   /** Shows a small inline spinner next to the title instead of ever unmounting the list. */
   isRefreshing?: boolean;
 }
@@ -25,7 +28,21 @@ function formatShortDate(dateString: string): string {
   return `${day}/${month}`;
 }
 
-export function LeaderboardCard({ rowsByPeriod, lastClosedWeek, currentUserId, currency, isRefreshing }: LeaderboardCardProps) {
+function getInitials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+export function LeaderboardCard({
+  rowsByPeriod,
+  lastClosedWeek,
+  currentUserId,
+  currency,
+  levelByUserId,
+  isRefreshing,
+}: LeaderboardCardProps) {
   const [period, setPeriod] = useState<LeaderboardPeriod>('week');
   const rows = rowsByPeriod[period];
 
@@ -55,7 +72,7 @@ export function LeaderboardCard({ rowsByPeriod, lastClosedWeek, currentUserId, c
       <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View>
+        <View style={styles.tableWrap}>
           <View style={styles.headerRow}>
             <View style={styles.rankSpacer} />
             <View style={styles.avatarSpacer} />
@@ -63,24 +80,21 @@ export function LeaderboardCard({ rowsByPeriod, lastClosedWeek, currentUserId, c
             <Text style={styles.headerLabel}>✓</Text>
             <Text style={styles.headerLabel}>✗</Text>
             <Text style={styles.headerLabel}>%</Text>
-            <Text style={styles.headerLabel}>💸</Text>
           </View>
           <View style={styles.list}>
-            {rows.map((row, index) => {
+            {rows.map((row) => {
               const isMe = row.userId === currentUserId;
               return (
                 <View key={row.userId} style={styles.row}>
-                  <Text style={styles.rank}>{index + 1}</Text>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{row.fullName.charAt(0).toUpperCase()}</Text>
-                  </View>
+                  <Text style={styles.rank}>{row.rank}</Text>
+                  <AvatarWithLevel initials={getInitials(row.fullName)} level={levelByUserId?.[row.userId]} />
                   <View style={styles.rowBody}>
                     <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
                       {row.fullName}
                       {isMe ? ' (tú)' : ''}
                     </Text>
-                    <Text style={styles.balance}>
-                      {currency} {row.balance.toLocaleString('es-CO')}
+                    <Text style={styles.owed}>
+                      {row.chargedAmount > 0 ? `-${currency} ${row.chargedAmount.toLocaleString('es-CO')}` : `${currency} 0`}
                     </Text>
                   </View>
                   <Text style={[styles.stat, styles.statGood]}>{row.completedDays}</Text>
@@ -88,7 +102,6 @@ export function LeaderboardCard({ rowsByPeriod, lastClosedWeek, currentUserId, c
                   <Text style={[styles.stat, styles.statPercent]}>
                     {row.consistencyPercent !== null ? `${row.consistencyPercent}%` : '—'}
                   </Text>
-                  <Text style={[styles.stat, styles.statCharged]}>{row.chargedFailedDays}</Text>
                 </View>
               );
             })}
@@ -110,30 +123,21 @@ const styles = StyleSheet.create({
   },
   lastWeekText: { color: colors.textMuted, fontSize: 13 },
   lastWeekNames: { color: colors.text, fontWeight: '700' },
+  tableWrap: { paddingBottom: 4, minWidth: '100%' },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   rankSpacer: { width: 18 },
   avatarSpacer: { width: 32 },
-  rowBodySpacer: { width: 90 },
+  rowBodySpacer: { flex: 1, minWidth: 90 },
   headerLabel: { width: 42, color: colors.textMuted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   list: { gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rank: { width: 18, color: colors.textMuted, fontSize: 13, fontWeight: '700' },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: colors.text, fontWeight: '700' },
-  rowBody: { width: 90 },
+  rowBody: { flex: 1, minWidth: 90 },
   name: { color: colors.text, fontWeight: '600' },
   nameMe: { color: colors.primary },
-  balance: { color: colors.textMuted, fontSize: 12, marginTop: 1 },
+  owed: { color: colors.warning, fontSize: 12, marginTop: 1, fontWeight: '600' },
   stat: { width: 42, textAlign: 'center', fontSize: 15, fontWeight: '700' },
   statGood: { color: colors.success },
   statBad: { color: colors.danger },
   statPercent: { color: colors.primary },
-  statCharged: { color: colors.warning },
 });

@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import Svg, { Circle } from 'react-native-svg';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { useGroupBadges } from '@/hooks/useGroupBadges';
+import type { LevelProgress } from '@/lib/domain/xp';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
+
+const AVATAR_SIZE = 80;
+const AVATAR_RING_WIDTH = 4;
 
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -21,10 +27,52 @@ function SectionLabel({ children }: { children: string }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
+/** The avatar's green border becomes a ring that fills in with progress toward the next level. */
+function AvatarWithLevel({ initials, level }: { initials: string; level: LevelProgress | null }) {
+  const radius = (AVATAR_SIZE - AVATAR_RING_WIDTH) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = level?.progress ?? 0;
+  const strokeDashoffset = circumference * (1 - progress);
+  return (
+    <View style={styles.avatarWrap}>
+      <Svg width={AVATAR_SIZE} height={AVATAR_SIZE} style={StyleSheet.absoluteFill}>
+        <Circle
+          cx={AVATAR_SIZE / 2}
+          cy={AVATAR_SIZE / 2}
+          r={radius}
+          stroke={colors.border}
+          strokeWidth={AVATAR_RING_WIDTH}
+          fill="none"
+        />
+        <Circle
+          cx={AVATAR_SIZE / 2}
+          cy={AVATAR_SIZE / 2}
+          r={radius}
+          stroke={colors.primary}
+          strokeWidth={AVATAR_RING_WIDTH}
+          fill="none"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          rotation="-90"
+          origin={`${AVATAR_SIZE / 2}, ${AVATAR_SIZE / 2}`}
+        />
+      </Svg>
+      <View style={styles.avatarInner}>
+        <Text style={styles.avatarText}>{initials}</Text>
+      </View>
+      <View style={styles.levelBadge}>
+        <Text style={styles.levelBadgeText}>{level?.level ?? 0}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const { profile, session, signOut } = useAuth();
   const { group, membership, isLoading, refresh } = useActiveGroup();
   const { rowsByPeriod, isLoading: leaderboardLoading } = useLeaderboard(group?.id ?? null);
+  const { membersBadges } = useGroupBadges(group?.id ?? null);
   const [isLeaving, setIsLeaving] = useState(false);
 
   if (isLoading || !profile) {
@@ -37,6 +85,7 @@ export default function ProfileScreen() {
 
   const hasPendingLeave = !!membership?.leave_effective_at;
   const myWeekRow = rowsByPeriod.week.find((r) => r.userId === session?.user.id) ?? null;
+  const myBadges = membersBadges.find((m) => m.userId === session?.user.id) ?? null;
 
   const confirmImmediateLeave = () => {
     if (!group) return;
@@ -93,19 +142,21 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Pressable style={styles.hero} onPress={() => router.push('/profile/edit-profile')}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(profile.full_name)}</Text>
-        </View>
-        <Text style={styles.name}>{profile.full_name}</Text>
-        <Text style={styles.email}>{session?.user.email}</Text>
-        {profile.phone ? <Text style={styles.phone}>{profile.phone}</Text> : null}
-        <Text style={styles.editHint}>Toca para editar</Text>
-      </Pressable>
+      <View style={styles.hero}>
+        <Pressable onPress={() => router.push('/profile/badges')}>
+          <AvatarWithLevel initials={getInitials(profile.full_name)} level={myBadges?.level ?? null} />
+        </Pressable>
+        <Pressable onPress={() => router.push('/profile/edit-profile')} style={styles.heroInfo}>
+          <Text style={styles.name}>{profile.full_name}</Text>
+          <Text style={styles.email}>{session?.user.email}</Text>
+          {profile.phone ? <Text style={styles.phone}>{profile.phone}</Text> : null}
+          <Text style={styles.editHint}>Toca para editar</Text>
+        </Pressable>
+      </View>
 
       {group && membership ? (
         <View>
-          <SectionLabel>💰 TU SALDO</SectionLabel>
+          <SectionLabel>TU SALDO</SectionLabel>
           <Card style={styles.balanceCard}>
             <View style={styles.balanceRow}>
               <View>
@@ -144,7 +195,7 @@ export default function ProfileScreen() {
 
       {group && membership ? (
         <View>
-          <SectionLabel>🏋️ TU GRUPO</SectionLabel>
+          <SectionLabel>TU GRUPO</SectionLabel>
           <Card style={styles.groupCard}>
             <View style={styles.groupRow}>
               <Text style={styles.groupName}>{group.name}</Text>
@@ -163,8 +214,17 @@ export default function ProfileScreen() {
         </View>
       ) : null}
 
+      {group && membership ? (
+        <View>
+          <SectionLabel>LOGROS</SectionLabel>
+          <Card style={styles.stackCard}>
+            <Button label="Ver logros del grupo" variant="secondary" onPress={() => router.push('/profile/badges')} />
+          </Card>
+        </View>
+      ) : null}
+
       <View>
-        <SectionLabel>⚙️ PREFERENCIAS</SectionLabel>
+        <SectionLabel>PREFERENCIAS</SectionLabel>
         <Card style={styles.stackCard}>
           <Button label="Notificaciones y ubicación" variant="secondary" onPress={() => router.push('/profile/permissions')} />
         </Card>
@@ -172,7 +232,7 @@ export default function ProfileScreen() {
 
       {group && membership ? (
         <View>
-          <SectionLabel>🚪 SALIR DEL GRUPO</SectionLabel>
+          <SectionLabel>SALIR DEL GRUPO</SectionLabel>
           <Card style={styles.stackCard}>
             {hasPendingLeave ? (
               <>
@@ -198,7 +258,7 @@ export default function ProfileScreen() {
       ) : null}
 
       <View>
-        <SectionLabel>⚠️ ZONA DE RIESGO</SectionLabel>
+        <SectionLabel>ZONA DE RIESGO</SectionLabel>
         <Card style={styles.dangerCard}>
           <Text style={styles.dangerHint}>Esto elimina tu cuenta y tu historial permanentemente. No se puede deshacer.</Text>
           <Button label="Eliminar cuenta" variant="danger" onPress={() => router.push('/profile/delete-account')} />
@@ -214,27 +274,48 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
   hero: { alignItems: 'center', gap: 2, marginBottom: spacing.xs },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarWrap: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
     marginBottom: spacing.sm,
   },
+  avatarInner: {
+    position: 'absolute',
+    top: AVATAR_RING_WIDTH + 3,
+    left: AVATAR_RING_WIDTH + 3,
+    right: AVATAR_RING_WIDTH + 3,
+    bottom: AVATAR_RING_WIDTH + 3,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    minWidth: 26,
+    height: 26,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  levelBadgeText: { color: colors.primaryText, fontSize: 12, fontWeight: '700' },
   avatarText: { color: colors.text, fontSize: 24, fontWeight: '700' },
+  heroInfo: { alignItems: 'center', gap: 2 },
   name: { ...typography.heading, color: colors.text },
   email: { color: colors.textMuted, marginTop: 2 },
   phone: { color: colors.textMuted },
   editHint: { color: colors.primary, fontSize: 12, fontWeight: '600', marginTop: spacing.xs },
   sectionLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
+    color: colors.text,
+    fontSize: 20,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
     marginBottom: spacing.xs,
   },
   balanceCard: { gap: spacing.md },

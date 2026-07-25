@@ -1,11 +1,13 @@
 import {
   enumerateDates,
+  enumerateMonths,
   formatBogotaDateTime,
   getWeekBounds,
   isWithinClockDriftTolerance,
   nextMondayAfter,
   previousWeekBounds,
   toBogotaDateString,
+  toBogotaHour,
   weekDates,
 } from '@/lib/domain/dateUtils';
 
@@ -42,6 +44,20 @@ describe('enumerateDates', () => {
   });
 });
 
+describe('enumerateMonths', () => {
+  it('returns every month key inclusive, ascending, across a year boundary', () => {
+    expect(enumerateMonths('2025-11-15', '2026-02-02')).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
+  });
+
+  it('returns a single-element array when start and end are in the same month', () => {
+    expect(enumerateMonths('2026-07-01', '2026-07-30')).toEqual(['2026-07']);
+  });
+
+  it('returns an empty array when start is after end', () => {
+    expect(enumerateMonths('2026-08-01', '2026-07-01')).toEqual([]);
+  });
+});
+
 describe('formatBogotaDateTime', () => {
   it('formats a UTC instant as DD/MM/YYYY HH:mm in Bogota local time', () => {
     expect(formatBogotaDateTime(new Date('2026-07-17T19:05:00Z'))).toBe('17/07/2026 14:05');
@@ -58,6 +74,16 @@ describe('toBogotaDateString', () => {
     expect(toBogotaDateString(new Date('2026-07-17T04:00:00Z'))).toBe('2026-07-16');
     // 2026-07-17T05:00:00Z is exactly 2026-07-17T00:00:00 in Bogota.
     expect(toBogotaDateString(new Date('2026-07-17T05:00:00Z'))).toBe('2026-07-17');
+  });
+});
+
+describe('toBogotaHour', () => {
+  it('converts a UTC instant to the correct America/Bogota hour', () => {
+    expect(toBogotaHour(new Date('2026-07-17T11:00:00Z'))).toBe(6);
+  });
+
+  it('rolls over past midnight correctly', () => {
+    expect(toBogotaHour(new Date('2026-07-17T04:30:00Z'))).toBe(23);
   });
 });
 

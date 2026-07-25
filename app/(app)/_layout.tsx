@@ -1,11 +1,21 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { colors } from '@/constants/theme';
 
-function TabIcon({ symbol, focused }: { symbol: string; focused: boolean }) {
-  return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{symbol}</Text>;
+function TabIcon({
+  filled,
+  outline,
+  focused,
+  color,
+}: {
+  filled: keyof typeof Ionicons.glyphMap;
+  outline: keyof typeof Ionicons.glyphMap;
+  focused: boolean;
+  color: string;
+}) {
+  return <Ionicons name={focused ? filled : outline} size={24} color={color} />;
 }
 
 export default function AppLayout() {
@@ -27,23 +37,48 @@ export default function AppLayout() {
     >
       <Tabs.Screen
         name="home"
-        options={{ title: 'Inicio', tabBarIcon: ({ focused }) => <TabIcon symbol="🏠" focused={focused} /> }}
+        options={{
+          title: 'Inicio',
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon filled="home" outline="home-outline" focused={focused} color={color} />
+          ),
+        }}
       />
       <Tabs.Screen
         name="checkin"
-        options={{ title: 'Check-in', tabBarIcon: ({ focused }) => <TabIcon symbol="📸" focused={focused} /> }}
+        options={{
+          title: 'Check-in',
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon filled="camera" outline="camera-outline" focused={focused} color={color} />
+          ),
+        }}
       />
       <Tabs.Screen
         name="dashboard"
-        options={{ title: 'Dashboard', tabBarIcon: ({ focused }) => <TabIcon symbol="📊" focused={focused} /> }}
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon filled="stats-chart" outline="stats-chart-outline" focused={focused} color={color} />
+          ),
+        }}
       />
       <Tabs.Screen
         name="rules"
-        options={{ title: 'Reglas', tabBarIcon: ({ focused }) => <TabIcon symbol="🗳️" focused={focused} /> }}
+        options={{
+          title: 'Reglas',
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon filled="clipboard" outline="clipboard-outline" focused={focused} color={color} />
+          ),
+        }}
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'Perfil', tabBarIcon: ({ focused }) => <TabIcon symbol="👤" focused={focused} /> }}
+        options={{
+          title: 'Perfil',
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon filled="person" outline="person-outline" focused={focused} color={color} />
+          ),
+        }}
       />
     </Tabs>
   );

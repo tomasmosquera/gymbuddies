@@ -14,6 +14,12 @@ import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { colors, spacing, typography } from '@/constants/theme';
 
+const EXCUSE_TYPE_LABELS: Record<string, string> = {
+  travel: 'Viaje',
+  medical: 'Médica',
+  other: 'Otro motivo',
+};
+
 const CHANGE_LABELS: Record<string, string> = {
   min_days_per_week: 'Días mínimos por semana',
   penalty_amount: 'Penalización por día fallado',
@@ -236,6 +242,9 @@ export default function RulesScreen() {
             <Text style={styles.cardTitle}>Votación de excusa en curso</Text>
             <Badge label={`Cierra ${new Date(excuseVoteRequest.voting_closes_at!).toLocaleDateString('es-CO')}`} />
           </View>
+          <Text style={styles.changeText}>
+            {excuseVoteRequest.member_name} · {EXCUSE_TYPE_LABELS[excuseVoteRequest.excuse_type] ?? excuseVoteRequest.excuse_type}
+          </Text>
           <Text style={styles.changeText}>
             {excuseVoteRequest.requested_start_date} a {excuseVoteRequest.requested_end_date}
           </Text>
