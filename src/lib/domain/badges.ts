@@ -491,6 +491,14 @@ export const BADGES: BadgeDefinition[] = [
     evaluate: (ctx) => bool(ctx.checkins.length >= 1),
   },
   {
+    id: 'donde-estas',
+    name: '¿Dónde estás?',
+    emoji: '🗺️',
+    description: '10 check-ins con GPS.',
+    category: 'checkins',
+    evaluate: (ctx) => threshold(ctx.checkins.length, 10),
+  },
+  {
     id: 'ubicacion-verificada',
     name: 'Ubicación Verificada',
     emoji: '📍',
@@ -531,8 +539,27 @@ export const BADGES: BadgeDefinition[] = [
     evaluate: (ctx) => threshold(ctx.checkins.filter((c) => c.hourBogota >= 19).length, 50),
   },
   {
+    id: 'pequeno-coleccionista',
+    name: 'Pequeño Coleccionista',
+    emoji: '📁',
+    description: '10 check-ins acumulados en total.',
+    category: 'checkins',
+    evaluate: (ctx) => threshold(ctx.checkins.length, 10),
+  },
+  {
+    id: 'buen-coleccionista',
+    name: 'Buen Coleccionista',
+    emoji: '🗃️',
+    description: '30 check-ins acumulados en total.',
+    category: 'checkins',
+    evaluate: (ctx) => threshold(ctx.checkins.length, 30),
+  },
+  {
+    // id kept as 'coleccionista' (not renamed) so existing earned/notified
+    // state isn't lost — only the display name changed to fit the new
+    // Pequeño/Buen/Gran progression.
     id: 'coleccionista',
-    name: 'Coleccionista',
+    name: 'Gran Coleccionista',
     emoji: '🗂️',
     description: '100 check-ins acumulados en total.',
     category: 'checkins',
@@ -631,6 +658,22 @@ export const BADGES: BadgeDefinition[] = [
     description: 'Primera reacción dada a un check-in de otro.',
     category: 'social',
     evaluate: (ctx) => bool(Object.values(ctx.reactionsGivenByRecipient).some((n) => n > 0)),
+  },
+  {
+    id: 'gran-motivador',
+    name: 'Gran Motivador',
+    emoji: '📢',
+    description: 'Dar 10 reacciones a check-ins de otros.',
+    category: 'social',
+    evaluate: (ctx) => threshold(ctx.reactionsGivenDates.length, 10),
+  },
+  {
+    id: 'se-le-quiere',
+    name: 'Se le Quiere',
+    emoji: '🥰',
+    description: 'Recibir 10 reacciones acumuladas.',
+    category: 'social',
+    evaluate: (ctx) => threshold(ctx.reactionsReceivedCount, 10),
   },
   {
     id: 'el-mas-querido',

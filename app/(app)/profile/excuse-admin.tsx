@@ -9,10 +9,17 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { supabase } from '@/lib/supabase/client';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import type { ExcuseRequest } from '@/lib/supabase/types';
-import { colors, radii, spacing } from '@/constants/theme';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 interface PendingRequest extends ExcuseRequest {
   member_name: string;
+}
+
+interface ResolvedRequest extends ExcuseRequest {
+  member_name: string;
+  yesVotes: number;
+  noVotes: number;
+  voters: { fullName: string; vote: 'yes' | 'no' }[];
 }
 
 const TYPE_LABELS: Record<'travel' | 'medical' | 'other', string> = {
@@ -143,9 +150,76 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
   );
 }
 
+function ResolvedRequestRow({ request }: { request: ResolvedRequest }) {
+  const wasApproved = request.status === 'approved';
+  const wasVoted = request.voting_closes_at !== null;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const yesVoters = request.voters.filter((v) => v.vote === 'yes');
+  const noVoters = request.voters.filter((v) => v.vote === 'no');
+
+  const content = (
+    <>
+      <View style={styles.rowHeader}>
+        <Text style={styles.rowTitle}>{request.member_name}</Text>
+        <Badge label={wasApproved ? 'Aprobada' : 'Rechazada'} tone={wasApproved ? 'success' : 'danger'} />
+      </View>
+      <Text style={styles.rowSubtitle}>
+        {TYPE_LABELS[request.excuse_type as 'travel' | 'medical' | 'other']} · {request.requested_start_date} a{' '}
+        {request.requested_end_date}
+      </Text>
+      <Text style={styles.resolvedHint}>
+        {wasVoted
+          ? `Decidido por votación del grupo: ${request.yesVotes} a favor · ${request.noVotes} en contra — toca para ver quién votó`
+          : request.decided_by
+            ? 'Decidido directamente por el admin'
+            : 'Cerrado automáticamente'}
+      </Text>
+      {isExpanded && wasVoted ? (
+        <View style={styles.votersBlock}>
+          <View style={styles.votersColumn}>
+            <Text style={styles.votersColumnTitle}>A favor ({yesVoters.length})</Text>
+            {yesVoters.length > 0 ? (
+              yesVoters.map((v, i) => (
+                <Text key={i} style={styles.voterName}>
+                  {v.fullName}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.voterNameEmpty}>Nadie</Text>
+            )}
+          </View>
+          <View style={styles.votersColumn}>
+            <Text style={styles.votersColumnTitle}>En contra ({noVoters.length})</Text>
+            {noVoters.length > 0 ? (
+              noVoters.map((v, i) => (
+                <Text key={i} style={styles.voterName}>
+                  {v.fullName}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.voterNameEmpty}>Nadie</Text>
+            )}
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
+
+  if (!wasVoted) {
+    return <Card style={styles.resolvedRow}>{content}</Card>;
+  }
+
+  return (
+    <Pressable onPress={() => setIsExpanded((e) => !e)}>
+      <Card style={styles.resolvedRow}>{content}</Card>
+    </Pressable>
+  );
+}
+
 export default function ExcuseAdminScreen() {
   const { group, isLoading: groupLoading } = useActiveGroup();
   const [requests, setRequests] = useState<PendingRequest[]>([]);
+  const [resolvedRequests, setResolvedRequests] = useState<ResolvedRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -154,24 +228,66 @@ export default function ExcuseAdminScreen() {
       if (!group) return;
       if (opts?.silent) setIsRefreshing(true);
       else setIsLoading(true);
-      const { data, error } = await supabase
-        .from('excuse_requests')
-        .select('*, profile:profiles!user_id(full_name)')
-        .eq('group_id', group.id)
-        .eq('status', 'pending')
-        .is('voting_closes_at', null)
-        .order('created_at', { ascending: true });
 
-      if (error) {
-        Alert.alert('No se pudieron cargar las excusas', error.message);
-      } else if (data) {
+      const [pendingRes, resolvedRes] = await Promise.all([
+        supabase
+          .from('excuse_requests')
+          .select('*, profile:profiles!user_id(full_name)')
+          .eq('group_id', group.id)
+          .eq('status', 'pending')
+          .is('voting_closes_at', null)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('excuse_requests')
+          .select('*, profile:profiles!user_id(full_name)')
+          .eq('group_id', group.id)
+          .in('status', ['approved', 'rejected'])
+          .order('decided_at', { ascending: false }),
+      ]);
+
+      if (pendingRes.error) {
+        Alert.alert('No se pudieron cargar las excusas', pendingRes.error.message);
+      } else if (pendingRes.data) {
         setRequests(
-          (data as unknown as (ExcuseRequest & { profile: { full_name: string } | null })[]).map((r) => ({
+          (pendingRes.data as unknown as (ExcuseRequest & { profile: { full_name: string } | null })[]).map((r) => ({
             ...r,
             member_name: r.profile?.full_name ?? 'Miembro',
           }))
         );
       }
+
+      if (resolvedRes.data) {
+        const resolved = resolvedRes.data as unknown as (ExcuseRequest & { profile: { full_name: string } | null })[];
+        const votedIds = resolved.filter((r) => r.voting_closes_at !== null).map((r) => r.id);
+        const votersByRequest = new Map<string, { fullName: string; vote: 'yes' | 'no' }[]>();
+        if (votedIds.length > 0) {
+          const { data: votesData } = await supabase
+            .from('excuse_votes')
+            .select('excuse_request_id, vote, profile:profiles!user_id(full_name)')
+            .in('excuse_request_id', votedIds);
+          for (const v of (votesData ?? []) as unknown as {
+            excuse_request_id: string;
+            vote: 'yes' | 'no';
+            profile: { full_name: string } | null;
+          }[]) {
+            if (!votersByRequest.has(v.excuse_request_id)) votersByRequest.set(v.excuse_request_id, []);
+            votersByRequest.get(v.excuse_request_id)!.push({ fullName: v.profile?.full_name ?? 'Miembro', vote: v.vote });
+          }
+        }
+        setResolvedRequests(
+          resolved.map((r) => {
+            const voters = votersByRequest.get(r.id) ?? [];
+            return {
+              ...r,
+              member_name: r.profile?.full_name ?? 'Miembro',
+              yesVotes: voters.filter((v) => v.vote === 'yes').length,
+              noVotes: voters.filter((v) => v.vote === 'no').length,
+              voters,
+            };
+          })
+        );
+      }
+
       setIsLoading(false);
       setIsRefreshing(false);
     },
@@ -183,7 +299,7 @@ export default function ExcuseAdminScreen() {
   // in the stack never appears without a pull-to-refresh or app restart.
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      refresh({ silent: true });
     }, [refresh])
   );
 
@@ -205,6 +321,16 @@ export default function ExcuseAdminScreen() {
       ListEmptyComponent={<EmptyState title="Sin pendientes" description="No hay excusas por revisar." />}
       renderItem={({ item }) => <PendingRequestRow request={item} onDecided={() => refresh({ silent: true })} />}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+      ListFooterComponent={
+        resolvedRequests.length > 0 ? (
+          <View style={styles.historySection}>
+            <Text style={styles.historyTitle}>Historial de excusas resueltas</Text>
+            {resolvedRequests.map((r) => (
+              <ResolvedRequestRow key={r.id} request={r} />
+            ))}
+          </View>
+        ) : null
+      }
     />
   );
 }
@@ -232,4 +358,20 @@ const styles = StyleSheet.create({
   dateChipText: { color: colors.textMuted, fontSize: 12 },
   dateChipTextSelected: { color: colors.primaryText, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: spacing.sm },
+  historySection: { marginTop: spacing.lg, gap: spacing.sm },
+  historyTitle: { ...typography.heading, fontSize: 18, color: colors.text, marginBottom: spacing.xs },
+  resolvedRow: { gap: spacing.xs },
+  resolvedHint: { color: colors.textMuted, fontSize: 12 },
+  votersBlock: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  votersColumn: { flex: 1, gap: 2 },
+  votersColumnTitle: { color: colors.text, fontWeight: '700', fontSize: 12, marginBottom: 2 },
+  voterName: { color: colors.textMuted, fontSize: 13 },
+  voterNameEmpty: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
 });

@@ -49,17 +49,26 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
   const [checkinsByDate, setCheckinsByDate] = useState<Map<string, GroupCheckinWithProfile[]>>(new Map());
   const [reactionsByCheckinId, setReactionsByCheckinId] = useState<Map<string, CheckinReaction[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
+  // Separate from isLoading: only a manual pull-to-refresh gesture should
+  // show the native RefreshControl spinner. isLoading alone still flips on
+  // every period switch / tab refocus / mount, and wiring THAT to
+  // `refreshing` made the list visibly dip down and spring back up every
+  // time — the exact same class of bug already fixed for reactions below.
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!groupId) {
-      setDays([]);
-      setMembers([]);
-      setCheckinsByDate(new Map());
-      setReactionsByCheckinId(new Map());
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
+  const refresh = useCallback(
+    async (opts?: { manual?: boolean }) => {
+      if (!groupId) {
+        setDays([]);
+        setMembers([]);
+        setCheckinsByDate(new Map());
+        setReactionsByCheckinId(new Map());
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+      if (opts?.manual) setIsRefreshing(true);
+      else setIsLoading(true);
 
     const [membersRes, checkinsRes, excusedRes, overridesRes, reactionsRes, groupRes] = await Promise.all([
       supabase
@@ -254,7 +263,10 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     setMembers(memberStats);
     setCheckinsByDate(visibleByDate);
     setIsLoading(false);
-  }, [groupId, rangeStart, rangeEnd]);
+    setIsRefreshing(false);
+    },
+    [groupId, rangeStart, rangeEnd]
+  );
 
   useEffect(() => {
     refresh();
@@ -293,5 +305,5 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     [refreshReactions]
   );
 
-  return { days, members, checkinsByDate, reactionsByCheckinId, isLoading, refresh, react, removeReaction };
+  return { days, members, checkinsByDate, reactionsByCheckinId, isLoading, isRefreshing, refresh, react, removeReaction };
 }

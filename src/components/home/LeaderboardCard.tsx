@@ -82,29 +82,33 @@ export function LeaderboardCard({
             <Text style={styles.headerLabel}>%</Text>
           </View>
           <View style={styles.list}>
-            {rows.map((row) => {
-              const isMe = row.userId === currentUserId;
-              return (
-                <View key={row.userId} style={styles.row}>
-                  <Text style={styles.rank}>{row.rank}</Text>
-                  <AvatarWithLevel initials={getInitials(row.fullName)} level={levelByUserId?.[row.userId]} />
-                  <View style={styles.rowBody}>
-                    <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
-                      {row.fullName}
-                      {isMe ? ' (tú)' : ''}
-                    </Text>
-                    <Text style={styles.owed}>
-                      {row.chargedAmount > 0 ? `-${currency} ${row.chargedAmount.toLocaleString('es-CO')}` : `${currency} 0`}
+            {(() => {
+              const rank1Count = rows.filter((r) => r.rank === 1).length;
+              return rows.map((row) => {
+                const isMe = row.userId === currentUserId;
+                const isSoleMvp = row.rank === 1 && rank1Count === 1;
+                return (
+                  <View key={row.userId} style={styles.row}>
+                    <Text style={[styles.rank, isSoleMvp && styles.rankMvp]}>{isSoleMvp ? 'MVP' : row.rank}</Text>
+                    <AvatarWithLevel initials={getInitials(row.fullName)} level={levelByUserId?.[row.userId]} size={28} />
+                    <View style={styles.rowBody}>
+                      <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
+                        {row.fullName}
+                        {isMe ? ' (tú)' : ''}
+                      </Text>
+                      <Text style={styles.owed} numberOfLines={1}>
+                        {row.chargedAmount > 0 ? `-${currency} ${row.chargedAmount.toLocaleString('es-CO')}` : `${currency} 0`}
+                      </Text>
+                    </View>
+                    <Text style={[styles.stat, styles.statGood]}>{row.completedDays}</Text>
+                    <Text style={[styles.stat, styles.statBad]}>{row.failedDays}</Text>
+                    <Text style={[styles.stat, styles.statPercent]}>
+                      {row.consistencyPercent !== null ? `${row.consistencyPercent}%` : '—'}
                     </Text>
                   </View>
-                  <Text style={[styles.stat, styles.statGood]}>{row.completedDays}</Text>
-                  <Text style={[styles.stat, styles.statBad]}>{row.failedDays}</Text>
-                  <Text style={[styles.stat, styles.statPercent]}>
-                    {row.consistencyPercent !== null ? `${row.consistencyPercent}%` : '—'}
-                  </Text>
-                </View>
-              );
-            })}
+                );
+              });
+            })()}
           </View>
         </View>
       </ScrollView>
@@ -125,18 +129,19 @@ const styles = StyleSheet.create({
   lastWeekNames: { color: colors.text, fontWeight: '700' },
   tableWrap: { paddingBottom: 4, minWidth: '100%' },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  rankSpacer: { width: 18 },
-  avatarSpacer: { width: 32 },
-  rowBodySpacer: { flex: 1, minWidth: 90 },
-  headerLabel: { width: 42, color: colors.textMuted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  rankSpacer: { width: 28 },
+  avatarSpacer: { width: 28 },
+  rowBodySpacer: { flex: 1, minWidth: 70 },
+  headerLabel: { width: 38, color: colors.textMuted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   list: { gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  rank: { width: 18, color: colors.textMuted, fontSize: 13, fontWeight: '700' },
-  rowBody: { flex: 1, minWidth: 90 },
+  rank: { width: 28, color: colors.textMuted, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  rankMvp: { color: colors.primary, fontSize: 11 },
+  rowBody: { flex: 1, minWidth: 70 },
   name: { color: colors.text, fontWeight: '600' },
   nameMe: { color: colors.primary },
   owed: { color: colors.warning, fontSize: 12, marginTop: 1, fontWeight: '600' },
-  stat: { width: 42, textAlign: 'center', fontSize: 15, fontWeight: '700' },
+  stat: { width: 38, textAlign: 'center', fontSize: 15, fontWeight: '700' },
   statGood: { color: colors.success },
   statBad: { color: colors.danger },
   statPercent: { color: colors.primary },

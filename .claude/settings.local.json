@@ -59,7 +59,14 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(gh api *)",
       "Bash(node -e \"console.log\\(require.resolve\\('@expo/vector-icons'\\)\\)\")",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(xargs grep -ln \"badge\\\\|xp\\\\|level\\\\|monthly\\\\|challenge\")",
+      "Bash(curl -s -X POST https://iaiyntjmchndfmnvhbfm.supabase.co/functions/v1/notify-achievements -H 'Authorization: Bearer sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p' -H 'apikey: sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p' -H 'Content-Type: application/json' -d '{\"baseline\": true}')",
+      "Bash(curl -sv https://iaiyntjmchndfmnvhbfm.supabase.co)",
+      "Bash(curl -s -X POST \"https://iaiyntjmchndfmnvhbfm.supabase.co/functions/v1/notify-achievements\" -H \"Authorization: Bearer sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p\" -H \"apikey: sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p\" -H \"Content-Type: application/json\" -d \"{\\\\\"baseline\\\\\": true}\")",
+      "Bash(curl -s -X POST \"https://iaiyntjmchndfmnvhbfm.supabase.co/functions/v1/notify-achievements\" -H \"Authorization: Bearer sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p\" -H \"apikey: sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p\" -H \"Content-Type: application/json\" -d \"{}\")",
+      "Bash(xargs grep -l \"send_push_notification\")",
+      "Bash(curl -s -X POST 'https://iaiyntjmchndfmnvhbfm.supabase.co/functions/v1/notify-achievements' -H 'Authorization: Bearer sb_publishable_HwrT0rm1ZWqSkZaJMbxhCw_uzYjlC6p' -H 'Content-Type: application/json' -d '{\"baseline\": true}')"
     ],
     "additionalDirectories": [
       "\\tmp"

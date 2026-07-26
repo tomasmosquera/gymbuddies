@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { ExcuseRequest, ExcuseVote } from '@/lib/supabase/types';
 
@@ -11,15 +11,19 @@ export function useExcuseVote(groupId: string | null, userId: string | null) {
   const [request, setRequest] = useState<ExcuseVoteRequest | null>(null);
   const [votes, setVotes] = useState<ExcuseVote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Only the first load (or an actual group switch) should block the whole
+  // screen — a useFocusEffect-triggered refresh on every tab visit shouldn't.
+  const loadedForGroupIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!groupId) {
       setRequest(null);
       setVotes([]);
       setIsLoading(false);
+      loadedForGroupIdRef.current = null;
       return;
     }
-    setIsLoading(true);
+    if (loadedForGroupIdRef.current !== groupId) setIsLoading(true);
     const { data: requestData } = await supabase
       .from('excuse_requests')
       .select('*, profile:profiles!user_id(full_name)')
@@ -38,6 +42,7 @@ export function useExcuseVote(groupId: string | null, userId: string | null) {
       setVotes([]);
     }
     setIsLoading(false);
+    loadedForGroupIdRef.current = groupId;
   }, [groupId]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -9,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
+import { useNotifications } from '@/hooks/useNotifications';
 import type { LevelProgress } from '@/lib/domain/xp';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -73,6 +75,7 @@ export default function ProfileScreen() {
   const { group, membership, isLoading, refresh } = useActiveGroup();
   const { rowsByPeriod, isLoading: leaderboardLoading } = useLeaderboard(group?.id ?? null);
   const { membersBadges } = useGroupBadges(group?.id ?? null);
+  const { hasUnread: hasUnreadNotifications } = useNotifications();
   const [isLeaving, setIsLeaving] = useState(false);
 
   if (isLoading || !profile) {
@@ -142,6 +145,13 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.topBar}>
+        <Pressable onPress={() => router.push('/profile/notifications')} style={styles.bellButton}>
+          <Ionicons name="notifications-outline" size={24} color={colors.text} />
+          {hasUnreadNotifications ? <View style={styles.bellDot} /> : null}
+        </Pressable>
+      </View>
+
       <View style={styles.hero}>
         <Pressable onPress={() => router.push('/profile/badges')}>
           <AvatarWithLevel initials={getInitials(profile.full_name)} level={myBadges?.level ?? null} />
@@ -216,8 +226,9 @@ export default function ProfileScreen() {
 
       {group && membership ? (
         <View>
-          <SectionLabel>LOGROS</SectionLabel>
+          <SectionLabel>MI PROGRESO</SectionLabel>
           <Card style={styles.stackCard}>
+            <Button label="Ver mis estadísticas" variant="secondary" onPress={() => router.push('/profile/stats')} />
             <Button label="Ver logros del grupo" variant="secondary" onPress={() => router.push('/profile/badges')} />
           </Card>
         </View>
@@ -244,8 +255,16 @@ export default function ProfileScreen() {
               </>
             ) : (
               <>
+                <Text style={styles.hint}>
+                  Si avisas con {group.exit_notice_days} día(s) de anticipación, sigues participando con normalidad y
+                  luego sales sin costo. Si sales ahora mismo
+                  {group.exit_fee_amount > 0
+                    ? `, se te cobra una cuota de ${group.currency} ${group.exit_fee_amount.toLocaleString('es-CO')}`
+                    : ''}
+                  .
+                </Text>
                 <Button
-                  label={`Avisar salida (sin costo, ${group.exit_notice_days} día(s))`}
+                  label={`Avisar salida (gratis en ${group.exit_notice_days} día(s))`}
                   variant="secondary"
                   onPress={confirmNoticeLeave}
                   loading={isLeaving}
@@ -273,6 +292,19 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
+  topBar: { flexDirection: 'row', justifyContent: 'flex-end' },
+  bellButton: { padding: spacing.xs },
+  bellDot: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+    borderWidth: 1.5,
+    borderColor: colors.background,
+  },
   hero: { alignItems: 'center', gap: 2, marginBottom: spacing.xs },
   avatarWrap: {
     width: AVATAR_SIZE,

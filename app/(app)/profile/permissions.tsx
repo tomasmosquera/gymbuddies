@@ -6,8 +6,7 @@ import * as Location from 'expo-location';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/state/authStore';
+import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { registerForPushNotificationsAsync } from '@/lib/notifications/pushToken';
 import { setRemindersEnabledCache } from '@/lib/notifications/reminderPreference';
 import { supabase } from '@/lib/supabase/client';
@@ -20,9 +19,17 @@ const CATEGORY_LABELS: Record<NotificationCategory, { label: string; hint: strin
   votes: { label: 'Votaciones', hint: 'Propuestas de reglas, excusas, retos de foto' },
   reminders: { label: 'Recordatorios', hint: 'Aviso diario de check-in y avisos de foto final pendiente' },
   admin_actions: { label: 'Administración', hint: 'Cuando el admin ajusta algo de tu cuenta directamente' },
+  achievements: { label: 'Logros y niveles', hint: 'Nuevos logros, retos del mes cumplidos, y subidas de nivel' },
 };
 
-const CATEGORY_ORDER: NotificationCategory[] = ['group_activity', 'money', 'votes', 'reminders', 'admin_actions'];
+const CATEGORY_ORDER: NotificationCategory[] = [
+  'group_activity',
+  'money',
+  'votes',
+  'reminders',
+  'admin_actions',
+  'achievements',
+];
 
 type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unavailable';
 
@@ -34,8 +41,7 @@ function statusBadge(status: PermissionState) {
 }
 
 export default function PermissionsScreen() {
-  const { profile } = useAuth();
-  const setProfile = useAuthStore((s) => s.setProfile);
+  const { group, membership, isLoading: isLoadingGroup, refresh: refreshActiveGroup } = useActiveGroup();
   const [notifStatus, setNotifStatus] = useState<PermissionState>('undetermined');
   const [locationForeground, setLocationForeground] = useState<PermissionState>('undetermined');
   const [locationBackground, setLocationBackground] = useState<PermissionState>('undetermined');
@@ -59,7 +65,7 @@ export default function PermissionsScreen() {
     }, [refreshPermissionStatus])
   );
 
-  if (!profile) {
+  if (isLoadingGroup || !membership || !group) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -67,19 +73,19 @@ export default function PermissionsScreen() {
     );
   }
 
-  const prefs = profile.notification_preferences;
+  const prefs = membership.notification_preferences;
   const allEnabled = CATEGORY_ORDER.every((key) => prefs[key]);
 
   const savePreferences = async (next: NotificationPreferences) => {
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ notification_preferences: next })
-        .eq('id', profile.id);
+      const { error } = await supabase.rpc('set_group_notification_preferences', {
+        p_group_id: group.id,
+        p_preferences: next,
+      });
       if (error) throw error;
-      setProfile({ ...profile, notification_preferences: next });
       await setRemindersEnabledCache(next.reminders);
+      await refreshActiveGroup();
     } finally {
       setIsSaving(false);
     }
@@ -134,6 +140,9 @@ export default function PermissionsScreen() {
           <Text style={styles.sectionTitle}>🔔 Notificaciones</Text>
           {statusBadge(notifStatus)}
         </View>
+        <Text style={styles.hint}>
+          {`Estas categorías aplican solo a "${group.name}" — puedes tener notificaciones distintas en cada grupo al que pertenezcas.`}
+        </Text>
         {notifStatus !== 'granted' ? (
           <>
             <Text style={styles.hint}>

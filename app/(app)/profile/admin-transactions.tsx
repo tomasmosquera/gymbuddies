@@ -123,7 +123,7 @@ export default function AdminTransactionsScreen() {
   // refresh or a full app restart.
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      refresh({ silent: true });
     }, [refresh])
   );
 

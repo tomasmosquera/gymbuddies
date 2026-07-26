@@ -14,7 +14,6 @@ export default function RulesStackLayout() {
       <Stack.Screen name="index" options={{ title: 'Reglas del grupo' }} />
       <Stack.Screen name="propose" options={{ title: 'Proponer cambio' }} />
       <Stack.Screen name="excuse-request" options={{ title: 'Solicitar excusa' }} />
-      <Stack.Screen name="excuse-admin" options={{ title: 'Revisar excusas' }} />
     </Stack>
   );
 }

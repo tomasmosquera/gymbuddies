@@ -52,6 +52,20 @@ export function getWeekBounds(date: Date): WeekBounds {
   return { weekStart: formatDate(weekStartMs), weekEnd: formatDate(weekEndMs) };
 }
 
+/**
+ * getWeekBounds, but for a calendar date string (YYYY-MM-DD) that's already
+ * known to be a Bogota date — e.g. a BadgeDayRecord.date or checkin_date —
+ * rather than a real instant. `new Date(\`${dateString}T00:00:00Z\`)` looks
+ * like the obvious way to do this but is a footgun: that instant is
+ * *midnight UTC*, which getWeekBounds's -5h Bogota shift then reinterprets
+ * as the *previous* Bogota day — silently landing in the wrong week whenever
+ * `dateString` is a Monday. Anchoring to local noon sidesteps that entirely.
+ */
+export function getWeekBoundsForDateString(dateString: string): WeekBounds {
+  const [y, m, d] = dateString.split('-').map(Number);
+  return getWeekBounds(new Date(Date.UTC(y, m - 1, d, 12)));
+}
+
 /** The 7 calendar date strings (Mon..Sun) for the week starting at `weekStart`. */
 export function weekDates(weekStart: string): string[] {
   const [year, month, day] = weekStart.split('-').map(Number);

@@ -210,9 +210,9 @@ export default function AdminGroupScreen() {
             onPress={() => router.push('/profile/admin-transactions')}
           />
           <ActionButton
-            label="Revisar excusas"
+            label="Excusas"
             count={overview.pendingExcusesCount}
-            onPress={() => router.push('/rules/excuse-admin')}
+            onPress={() => router.push('/profile/excuse-admin')}
           />
           {proposal ? (
             <Card style={styles.proposalCard}>

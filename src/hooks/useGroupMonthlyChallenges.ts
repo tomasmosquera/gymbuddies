@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { enumerateMonths, getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { enumerateMonths, getWeekBounds, getWeekBoundsForDateString, toBogotaDateString } from '@/lib/domain/dateUtils';
 import { rankMembersByConsistency } from '@/lib/domain/attendance';
 import { useGroupAttendanceRecords } from '@/hooks/useGroupAttendanceRecords';
 import {
   MONTHLY_CHALLENGES,
   allWeekendsCompleted,
+  anyWeekendCompleted,
   completedOnAnyHoliday,
   computeWeeklyMvpsByWeek,
   determineTopByCount,
@@ -145,7 +146,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
     const closedMonths = months.filter((m) => m < currentMonth);
 
     // --- Weekly MVP, computed once across the group's full history ---
-    const firstWeekStart = getWeekBounds(new Date(`${groupCreatedDate}T00:00:00Z`)).weekStart;
+    const firstWeekStart = getWeekBoundsForDateString(groupCreatedDate).weekStart;
     const lastWeekStart = getWeekBounds(new Date()).weekStart;
     const weekStarts: string[] = [];
     for (let cursor = firstWeekStart; cursor <= lastWeekStart; cursor = addDaysToDateString(cursor, 7)) {
@@ -219,6 +220,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
           monthHasFixedHoliday: hasHoliday,
           completedOnHoliday: completedOnAnyHoliday(daysInMonth),
           allWeekendsCompleted: allWeekendsCompleted(daysInMonth),
+          anyWeekendCompleted: anyWeekendCompleted(daysInMonth),
           reactionsGivenCount: reactionsGivenByUserMonth.get(m.userId)?.get(month) ?? 0,
           rank: rankByUserId.get(m.userId) ?? null,
           previousMonthRank: previousMonthRankByUserId.get(m.userId) ?? null,
@@ -241,7 +243,12 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       for (const challengeDef of MONTHLY_CHALLENGES) {
         let timesAchieved = 0;
         let monthsEvaluated = 0;
-        for (const month of closedMonths) {
+        // Monotonic challenges (counters that only grow within a month) are
+        // credited the moment they're met — including the still-open current
+        // month — instead of waiting for month-close like comparative/
+        // rank-based challenges, which could still flip later in the month.
+        const evalMonths = challengeDef.monotonic ? months : closedMonths;
+        for (const month of evalMonths) {
           const ctx = contextsByMonthByUser.get(month)?.get(m.userId);
           if (!ctx) continue;
           const result = challengeDef.evaluate(ctx);

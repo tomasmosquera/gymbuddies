@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { PhotoChallenge, PhotoChallengeVote } from '@/lib/supabase/types';
 import type { GroupCheckinWithProfile } from './useGroupWeekCheckins';
@@ -13,14 +13,18 @@ export interface PhotoChallengeWithVotes extends PhotoChallenge {
 export function usePhotoChallenges(groupId: string | null) {
   const [challenges, setChallenges] = useState<PhotoChallengeWithVotes[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Only the first load (or an actual group switch) should block the whole
+  // screen — a useFocusEffect-triggered refresh on every tab visit shouldn't.
+  const loadedForGroupIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!groupId) {
       setChallenges([]);
       setIsLoading(false);
+      loadedForGroupIdRef.current = null;
       return;
     }
-    setIsLoading(true);
+    if (loadedForGroupIdRef.current !== groupId) setIsLoading(true);
     const { data: challengeData } = await supabase
       .from('photo_challenges')
       .select('*')
@@ -51,6 +55,7 @@ export function usePhotoChallenges(groupId: string | null) {
     }));
     setChallenges(withVotes);
     setIsLoading(false);
+    loadedForGroupIdRef.current = groupId;
   }, [groupId]);
 
   useEffect(() => {

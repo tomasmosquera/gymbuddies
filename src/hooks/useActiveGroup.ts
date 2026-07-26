@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
+import { setRemindersEnabledCache } from '@/lib/notifications/reminderPreference';
 import type { Group, GroupMember } from '@/lib/supabase/types';
 
 /** The active group plus the signed-in user's own membership row within it. */
@@ -11,15 +12,20 @@ export function useActiveGroup() {
   const [group, setGroup] = useState<Group | null>(null);
   const [membership, setMembership] = useState<GroupMember | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Screens gate their whole render on isLoading, and every tab re-focus
+  // calls refresh() again — without this, switching back to a tab would
+  // blank the entire screen on every visit, not just the first time.
+  const loadedForGroupIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!activeGroupId || !session) {
       setGroup(null);
       setMembership(null);
       setIsLoading(false);
+      loadedForGroupIdRef.current = null;
       return;
     }
-    setIsLoading(true);
+    if (loadedForGroupIdRef.current !== activeGroupId) setIsLoading(true);
     const [groupRes, memberRes] = await Promise.all([
       supabase.from('groups').select('*').eq('id', activeGroupId).single(),
       supabase
@@ -31,7 +37,9 @@ export function useActiveGroup() {
     ]);
     setGroup(groupRes.data ?? null);
     setMembership(memberRes.data ?? null);
+    if (memberRes.data) await setRemindersEnabledCache(memberRes.data.notification_preferences.reminders);
     setIsLoading(false);
+    loadedForGroupIdRef.current = activeGroupId;
   }, [activeGroupId, session]);
 
   useEffect(() => {

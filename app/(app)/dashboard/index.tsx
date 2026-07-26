@@ -492,7 +492,7 @@ export default function DashboardScreen() {
     return { rangeStart: start, rangeEnd: todayString };
   }, [viewMode, calendarMonth, period, group?.created_at, todayString]);
 
-  const { days, members, checkinsByDate, reactionsByCheckinId, isLoading, refresh, react, removeReaction } =
+  const { days, members, checkinsByDate, reactionsByCheckinId, isRefreshing, refresh, react, removeReaction } =
     useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd);
   const { membersBadges } = useGroupBadges(group?.id ?? null);
   const levelByUserId = useMemo(
@@ -620,8 +620,8 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.container}
           data={visibleDays}
           keyExtractor={(item) => item.date}
-          onRefresh={refresh}
-          refreshing={isLoading}
+          onRefresh={() => refresh({ manual: true })}
+          refreshing={isRefreshing}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={<EmptyState title="Sin datos" description="No hay días para mostrar en este período." />}
           renderItem={({ item }) => (
@@ -649,8 +649,8 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.container}
           data={members}
           keyExtractor={(item) => item.user_id}
-          onRefresh={refresh}
-          refreshing={isLoading}
+          onRefresh={() => refresh({ manual: true })}
+          refreshing={isRefreshing}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={<EmptyState title="Sin datos" description="No hay integrantes para mostrar." />}
           renderItem={({ item }) => (
@@ -677,7 +677,9 @@ export default function DashboardScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={styles.container}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor={colors.primary} />}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => refresh({ manual: true })} tintColor={colors.primary} />
+          }
         >
           {listHeader}
           <CalendarGrid

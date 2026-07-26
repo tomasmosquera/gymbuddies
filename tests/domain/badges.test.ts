@@ -52,9 +52,9 @@ function badge(id: string) {
 }
 
 describe('badge catalog', () => {
-  it('has exactly 42 badges with unique ids', () => {
-    expect(BADGES.length).toBe(42);
-    expect(new Set(BADGES.map((b) => b.id)).size).toBe(42);
+  it('has exactly 47 badges with unique ids', () => {
+    expect(BADGES.length).toBe(47);
+    expect(new Set(BADGES.map((b) => b.id)).size).toBe(47);
   });
 });
 

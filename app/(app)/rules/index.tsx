@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +12,8 @@ import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
-import { colors, spacing, typography } from '@/constants/theme';
+import { getSignedUrl } from '@/lib/supabase/storage';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const EXCUSE_TYPE_LABELS: Record<string, string> = {
   travel: 'Viaje',
@@ -74,6 +75,17 @@ export default function RulesScreen() {
   } = usePhotoChallenges(group?.id ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
+  const [excuseProofUrl, setExcuseProofUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!excuseVoteRequest?.proof_path) {
+      setExcuseProofUrl(null);
+      return;
+    }
+    getSignedUrl('excuse-proofs', excuseVoteRequest.proof_path)
+      .then(setExcuseProofUrl)
+      .catch(() => setExcuseProofUrl(null));
+  }, [excuseVoteRequest?.proof_path]);
 
   // This tab stays mounted across switches — without refetching on focus,
   // a proposal/excuse/photo vote resolved or cast elsewhere would keep
@@ -249,6 +261,7 @@ export default function RulesScreen() {
             {excuseVoteRequest.requested_start_date} a {excuseVoteRequest.requested_end_date}
           </Text>
           {excuseVoteRequest.reason ? <Text style={styles.changeText}>{excuseVoteRequest.reason}</Text> : null}
+          {excuseProofUrl ? <Image source={{ uri: excuseProofUrl }} style={styles.excuseProof} /> : null}
           <Text style={styles.tally}>
             {excuseYesCount} a favor · {excuseNoCount} en contra · se necesitan {excuseVoteRequest.required_votes} votos
             a favor
@@ -317,9 +330,6 @@ export default function RulesScreen() {
 
       <View style={styles.actionButtons}>
         <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
-        {isAdmin ? (
-          <Button label="Revisar excusas" variant="secondary" onPress={() => router.push('/rules/excuse-admin')} />
-        ) : null}
       </View>
     </ScrollView>
     <CheckinPhotoModal
@@ -341,6 +351,7 @@ const styles = StyleSheet.create({
   proposalCard: { gap: spacing.sm },
   proposalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   changeText: { color: colors.text },
+  excuseProof: { width: '100%', height: 220, borderRadius: radii.md },
   timingText: { color: colors.warning, fontSize: 13, fontWeight: '600' },
   tally: { color: colors.textMuted, fontSize: 13 },
   myVote: { color: colors.primary, fontWeight: '600' },

@@ -38,11 +38,14 @@ export const XP_BY_BADGE_ID: Record<string, number> = {
 
   // Check-ins
   'say-cheese': 20,
+  'donde-estas': 25,
   'ubicacion-verificada': 50,
   'madrugador-novato': 50,
   'madrugador-experto': 100,
   'buho-novato': 50,
   'buho-experto': 100,
+  'pequeno-coleccionista': 25,
+  'buen-coleccionista': 50,
   coleccionista: 100,
   'los-365': 300,
   maratonista: 100,
@@ -58,6 +61,8 @@ export const XP_BY_BADGE_ID: Record<string, number> = {
 
   // Social
   motivador: 20,
+  'gran-motivador': 35,
+  'se-le-quiere': 30,
   'el-mas-querido': 100,
   'fan-numero-uno': 50,
   'alma-del-grupo': 300,

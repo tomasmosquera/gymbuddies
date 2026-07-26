@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@/lib/domain/attendance": "../../../src/lib/domain/attendance.ts",
+    "@/lib/domain/badges": "../../../src/lib/domain/badges.ts"
+  }
+}

@@ -17,9 +17,9 @@ function days(spec: [string, MonthlyDayRecord['status']][]): MonthlyDayRecord[] 
 }
 
 describe('monthly challenge catalog', () => {
-  it('has exactly 17 challenges with unique ids', () => {
-    expect(MONTHLY_CHALLENGES.length).toBe(17);
-    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(17);
+  it('has exactly 23 challenges with unique ids', () => {
+    expect(MONTHLY_CHALLENGES.length).toBe(23);
+    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(23);
   });
 });
 
@@ -185,6 +185,7 @@ function baseContext(overrides: Partial<MonthlyMemberContext> = {}): MonthlyMemb
     monthHasFixedHoliday: false,
     completedOnHoliday: false,
     allWeekendsCompleted: null,
+    anyWeekendCompleted: null,
     reactionsGivenCount: 0,
     rank: null,
     previousMonthRank: null,

@@ -22,7 +22,7 @@ export type ExcuseType = 'travel' | 'medical' | 'other';
 export type ExcuseRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export type AttendanceOverrideStatus = 'valid' | 'failed';
 
-export type NotificationCategory = 'group_activity' | 'money' | 'votes' | 'reminders' | 'admin_actions';
+export type NotificationCategory = 'group_activity' | 'money' | 'votes' | 'reminders' | 'admin_actions' | 'achievements';
 
 export type NotificationPreferences = Record<NotificationCategory, boolean>;
 
@@ -31,7 +31,18 @@ export type Profile = {
   full_name: string;
   phone: string | null;
   avatar_url: string | null;
-  notification_preferences: NotificationPreferences;
+  last_notifications_seen_at: string | null;
+  created_at: string;
+};
+
+export type AppNotification = {
+  id: string;
+  user_id: string;
+  group_id: string;
+  title: string;
+  body: string;
+  category: NotificationCategory | null;
+  data: Record<string, unknown>;
   created_at: string;
 };
 
@@ -65,6 +76,7 @@ export type GroupMember = {
   activated_at: string | null;
   leave_requested_at: string | null;
   leave_effective_at: string | null;
+  notification_preferences: NotificationPreferences;
 };
 
 export type Checkin = {
@@ -249,8 +261,10 @@ export type Database = {
       profiles: {
         Row: Profile;
         Insert: never;
-        Update: Partial<Pick<Profile, 'full_name' | 'phone' | 'avatar_url' | 'notification_preferences'>>;
+        Update: Partial<Pick<Profile, 'full_name' | 'phone' | 'avatar_url'>>;
       } & NoRelationships;
+      // Written only by send_push_notification (service definer) — the app only ever reads its own rows.
+      notifications: { Row: AppNotification; Insert: never; Update: never } & NoRelationships;
       groups: {
         Row: Group;
         Insert: never;
@@ -361,6 +375,11 @@ export type Database = {
         Returns: WalletTransaction;
       };
       delete_own_account: { Args: Record<string, never>; Returns: void };
+      mark_notifications_seen: { Args: Record<string, never>; Returns: void };
+      set_group_notification_preferences: {
+        Args: { p_group_id: string; p_preferences: NotificationPreferences };
+        Returns: GroupMember;
+      };
       submit_workout_checkout: {
         Args: {
           p_checkin_id: string;

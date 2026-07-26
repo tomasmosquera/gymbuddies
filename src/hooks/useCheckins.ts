@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
 import type { Checkin } from '@/lib/supabase/types';
@@ -12,14 +12,19 @@ export function useCheckins(groupId: string | null, userId: string | null, refer
   const [weekCheckins, setWeekCheckins] = useState<Checkin[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { weekStart, weekEnd } = getWeekBounds(referenceDate);
+  // Only the first load (or an actual change of group/user/week) should
+  // block the whole screen — a useFocusEffect-triggered refresh shouldn't.
+  const loadedKeyRef = useRef<string | null>(null);
+  const key = groupId && userId ? `${groupId}:${userId}:${weekStart}:${weekEnd}` : null;
 
   const refresh = useCallback(async () => {
     if (!groupId || !userId) {
       setWeekCheckins([]);
       setIsLoading(false);
+      loadedKeyRef.current = null;
       return;
     }
-    setIsLoading(true);
+    if (loadedKeyRef.current !== key) setIsLoading(true);
     const { data, error } = await supabase
       .from('checkins')
       .select('*')
@@ -31,7 +36,8 @@ export function useCheckins(groupId: string | null, userId: string | null, refer
 
     if (!error && data) setWeekCheckins(data);
     setIsLoading(false);
-  }, [groupId, userId, weekStart, weekEnd]);
+    loadedKeyRef.current = key;
+  }, [groupId, userId, weekStart, weekEnd, key]);
 
   useEffect(() => {
     refresh();

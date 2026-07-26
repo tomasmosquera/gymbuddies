@@ -3,6 +3,7 @@ import {
   enumerateMonths,
   formatBogotaDateTime,
   getWeekBounds,
+  getWeekBoundsForDateString,
   isWithinClockDriftTolerance,
   nextMondayAfter,
   previousWeekBounds,
@@ -108,6 +109,20 @@ describe('getWeekBounds', () => {
       weekStart: '2026-07-13',
       weekEnd: '2026-07-19',
     });
+  });
+});
+
+describe('getWeekBoundsForDateString', () => {
+  it('matches getWeekBounds for a mid-week date', () => {
+    expect(getWeekBoundsForDateString('2026-07-17')).toEqual({ weekStart: '2026-07-13', weekEnd: '2026-07-19' });
+  });
+
+  // Regression: `new Date(`${date}T00:00:00Z`)` is midnight UTC, which
+  // getWeekBounds's -5h Bogota shift reinterprets as the *previous* Bogota
+  // day — silently landing a Monday in the week before. This is exactly why
+  // getWeekBoundsForDateString exists instead of that pattern.
+  it('does not shift a Monday date string back into the previous week', () => {
+    expect(getWeekBoundsForDateString('2026-07-20')).toEqual({ weekStart: '2026-07-20', weekEnd: '2026-07-26' });
   });
 });
 

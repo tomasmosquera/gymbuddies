@@ -30,6 +30,8 @@ export interface MonthlyMemberContext {
   completedOnHoliday: boolean;
   /** null when the member has no tracked weekend (a Saturday AND its Sunday) within the month. */
   allWeekendsCompleted: boolean | null;
+  /** true if at least one Saturday or Sunday this month was completed; null if no tracked weekend day at all. */
+  anyWeekendCompleted: boolean | null;
   reactionsGivenCount: number;
   /** This member's rank in the group this month by consistency percent (never balance/money); null if they had no decided day that month. */
   rank: number | null;
@@ -60,6 +62,15 @@ export interface MonthlyChallengeDefinition {
   emoji: string;
   description: string;
   xpPerOccurrence: number;
+  /**
+   * true for challenges that, once satisfied, can never become unsatisfied
+   * again within the same month (a counter that only grows — check-in
+   * counts, minutes accumulated, reactions given, weekly-MVP tallies). These
+   * are credited (XP + notification) the moment they're met, without waiting
+   * for the month to close — unlike comparative/rank-based or "every week"
+   * challenges, which could still flip later in the month and must wait.
+   */
+  monotonic?: boolean;
   /** null = not applicable that month (doesn't count for or against). */
   evaluate: (ctx: MonthlyMemberContext) => boolean | null;
 }
@@ -105,6 +116,21 @@ export function allWeekendsCompleted(daysInMonth: readonly MonthlyDayRecord[]): 
     const sunday = addDaysToDateString(saturday, 1);
     return statusByDate.get(saturday) === 'completed' && statusByDate.get(sunday) === 'completed';
   });
+}
+
+/**
+ * true if at least one Saturday or Sunday in the month was completed; null
+ * if the member has no tracked weekend day at all that month. Monotonic —
+ * unlike allWeekendsCompleted (which needs every weekend, so a later one can
+ * still fail it), a single qualifying weekend day can never be un-done.
+ */
+export function anyWeekendCompleted(daysInMonth: readonly MonthlyDayRecord[]): boolean | null {
+  const weekendDays = daysInMonth.filter((d) => {
+    const wd = weekdayOf(d.date);
+    return wd === 0 || wd === 6;
+  });
+  if (weekendDays.length === 0) return null;
+  return weekendDays.some((d) => d.status === 'completed');
 }
 
 export interface MonthTally {
@@ -189,6 +215,33 @@ export function tallyMvpWeeksByMonth(mvpsByWeek: ReadonlyMap<string, string[]>):
 
 export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
   {
+    id: 'empezamos-bien',
+    name: 'Empezamos Bien',
+    emoji: '🌱',
+    description: 'Hacer 1 check-in en el mes.',
+    xpPerOccurrence: 10,
+    monotonic: true,
+    evaluate: (ctx) => ctx.completedCount >= 1,
+  },
+  {
+    id: 'por-buen-camino',
+    name: 'Por Buen Camino',
+    emoji: '🚶',
+    description: 'Hacer 5 check-ins en el mes.',
+    xpPerOccurrence: 20,
+    monotonic: true,
+    evaluate: (ctx) => ctx.completedCount >= 5,
+  },
+  {
+    id: 'ya-casi-mi-rey',
+    name: 'Ya Casi mi Rey',
+    emoji: '🏃',
+    description: 'Hacer 15 check-ins en el mes.',
+    xpPerOccurrence: 45,
+    monotonic: true,
+    evaluate: (ctx) => ctx.completedCount >= 15,
+  },
+  {
     id: 'mes-perfecto-mensual',
     name: 'Mes Perfecto',
     emoji: '📆',
@@ -210,7 +263,17 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     emoji: '🎉',
     description: 'Entrenar en al menos un día festivo del mes (si el mes tiene alguno).',
     xpPerOccurrence: 15,
+    monotonic: true,
     evaluate: (ctx) => (ctx.monthHasFixedHoliday ? ctx.completedOnHoliday : null),
+  },
+  {
+    id: 'cuarto-contacto',
+    name: 'Cuarto Contacto',
+    emoji: '🏕️',
+    description: 'Haber entrenado mínimo 1 sábado o domingo del mes.',
+    xpPerOccurrence: 15,
+    monotonic: true,
+    evaluate: (ctx) => ctx.anyWeekendCompleted,
   },
   {
     id: 'finde-completo',
@@ -266,6 +329,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     emoji: '⭐',
     description: 'Ganar el MVP semanal al menos una vez en el mes.',
     xpPerOccurrence: 40,
+    monotonic: true,
     evaluate: (ctx) => ctx.mvpWeeksThisMonth >= 1,
   },
   {
@@ -274,7 +338,17 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     emoji: '🌟',
     description: 'Ganar el MVP semanal 2 o más veces en el mismo mes.',
     xpPerOccurrence: 80,
+    monotonic: true,
     evaluate: (ctx) => ctx.mvpWeeksThisMonth >= 2,
+  },
+  {
+    id: 'motivando-ando',
+    name: 'Motivando Ando',
+    emoji: '📯',
+    description: 'Reaccionar a check-ins de compañeros al menos 5 veces en el mes.',
+    xpPerOccurrence: 10,
+    monotonic: true,
+    evaluate: (ctx) => ctx.reactionsGivenCount >= 5,
   },
   {
     id: 'motivador-del-mes',
@@ -282,6 +356,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     emoji: '📣',
     description: 'Reaccionar a check-ins de compañeros al menos 15 veces en el mes.',
     xpPerOccurrence: 20,
+    monotonic: true,
     evaluate: (ctx) => ctx.reactionsGivenCount >= 15,
   },
   {
@@ -301,11 +376,21 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     evaluate: (ctx) => (ctx.rank !== null && ctx.previousMonthRank !== null ? ctx.rank < ctx.previousMonthRank : null),
   },
   {
+    id: 'mes-de-cobre',
+    name: 'Mes de Cobre',
+    emoji: '🟤',
+    description: 'Acumular al menos 200 minutos de entreno en el mes.',
+    xpPerOccurrence: 25,
+    monotonic: true,
+    evaluate: (ctx) => (ctx.groupRequiresCheckoutPhoto ? ctx.totalWorkoutMinutesInMonth >= 200 : null),
+  },
+  {
     id: 'mes-de-hierro',
     name: 'Mes de Hierro',
     emoji: '🔩',
     description: 'Acumular al menos 600 minutos de entreno en el mes.',
     xpPerOccurrence: 60,
+    monotonic: true,
     evaluate: (ctx) => (ctx.groupRequiresCheckoutPhoto ? ctx.totalWorkoutMinutesInMonth >= 600 : null),
   },
   {

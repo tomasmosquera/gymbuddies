@@ -2,13 +2,11 @@ import { useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/state/authStore';
 import { registerForPushNotificationsAsync, unregisterCurrentDeviceToken } from '@/lib/notifications/pushToken';
-import { setRemindersEnabledCache } from '@/lib/notifications/reminderPreference';
 import type { Profile } from '@/lib/supabase/types';
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
   if (error) return null;
-  if (data) await setRemindersEnabledCache(data.notification_preferences.reminders);
   return data;
 }
 
