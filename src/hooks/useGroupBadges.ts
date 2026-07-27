@@ -42,9 +42,10 @@ export function useGroupBadges(groupId: string | null) {
     new Map()
   );
   const [initialDepositUsers, setInitialDepositUsers] = useState<Set<string>>(new Set());
-  const [reactionsGivenDatesByUser, setReactionsGivenDatesByUser] = useState<Map<string, string[]>>(new Map());
-  const [reactionsGivenByRecipientByUser, setReactionsGivenByRecipientByUser] = useState<Map<string, Record<string, number>>>(new Map());
-  const [reactionsReceivedByUser, setReactionsReceivedByUser] = useState<Map<string, number>>(new Map());
+  // Raw rows (not pre-aggregated) so each member's own activation date can
+  // filter out practice/pre-membership reactions before tallying — see the
+  // membersBadges useMemo below, which does the actual give/receive counting.
+  const [rawReactions, setRawReactions] = useState<{ giverId: string; recipientId: string; date: string }[]>([]);
   const [ruleProposalsWonByUser, setRuleProposalsWonByUser] = useState<Map<string, number>>(new Map());
   const [extrasLoading, setExtrasLoading] = useState(true);
 
@@ -53,9 +54,7 @@ export function useGroupBadges(groupId: string | null) {
       setCheckinsByUser(new Map());
       setWeeklyPenaltiesByUser(new Map());
       setInitialDepositUsers(new Set());
-      setReactionsGivenDatesByUser(new Map());
-      setReactionsGivenByRecipientByUser(new Map());
-      setReactionsReceivedByUser(new Map());
+      setRawReactions([]);
       setRuleProposalsWonByUser(new Map());
       setExtrasLoading(false);
       return;
@@ -114,24 +113,11 @@ export function useGroupBadges(groupId: string | null) {
       created_at: string;
       checkin: { user_id: string } | null;
     }[];
-    const nextReactionDates = new Map<string, string[]>();
-    const nextReactionsByRecipient = new Map<string, Record<string, number>>();
-    const nextReactionsReceived = new Map<string, number>();
-    for (const r of reactions) {
-      if (!nextReactionDates.has(r.user_id)) nextReactionDates.set(r.user_id, []);
-      nextReactionDates.get(r.user_id)!.push(toBogotaDateString(new Date(r.created_at)));
-
-      if (r.checkin) {
-        if (!nextReactionsByRecipient.has(r.user_id)) nextReactionsByRecipient.set(r.user_id, {});
-        const byRecipient = nextReactionsByRecipient.get(r.user_id)!;
-        byRecipient[r.checkin.user_id] = (byRecipient[r.checkin.user_id] ?? 0) + 1;
-
-        nextReactionsReceived.set(r.checkin.user_id, (nextReactionsReceived.get(r.checkin.user_id) ?? 0) + 1);
-      }
-    }
-    setReactionsGivenDatesByUser(nextReactionDates);
-    setReactionsGivenByRecipientByUser(nextReactionsByRecipient);
-    setReactionsReceivedByUser(nextReactionsReceived);
+    setRawReactions(
+      reactions
+        .filter((r) => r.checkin)
+        .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toBogotaDateString(new Date(r.created_at)) }))
+    );
 
     const nextProposalsWon = new Map<string, number>();
     for (const p of proposalsRes.data ?? []) {
@@ -158,17 +144,39 @@ export function useGroupBadges(groupId: string | null) {
   const membersBadges = useMemo<MemberBadges[]>(() => {
     const todayString = toBogotaDateString(new Date());
     return records.map((m) => {
+      // A check-in/penalty/reaction from before this member's own activation
+      // date isn't theirs to count — they weren't an accountable member of
+      // the group yet (e.g. an admin backdated their join date to reset
+      // practice-period history). m.days already applies this rule; the
+      // extras fetched independently above need it applied here too.
+      const activatedDate = m.activatedDate;
+      const checkins = (checkinsByUser.get(m.userId) ?? []).filter((c) => !activatedDate || c.date >= activatedDate);
+      const weeklyPenalties = (weeklyPenaltiesByUser.get(m.userId) ?? []).filter(
+        (w) => !activatedDate || w.weekStartDate >= activatedDate
+      );
+      const reactionsGivenDates = rawReactions
+        .filter((r) => r.giverId === m.userId && (!activatedDate || r.date >= activatedDate))
+        .map((r) => r.date);
+      const reactionsGivenByRecipient: Record<string, number> = {};
+      for (const r of rawReactions) {
+        if (r.giverId !== m.userId || (activatedDate && r.date < activatedDate)) continue;
+        reactionsGivenByRecipient[r.recipientId] = (reactionsGivenByRecipient[r.recipientId] ?? 0) + 1;
+      }
+      const reactionsReceivedCount = rawReactions.filter(
+        (r) => r.recipientId === m.userId && (!activatedDate || r.date >= activatedDate)
+      ).length;
+
       const ctx: BadgeContext = {
         todayString,
         groupCreatedDate: groupCreatedDate ?? todayString,
         joinedDate: toBogotaDateString(new Date(m.joinedAt)),
         days: m.days,
-        checkins: checkinsByUser.get(m.userId) ?? [],
-        weeklyPenalties: weeklyPenaltiesByUser.get(m.userId) ?? [],
+        checkins,
+        weeklyPenalties,
         hasInitialDeposit: initialDepositUsers.has(m.userId),
-        reactionsGivenDates: reactionsGivenDatesByUser.get(m.userId) ?? [],
-        reactionsGivenByRecipient: reactionsGivenByRecipientByUser.get(m.userId) ?? {},
-        reactionsReceivedCount: reactionsReceivedByUser.get(m.userId) ?? 0,
+        reactionsGivenDates,
+        reactionsGivenByRecipient,
+        reactionsReceivedCount,
         ruleProposalsWonCount: ruleProposalsWonByUser.get(m.userId) ?? 0,
       };
       const statuses: Record<string, BadgeStatus> = {};
@@ -195,9 +203,7 @@ export function useGroupBadges(groupId: string | null) {
     checkinsByUser,
     weeklyPenaltiesByUser,
     initialDepositUsers,
-    reactionsGivenDatesByUser,
-    reactionsGivenByRecipientByUser,
-    reactionsReceivedByUser,
+    rawReactions,
     ruleProposalsWonByUser,
     monthlyByUserId,
   ]);

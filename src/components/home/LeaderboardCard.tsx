@@ -15,6 +15,13 @@ interface LeaderboardCardProps {
   levelByUserId?: Record<string, number>;
   /** Shows a small inline spinner next to the title instead of ever unmounting the list. */
   isRefreshing?: boolean;
+  /**
+   * Set when Home's own week navigation (separate from this card's own
+   * Semana/Mes/Acumulado tabs) is looking at a past week — rowsByPeriod.week
+   * already reflects that week's data; this just labels it so "Semana"
+   * doesn't silently look like it means "this week" when it doesn't.
+   */
+  viewedWeekLabel?: string | null;
 }
 
 const PERIOD_OPTIONS: { key: LeaderboardPeriod; label: string }[] = [
@@ -42,6 +49,7 @@ export function LeaderboardCard({
   currency,
   levelByUserId,
   isRefreshing,
+  viewedWeekLabel,
 }: LeaderboardCardProps) {
   const [period, setPeriod] = useState<LeaderboardPeriod>('week');
   const rows = rowsByPeriod[period];
@@ -52,6 +60,7 @@ export function LeaderboardCard({
         <Text style={styles.title}>Ranking del grupo</Text>
         {isRefreshing ? <ActivityIndicator size="small" color={colors.primary} /> : null}
       </View>
+      {period === 'week' && viewedWeekLabel ? <Text style={styles.viewedWeekLabel}>Semana del {viewedWeekLabel}</Text> : null}
 
       {lastClosedWeek ? (
         <View style={styles.lastWeekBanner}>
@@ -120,6 +129,7 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { ...typography.heading, color: colors.text },
+  viewedWeekLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   lastWeekBanner: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: radii.md,

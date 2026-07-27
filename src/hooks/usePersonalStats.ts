@@ -95,11 +95,14 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
   const { membersChallenges, isLoading: challengesLoading, refresh: refreshChallenges } = useGroupMonthlyChallenges(groupId);
 
   const [checkinsByUser, setCheckinsByUser] = useState<Map<string, BadgeCheckinFact[]>>(new Map());
-  const [penaltiesByUser, setPenaltiesByUser] = useState<Map<string, number>>(new Map());
-  const [reactionsGivenByUser, setReactionsGivenByUser] = useState<Map<string, number>>(new Map());
-  const [reactionsReceivedByUser, setReactionsReceivedByUser] = useState<Map<string, number>>(new Map());
-  const [reactionsGivenByRecipient, setReactionsGivenByRecipient] = useState<Map<string, Map<string, number>>>(new Map());
-  const [reactionsReceivedByGiver, setReactionsReceivedByGiver] = useState<Map<string, Map<string, number>>>(new Map());
+  const [penaltiesByUser, setPenaltiesByUser] = useState<Map<string, { weekStartDate: string; penaltyCharged: number }[]>>(
+    new Map()
+  );
+  // Raw (not pre-aggregated) so each member's own activation date can filter
+  // out practice/pre-membership reactions before tallying below.
+  const [rawReactions, setRawReactions] = useState<{ giverId: string; giverName: string; recipientId: string; date: string }[]>(
+    []
+  );
   const [groupInfo, setGroupInfo] = useState<{ currency: string; requireCheckoutPhoto: boolean } | null>(null);
   const [extrasLoading, setExtrasLoading] = useState(true);
 
@@ -107,10 +110,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     if (!groupId) {
       setCheckinsByUser(new Map());
       setPenaltiesByUser(new Map());
-      setReactionsGivenByUser(new Map());
-      setReactionsReceivedByUser(new Map());
-      setReactionsGivenByRecipient(new Map());
-      setReactionsReceivedByGiver(new Map());
+      setRawReactions([]);
       setGroupInfo(null);
       setExtrasLoading(false);
       return;
@@ -124,7 +124,10 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
         .select('user_id, checkin_date, captured_at, workout_minutes')
         .eq('group_id', groupId)
         .lte('checkin_date', todayString),
-      supabase.from('weekly_evaluation_results').select('user_id, penalty_charged').eq('group_id', groupId),
+      supabase
+        .from('weekly_evaluation_results')
+        .select('user_id, penalty_charged, run:weekly_evaluation_runs(week_start_date)')
+        .eq('group_id', groupId),
       supabase
         .from('checkin_reactions')
         .select('user_id, created_at, checkin:checkins(user_id), profile:profiles!user_id(full_name)')
@@ -148,9 +151,16 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     }
     setCheckinsByUser(nextCheckins);
 
-    const nextPenalties = new Map<string, number>();
-    for (const r of (resultsRes.data ?? []) as { user_id: string; penalty_charged: number }[]) {
-      nextPenalties.set(r.user_id, (nextPenalties.get(r.user_id) ?? 0) + r.penalty_charged);
+    const results = (resultsRes.data ?? []) as unknown as {
+      user_id: string;
+      penalty_charged: number;
+      run: { week_start_date: string } | null;
+    }[];
+    const nextPenalties = new Map<string, { weekStartDate: string; penaltyCharged: number }[]>();
+    for (const r of results) {
+      if (!r.run) continue;
+      if (!nextPenalties.has(r.user_id)) nextPenalties.set(r.user_id, []);
+      nextPenalties.get(r.user_id)!.push({ weekStartDate: r.run.week_start_date, penaltyCharged: r.penalty_charged });
     }
     setPenaltiesByUser(nextPenalties);
 
@@ -160,29 +170,16 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       checkin: { user_id: string } | null;
       profile: { full_name: string } | null;
     }[];
-    const nextGivenTotal = new Map<string, number>();
-    const nextReceivedTotal = new Map<string, number>();
-    const nextGivenByRecipient = new Map<string, Map<string, number>>();
-    const nextReceivedByGiver = new Map<string, Map<string, number>>();
-    for (const r of reactions) {
-      nextGivenTotal.set(r.user_id, (nextGivenTotal.get(r.user_id) ?? 0) + 1);
-      if (!r.checkin) continue;
-      const recipientId = r.checkin.user_id;
-      nextReceivedTotal.set(recipientId, (nextReceivedTotal.get(recipientId) ?? 0) + 1);
-
-      if (!nextGivenByRecipient.has(r.user_id)) nextGivenByRecipient.set(r.user_id, new Map());
-      const givenMap = nextGivenByRecipient.get(r.user_id)!;
-      givenMap.set(recipientId, (givenMap.get(recipientId) ?? 0) + 1);
-
-      if (!nextReceivedByGiver.has(recipientId)) nextReceivedByGiver.set(recipientId, new Map());
-      const receivedMap = nextReceivedByGiver.get(recipientId)!;
-      const giverName = r.profile?.full_name ?? 'Miembro';
-      receivedMap.set(giverName, (receivedMap.get(giverName) ?? 0) + 1);
-    }
-    setReactionsGivenByUser(nextGivenTotal);
-    setReactionsReceivedByUser(nextReceivedTotal);
-    setReactionsGivenByRecipient(nextGivenByRecipient);
-    setReactionsReceivedByGiver(nextReceivedByGiver);
+    setRawReactions(
+      reactions
+        .filter((r) => r.checkin)
+        .map((r) => ({
+          giverId: r.user_id,
+          giverName: r.profile?.full_name ?? 'Miembro',
+          recipientId: r.checkin!.user_id,
+          date: toBogotaDateString(new Date(r.created_at)),
+        }))
+    );
 
     setGroupInfo(
       groupRes.data ? { currency: groupRes.data.currency, requireCheckoutPhoto: groupRes.data.require_checkout_photo } : null
@@ -206,7 +203,12 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
 
     const todayString = toBogotaDateString(new Date());
     const others = records.filter((m) => m.userId !== userId);
-    const myCheckins = checkinsByUser.get(userId) ?? [];
+    // A check-in/reaction/penalty from before a member's own activation date
+    // isn't theirs to count — m.days already applies this rule; the extras
+    // fetched independently above (checkins, reactions, penalties) need it
+    // applied here too.
+    const isOwnedByMember = (m: (typeof records)[number], date: string) => !m.activatedDate || date >= m.activatedDate;
+    const myCheckins = (checkinsByUser.get(userId) ?? []).filter((c) => isOwnedByMember(me, c.date));
 
     // --- 1, 3: monthly consistency, mine and the group's ---
     // The trend chart includes the current, still-forming month/week as its
@@ -282,7 +284,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     const groupAverageWorkoutMinutes = groupInfo.requireCheckoutPhoto
       ? (() => {
           const durations = others
-            .flatMap((m) => checkinsByUser.get(m.userId) ?? [])
+            .flatMap((m) => (checkinsByUser.get(m.userId) ?? []).filter((c) => isOwnedByMember(m, c.date)))
             .filter((c) => c.workoutMinutes !== null)
             .map((c) => c.workoutMinutes!);
           return durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
@@ -308,20 +310,28 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     );
 
     // --- 15: financial, informational only ---
-    const myTotalPenalties = penaltiesByUser.get(userId) ?? 0;
+    const totalPenaltiesFor = (m: (typeof records)[number]) =>
+      (penaltiesByUser.get(m.userId) ?? [])
+        .filter((p) => isOwnedByMember(m, p.weekStartDate))
+        .reduce((sum, p) => sum + p.penaltyCharged, 0);
+    const myTotalPenalties = totalPenaltiesFor(me);
     const groupAverageTotalPenalties =
-      others.length > 0 ? others.reduce((sum, m) => sum + (penaltiesByUser.get(m.userId) ?? 0), 0) / others.length : 0;
+      others.length > 0 ? others.reduce((sum, m) => sum + totalPenaltiesFor(m), 0) / others.length : 0;
 
     // --- 16: social ---
-    const givenByRecipient = reactionsGivenByRecipient.get(userId) ?? new Map<string, number>();
+    const myGivenReactions = rawReactions.filter((r) => r.giverId === userId && isOwnedByMember(me, r.date));
+    const myReceivedReactions = rawReactions.filter((r) => r.recipientId === userId && isOwnedByMember(me, r.date));
     let mostReactedToByMe: NamedCount | null = null;
+    const givenByRecipient = new Map<string, number>();
+    for (const r of myGivenReactions) givenByRecipient.set(r.recipientId, (givenByRecipient.get(r.recipientId) ?? 0) + 1);
     for (const [recipientId, count] of givenByRecipient) {
       if (!mostReactedToByMe || count > mostReactedToByMe.count) {
         mostReactedToByMe = { fullName: records.find((m) => m.userId === recipientId)?.fullName ?? 'Miembro', count };
       }
     }
-    const receivedByGiver = reactionsReceivedByGiver.get(userId) ?? new Map<string, number>();
     let mostReactedToMe: NamedCount | null = null;
+    const receivedByGiver = new Map<string, number>();
+    for (const r of myReceivedReactions) receivedByGiver.set(r.giverName, (receivedByGiver.get(r.giverName) ?? 0) + 1);
     for (const [fullName, count] of receivedByGiver) {
       if (!mostReactedToMe || count > mostReactedToMe.count) mostReactedToMe = { fullName, count };
     }
@@ -353,23 +363,12 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       bestMonth,
       myTotalPenalties,
       groupAverageTotalPenalties,
-      reactionsGivenTotal: reactionsGivenByUser.get(userId) ?? 0,
-      reactionsReceivedTotal: reactionsReceivedByUser.get(userId) ?? 0,
+      reactionsGivenTotal: myGivenReactions.length,
+      reactionsReceivedTotal: myReceivedReactions.length,
       mostReactedToByMe,
       mostReactedToMe,
     };
-  }, [
-    records,
-    membersChallenges,
-    checkinsByUser,
-    penaltiesByUser,
-    reactionsGivenByUser,
-    reactionsReceivedByUser,
-    reactionsGivenByRecipient,
-    reactionsReceivedByGiver,
-    groupInfo,
-    userId,
-  ]);
+  }, [records, membersChallenges, checkinsByUser, penaltiesByUser, rawReactions, groupInfo, userId]);
 
   return { stats, isLoading: recordsLoading || challengesLoading || extrasLoading, refresh };
 }

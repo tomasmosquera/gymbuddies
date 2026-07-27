@@ -46,8 +46,9 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
     refresh: refreshRecords,
   } = useGroupAttendanceRecords(groupId);
   const [closedWeeksByUser, setClosedWeeksByUser] = useState<Map<string, ClosedWeekFacts[]>>(new Map());
-  const [reactionsGivenByUserMonth, setReactionsGivenByUserMonth] = useState<Map<string, Map<string, number>>>(new Map());
-  const [reactionsReceivedByUserMonth, setReactionsReceivedByUserMonth] = useState<Map<string, Map<string, number>>>(new Map());
+  // Raw (not pre-aggregated) so each member's own activation date can filter
+  // out practice/pre-membership reactions before tallying by month below.
+  const [rawReactions, setRawReactions] = useState<{ giverId: string; recipientId: string; date: string }[]>([]);
   const [workoutMinutesByUser, setWorkoutMinutesByUser] = useState<Map<string, { date: string; minutes: number }[]>>(new Map());
   const [useDurationTiebreak, setUseDurationTiebreak] = useState(false);
   const [extrasLoading, setExtrasLoading] = useState(true);
@@ -55,8 +56,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
   const refreshExtras = useCallback(async () => {
     if (!groupId) {
       setClosedWeeksByUser(new Map());
-      setReactionsGivenByUserMonth(new Map());
-      setReactionsReceivedByUserMonth(new Map());
+      setRawReactions([]);
       setWorkoutMinutesByUser(new Map());
       setUseDurationTiebreak(false);
       setExtrasLoading(false);
@@ -110,22 +110,11 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       created_at: string;
       checkin: { user_id: string } | null;
     }[];
-    const nextGiven = new Map<string, Map<string, number>>();
-    const nextReceived = new Map<string, Map<string, number>>();
-    for (const r of reactions) {
-      const month = toBogotaDateString(new Date(r.created_at)).slice(0, 7);
-      if (!nextGiven.has(r.user_id)) nextGiven.set(r.user_id, new Map());
-      const givenByMonth = nextGiven.get(r.user_id)!;
-      givenByMonth.set(month, (givenByMonth.get(month) ?? 0) + 1);
-
-      if (r.checkin) {
-        if (!nextReceived.has(r.checkin.user_id)) nextReceived.set(r.checkin.user_id, new Map());
-        const receivedByMonth = nextReceived.get(r.checkin.user_id)!;
-        receivedByMonth.set(month, (receivedByMonth.get(month) ?? 0) + 1);
-      }
-    }
-    setReactionsGivenByUserMonth(nextGiven);
-    setReactionsReceivedByUserMonth(nextReceived);
+    setRawReactions(
+      reactions
+        .filter((r) => r.checkin)
+        .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toBogotaDateString(new Date(r.created_at)) }))
+    );
 
     setExtrasLoading(false);
   }, [groupId]);
@@ -152,6 +141,12 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
     for (let cursor = firstWeekStart; cursor <= lastWeekStart; cursor = addDaysToDateString(cursor, 7)) {
       weekStarts.push(cursor);
     }
+    // A check-in/reaction/penalty from before this member's own activation
+    // date isn't theirs to count — m.days already applies this rule; the
+    // extras fetched independently above (duration, reactions, closed weeks)
+    // need it applied here too.
+    const isOwnedByMember = (m: (typeof records)[number], date: string) => !m.activatedDate || date >= m.activatedDate;
+
     const allWeekAttendance = weekStarts.flatMap((weekStart) => {
       const weekEnd = addDaysToDateString(weekStart, 6);
       return records
@@ -160,7 +155,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
           const completedCount = weekDays.filter((d) => d.status === 'completed').length;
           const failedCount = weekDays.filter((d) => d.status === 'failed').length;
           const totalWorkoutMinutes = (workoutMinutesByUser.get(m.userId) ?? [])
-            .filter((r) => r.date >= weekStart && r.date <= weekEnd)
+            .filter((r) => r.date >= weekStart && r.date <= weekEnd && isOwnedByMember(m, r.date))
             .reduce((sum, r) => sum + r.minutes, 0);
           return { userId: m.userId, weekStartDate: weekStart, completedCount, failedCount, totalWorkoutMinutes };
         })
@@ -178,7 +173,9 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       const durationsInMonthByUserId = new Map(
         records.map((m) => [
           m.userId,
-          (workoutMinutesByUser.get(m.userId) ?? []).filter((r) => r.date.slice(0, 7) === month).map((r) => r.minutes),
+          (workoutMinutesByUser.get(m.userId) ?? [])
+            .filter((r) => r.date.slice(0, 7) === month && isOwnedByMember(m, r.date))
+            .map((r) => r.minutes),
         ])
       );
       const totalDurationInMonthByUserId = new Map(
@@ -196,10 +193,14 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
           totalWorkoutMinutes: totalDurationInMonthByUserId.get(m.userId) ?? 0,
         }));
       const rankByUserId = rankMembersByConsistency(rankable, useDurationTiebreak);
+      const reactionsReceivedInMonthByUserId = new Map(
+        records.map((m) => [
+          m.userId,
+          rawReactions.filter((r) => r.recipientId === m.userId && r.date.slice(0, 7) === month && isOwnedByMember(m, r.date)).length,
+        ])
+      );
       const mostReacted = new Set(
-        determineTopByCount(
-          records.map((m) => ({ userId: m.userId, count: reactionsReceivedByUserMonth.get(m.userId)?.get(month) ?? 0 }))
-        )
+        determineTopByCount(records.map((m) => ({ userId: m.userId, count: reactionsReceivedInMonthByUserId.get(m.userId) ?? 0 })))
       );
       const mostDuration = new Set(
         determineTopByCount(records.map((m) => ({ userId: m.userId, count: totalDurationInMonthByUserId.get(m.userId) ?? 0 })))
@@ -216,12 +217,16 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
           completedCount: completed,
           failedCount: failed,
           consistencyPercent: percent,
-          closedWeeksInMonth: (closedWeeksByUser.get(m.userId) ?? []).filter((w) => w.weekStartDate.slice(0, 7) === month),
+          closedWeeksInMonth: (closedWeeksByUser.get(m.userId) ?? []).filter(
+            (w) => w.weekStartDate.slice(0, 7) === month && isOwnedByMember(m, w.weekStartDate)
+          ),
           monthHasFixedHoliday: hasHoliday,
           completedOnHoliday: completedOnAnyHoliday(daysInMonth),
           allWeekendsCompleted: allWeekendsCompleted(daysInMonth),
           anyWeekendCompleted: anyWeekendCompleted(daysInMonth),
-          reactionsGivenCount: reactionsGivenByUserMonth.get(m.userId)?.get(month) ?? 0,
+          reactionsGivenCount: rawReactions.filter(
+            (r) => r.giverId === m.userId && r.date.slice(0, 7) === month && isOwnedByMember(m, r.date)
+          ).length,
           rank: rankByUserId.get(m.userId) ?? null,
           previousMonthRank: previousMonthRankByUserId.get(m.userId) ?? null,
           isMostReactedThisMonth: mostReacted.has(m.userId),
@@ -263,15 +268,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       }
       return { userId: m.userId, fullName: m.fullName, statusesById, totalXp };
     });
-  }, [
-    records,
-    groupCreatedDate,
-    closedWeeksByUser,
-    reactionsGivenByUserMonth,
-    reactionsReceivedByUserMonth,
-    workoutMinutesByUser,
-    useDurationTiebreak,
-  ]);
+  }, [records, groupCreatedDate, closedWeeksByUser, rawReactions, workoutMinutesByUser, useDurationTiebreak]);
 
   return { membersChallenges, isLoading: recordsLoading || extrasLoading, refresh };
 }

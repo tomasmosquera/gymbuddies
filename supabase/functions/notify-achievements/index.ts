@@ -129,12 +129,28 @@ async function processGroup(
 
   const groupCreatedDate = toBogotaDateString(new Date(group.created_at));
 
+  // A check-in/reaction/penalty from before a member's own activation date
+  // isn't theirs to count — they weren't an accountable member of the group
+  // yet (e.g. an admin backdated activation to reset practice-period
+  // history). The days-array construction below already applies this rule;
+  // every other per-user aggregate built here needs it applied too.
+  const activatedDateByUserId = new Map<string, string | null>();
+  for (const m of rawMembers) {
+    const activatedAt = m.activated_at ?? m.joined_at;
+    activatedDateByUserId.set(m.user_id, activatedAt ? toBogotaDateString(new Date(activatedAt)) : null);
+  }
+  const isOwned = (userId: string, date: string) => {
+    const activatedDate = activatedDateByUserId.get(userId);
+    return !activatedDate || date >= activatedDate;
+  };
+
   const checkinDatesByUser = new Map<string, Set<string>>();
   const checkinFactsByUser = new Map<string, BadgeCheckinFact[]>();
   const workoutMinutesByUser = new Map<string, { date: string; minutes: number }[]>();
   for (const c of (checkinsRes.data ?? []) as { user_id: string; checkin_date: string; captured_at: string; workout_minutes: number | null }[]) {
     if (!checkinDatesByUser.has(c.user_id)) checkinDatesByUser.set(c.user_id, new Set());
     checkinDatesByUser.get(c.user_id)!.add(c.checkin_date);
+    if (!isOwned(c.user_id, c.checkin_date)) continue;
     if (!checkinFactsByUser.has(c.user_id)) checkinFactsByUser.set(c.user_id, []);
     checkinFactsByUser.get(c.user_id)!.push({
       date: c.checkin_date,
@@ -169,7 +185,7 @@ async function processGroup(
   }[];
   const weeklyPenaltiesByUser = new Map<string, { weekStartDate: string; penaltyCharged: number }[]>();
   for (const r of weeklyResults) {
-    if (!r.run) continue;
+    if (!r.run || !isOwned(r.user_id, r.run.week_start_date)) continue;
     if (!weeklyPenaltiesByUser.has(r.user_id)) weeklyPenaltiesByUser.set(r.user_id, []);
     weeklyPenaltiesByUser.get(r.user_id)!.push({ weekStartDate: r.run.week_start_date, penaltyCharged: r.penalty_charged });
   }
@@ -185,16 +201,24 @@ async function processGroup(
     const dateStr = toBogotaDateString(new Date(r.created_at));
     const month = dateStr.slice(0, 7);
 
-    if (!reactionsGivenDatesByUser.has(r.user_id)) reactionsGivenDatesByUser.set(r.user_id, []);
-    reactionsGivenDatesByUser.get(r.user_id)!.push(dateStr);
-    if (!reactionsGivenByUserMonth.has(r.user_id)) reactionsGivenByUserMonth.set(r.user_id, new Map());
-    const givenMonthMap = reactionsGivenByUserMonth.get(r.user_id)!;
-    givenMonthMap.set(month, (givenMonthMap.get(month) ?? 0) + 1);
+    // "Given" tallies are the giver's own achievement — gated by the giver's
+    // activation. "Received" tallies are the recipient's — gated by theirs.
+    // The two dates can differ, so each side is checked independently.
+    if (isOwned(r.user_id, dateStr)) {
+      if (!reactionsGivenDatesByUser.has(r.user_id)) reactionsGivenDatesByUser.set(r.user_id, []);
+      reactionsGivenDatesByUser.get(r.user_id)!.push(dateStr);
+      if (!reactionsGivenByUserMonth.has(r.user_id)) reactionsGivenByUserMonth.set(r.user_id, new Map());
+      const givenMonthMap = reactionsGivenByUserMonth.get(r.user_id)!;
+      givenMonthMap.set(month, (givenMonthMap.get(month) ?? 0) + 1);
 
-    if (r.checkin) {
-      if (!reactionsGivenByRecipientByUser.has(r.user_id)) reactionsGivenByRecipientByUser.set(r.user_id, {});
-      const byRecipient = reactionsGivenByRecipientByUser.get(r.user_id)!;
-      byRecipient[r.checkin.user_id] = (byRecipient[r.checkin.user_id] ?? 0) + 1;
+      if (r.checkin) {
+        if (!reactionsGivenByRecipientByUser.has(r.user_id)) reactionsGivenByRecipientByUser.set(r.user_id, {});
+        const byRecipient = reactionsGivenByRecipientByUser.get(r.user_id)!;
+        byRecipient[r.checkin.user_id] = (byRecipient[r.checkin.user_id] ?? 0) + 1;
+      }
+    }
+
+    if (r.checkin && isOwned(r.checkin.user_id, dateStr)) {
       reactionsReceivedByUser.set(r.checkin.user_id, (reactionsReceivedByUser.get(r.checkin.user_id) ?? 0) + 1);
       if (!reactionsReceivedByUserMonth.has(r.checkin.user_id)) reactionsReceivedByUserMonth.set(r.checkin.user_id, new Map());
       const receivedMonthMap = reactionsReceivedByUserMonth.get(r.checkin.user_id)!;

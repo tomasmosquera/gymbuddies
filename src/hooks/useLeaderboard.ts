@@ -60,10 +60,15 @@ function daysRemainingInWeek(weekEnd: string, todayString: string): number {
  * for closed weeks, a live guaranteed-misses-only projection for the still-open
  * current week, converted to money via the group's penalty_amount/weekly_penalty_cap).
  */
-export function useLeaderboard(groupId: string | null) {
+export function useLeaderboard(groupId: string | null, referenceDate: Date = new Date()) {
   const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId);
   const [monthChargedAmountByUser, setMonthChargedAmountByUser] = useState<Record<string, number>>({});
   const [allChargedAmountByUser, setAllChargedAmountByUser] = useState<Record<string, number>>({});
+  // Per-week frozen amounts, for viewing a past week's already-decided
+  // charge instead of the current week's live guaranteed-misses projection.
+  const [weeklyChargedAmountByWeekStart, setWeeklyChargedAmountByWeekStart] = useState<Record<string, Record<string, number>>>(
+    {}
+  );
   const [workoutMinutesByUser, setWorkoutMinutesByUser] = useState<Map<string, { date: string; minutes: number }[]>>(new Map());
   const [groupRules, setGroupRules] = useState<GroupRankingRules | null>(null);
   const [lastClosedWeek, setLastClosedWeek] = useState<LastClosedWeekSummary | null>(null);
@@ -73,6 +78,7 @@ export function useLeaderboard(groupId: string | null) {
     if (!groupId) {
       setMonthChargedAmountByUser({});
       setAllChargedAmountByUser({});
+      setWeeklyChargedAmountByWeekStart({});
       setWorkoutMinutesByUser(new Map());
       setGroupRules(null);
       setLastClosedWeek(null);
@@ -106,11 +112,17 @@ export function useLeaderboard(groupId: string | null) {
 
     const monthChargedAmount: Record<string, number> = {};
     const allChargedAmount: Record<string, number> = {};
+    const weeklyChargedAmount: Record<string, Record<string, number>> = {};
     let lastRun: { week_start_date: string; week_end_date: string } | null = null;
     for (const r of results) {
       allChargedAmount[r.user_id] = (allChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
       if (r.run && r.run.week_start_date >= monthStart) {
         monthChargedAmount[r.user_id] = (monthChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
+      }
+      if (r.run) {
+        if (!weeklyChargedAmount[r.run.week_start_date]) weeklyChargedAmount[r.run.week_start_date] = {};
+        weeklyChargedAmount[r.run.week_start_date][r.user_id] =
+          (weeklyChargedAmount[r.run.week_start_date][r.user_id] ?? 0) + r.penalty_charged;
       }
       if (r.run && (!lastRun || r.run.week_end_date > lastRun.week_end_date)) {
         lastRun = r.run;
@@ -118,6 +130,7 @@ export function useLeaderboard(groupId: string | null) {
     }
     setMonthChargedAmountByUser(monthChargedAmount);
     setAllChargedAmountByUser(allChargedAmount);
+    setWeeklyChargedAmountByWeekStart(weeklyChargedAmount);
     setLastClosedWeek(
       lastRun
         ? {
@@ -172,8 +185,9 @@ export function useLeaderboard(groupId: string | null) {
   }, [lastClosedWeek, records]);
 
   const rowsByPeriod = useMemo(() => {
-    const { weekStart, weekEnd } = getWeekBounds(new Date());
+    const { weekStart, weekEnd } = getWeekBounds(referenceDate);
     const todayString = toBogotaDateString(new Date());
+    const isCurrentWeek = weekStart === getWeekBounds(new Date()).weekStart;
     const remainingDays = daysRemainingInWeek(weekEnd, todayString);
     const { monthStart } = currentMonthBounds();
     const useDurationTiebreak = groupRules?.requireCheckoutPhoto ?? false;
@@ -225,12 +239,26 @@ export function useLeaderboard(groupId: string | null) {
         .sort((a, b) => a.rank - b.rank || a.fullName.localeCompare(b.fullName));
     };
 
-    const week = buildRows(weekStart, weekEnd, liveChargedAmount);
+    // The still-open current week gets the live guaranteed-misses projection;
+    // any other (past) week already has a frozen, decided amount instead.
+    const weekChargedAmount = isCurrentWeek
+      ? liveChargedAmount
+      : (m: MemberAttendanceRecord) => weeklyChargedAmountByWeekStart[weekStart]?.[m.userId] ?? 0;
+
+    const week = buildRows(weekStart, weekEnd, weekChargedAmount);
     const month = buildRows(monthStart, todayString, (m) => (monthChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
     const all = buildRows('0001-01-01', todayString, (m) => (allChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
 
     return { week, month, all };
-  }, [records, monthChargedAmountByUser, allChargedAmountByUser, workoutMinutesByUser, groupRules]);
+  }, [
+    records,
+    monthChargedAmountByUser,
+    allChargedAmountByUser,
+    weeklyChargedAmountByWeekStart,
+    workoutMinutesByUser,
+    groupRules,
+    referenceDate,
+  ]);
 
   return { rowsByPeriod, lastClosedWeek: resolvedLastClosedWeek, isLoading: recordsLoading || resultsLoading, refresh };
 }

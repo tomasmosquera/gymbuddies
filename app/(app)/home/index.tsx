@@ -35,27 +35,49 @@ export default function HomeScreen() {
     return d;
   }, [weekOffset]);
 
-  const { weekCheckins, todayCheckin, isLoading: checkinsLoading, refresh: refreshCheckins } = useCheckins(
+  const { weekCheckins: rawWeekCheckins, todayCheckin, isLoading: checkinsLoading, refresh: refreshCheckins } = useCheckins(
     group?.id ?? null,
     session?.user.id ?? null,
     viewedDate
   );
-  const { weekExcusedDays, isLoading: excusedLoading } = useExcusedDays(
+  const { weekExcusedDays: rawWeekExcusedDays, isLoading: excusedLoading } = useExcusedDays(
     group?.id ?? null,
     session?.user.id ?? null,
     viewedDate
   );
-  const { weekOverrides, isLoading: overridesLoading, refresh: refreshOverrides } = useAttendanceOverrides(
+  const { weekOverrides: rawWeekOverrides, isLoading: overridesLoading, refresh: refreshOverrides } = useAttendanceOverrides(
     group?.id ?? null,
     session?.user.id ?? null,
     viewedDate
+  );
+  // These 3 hooks fetch raw rows with no awareness of the member's
+  // activation date — a check-in/override/excuse from before they were
+  // actually an accountable member (e.g. a backdated activation set by an
+  // admin) shouldn't count here either, same rule useGroupAttendanceRecords
+  // already applies everywhere else.
+  const activatedDateString = membership
+    ? toBogotaDateString(new Date(membership.activated_at ?? membership.joined_at))
+    : null;
+  const weekCheckins = useMemo(
+    () => (activatedDateString ? rawWeekCheckins.filter((c) => c.checkin_date >= activatedDateString) : rawWeekCheckins),
+    [rawWeekCheckins, activatedDateString]
+  );
+  const weekExcusedDays = useMemo(
+    () =>
+      activatedDateString ? rawWeekExcusedDays.filter((e) => e.excused_date >= activatedDateString) : rawWeekExcusedDays,
+    [rawWeekExcusedDays, activatedDateString]
+  );
+  const weekOverrides = useMemo(
+    () =>
+      activatedDateString ? rawWeekOverrides.filter((o) => o.override_date >= activatedDateString) : rawWeekOverrides,
+    [rawWeekOverrides, activatedDateString]
   );
   const {
     rowsByPeriod,
     lastClosedWeek,
     isLoading: leaderboardLoading,
     refresh: refreshLeaderboard,
-  } = useLeaderboard(group?.id ?? null);
+  } = useLeaderboard(group?.id ?? null, viewedDate);
   const { membersBadges } = useGroupBadges(group?.id ?? null);
   const levelByUserId = useMemo(
     () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
@@ -125,7 +147,6 @@ export default function HomeScreen() {
     return dates.size;
   }, [weekCheckins, validOverrideDates, failedOverrideDates]);
   const excusedCount = weekExcusedDays.length;
-  const activatedDateString = membership ? toBogotaDateString(new Date(membership.activated_at ?? membership.joined_at)) : null;
   // Only the essentials gate the whole screen — week navigation and
   // pull-to-refresh should update their own cards in place, never blank out
   // everything else while a background fetch is in flight.
@@ -319,6 +340,13 @@ export default function HomeScreen() {
         currency={group.currency}
         levelByUserId={levelByUserId}
         isRefreshing={leaderboardLoading}
+        viewedWeekLabel={
+          isCurrentWeek
+            ? null
+            : `${new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('es-CO')} - ${new Date(
+                `${weekEnd}T00:00:00Z`
+              ).toLocaleDateString('es-CO')}`
+        }
       />
 
       <Button label="Solicitar excusa (viaje, médica u otra)" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
