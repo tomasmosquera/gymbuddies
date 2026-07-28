@@ -80,6 +80,12 @@
         "projectId": "78526abd-0ce9-4905-ab07-0fa1b866891e"
       }
     },
-    "owner": "tmosquera"
+    "owner": "tmosquera",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/78526abd-0ce9-4905-ab07-0fa1b866891e"
+    }
   }
 }
