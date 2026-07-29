@@ -119,6 +119,15 @@ export function formatBogotaDateTime(date: Date): string {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
+/** "1:23:45" / "23:45" from whole seconds — a stopwatch-style clock face for a prominent live counter. */
+export function formatElapsedClock(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+}
+
 /** Every YYYY-MM month key from `start` to `end` inclusive, ascending (empty if start > end). */
 export function enumerateMonths(startDate: string, endDate: string): string[] {
   let [y, m] = startDate.slice(0, 7).split('-').map(Number);

@@ -32,6 +32,10 @@ export type Profile = {
   phone: string | null;
   avatar_url: string | null;
   last_notifications_seen_at: string | null;
+  /** App-level opt-in for reading Apple Health data — see set_apple_health_enabled. Never reflects the actual OS-level grant, only whether the app should try. */
+  apple_health_enabled: boolean;
+  /** Set the first time the user sees the one-time "connect Apple Health?" nudge (accepted or dismissed) — null means it hasn't been shown yet. */
+  apple_health_prompted_at: string | null;
   created_at: string;
 };
 
@@ -95,6 +99,8 @@ export type Checkin = {
   checkout_location_accuracy_m: number | null;
   checkout_photo_path: string | null;
   workout_minutes: number | null;
+  /** Active calories burned during the workout window, sourced from Apple Health — display-only, never used for penalties/ranking/badges. */
+  active_energy_kcal: number | null;
   created_at: string;
 };
 
@@ -391,6 +397,9 @@ export type Database = {
         };
         Returns: Checkin;
       };
+      set_apple_health_enabled: { Args: { p_enabled: boolean }; Returns: void };
+      dismiss_apple_health_prompt: { Args: Record<string, never>; Returns: void };
+      set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
       submit_checkin: {
         Args: {
           p_group_id: string;

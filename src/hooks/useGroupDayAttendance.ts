@@ -175,7 +175,10 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         for (const uid of dayOverrides.failed) completedUserIds.delete(uid);
       }
       const completedCount = completedUserIds.size;
-      const excusedCount = excusedByDate.get(date)?.size ?? 0;
+      const excusedCount = [...(excusedByDate.get(date) ?? [])].filter((uid) => {
+        const activatedDate = activatedDateByUserId.get(uid);
+        return !activatedDate || activatedDate <= date;
+      }).length;
       // Today isn't over yet — anyone who hasn't checked in still can, so
       // nobody can be counted as "failed" until the day has actually passed.
       const notTrainedCount =

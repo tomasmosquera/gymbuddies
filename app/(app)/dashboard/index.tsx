@@ -253,6 +253,9 @@ function DayCheckinRow({
       {hasCheckout ? (
         <View style={styles.durationRow}>
           <Text style={styles.duration}>Duración: {checkin.workout_minutes} min</Text>
+          {checkin.active_energy_kcal !== null ? (
+            <Text style={styles.calories}>🔥 {Math.round(checkin.active_energy_kcal)} kcal</Text>
+          ) : null}
           {isShort ? <Badge label="Corto" tone="warning" /> : null}
         </View>
       ) : null}
@@ -851,6 +854,7 @@ const styles = StyleSheet.create({
   photosRow: { flexDirection: 'row', gap: spacing.md },
   durationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   duration: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  calories: { color: colors.warning, fontWeight: '600', fontSize: 13 },
   reactionBar: {
     flexDirection: 'row',
     justifyContent: 'center',

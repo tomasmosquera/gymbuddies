@@ -2,6 +2,7 @@ import {
   enumerateDates,
   enumerateMonths,
   formatBogotaDateTime,
+  formatElapsedClock,
   getWeekBounds,
   getWeekBoundsForDateString,
   isWithinClockDriftTolerance,
@@ -11,6 +12,17 @@ import {
   toBogotaHour,
   weekDates,
 } from '@/lib/domain/dateUtils';
+
+describe('formatElapsedClock', () => {
+  it('shows MM:SS under an hour', () => {
+    expect(formatElapsedClock(65)).toBe('01:05');
+    expect(formatElapsedClock(0)).toBe('00:00');
+  });
+
+  it('shows H:MM:SS once past an hour', () => {
+    expect(formatElapsedClock(3725)).toBe('1:02:05');
+  });
+});
 
 describe('weekDates', () => {
   it('returns all 7 Monday..Sunday dates for the given week start', () => {

@@ -13,12 +13,13 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckins } from '@/hooks/useCheckins';
 import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
+import { useElapsedSeconds } from '@/hooks/useElapsedSeconds';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
-import { getWeekBounds, toBogotaDateString, weekDates } from '@/lib/domain/dateUtils';
+import { formatElapsedClock, getWeekBounds, toBogotaDateString, weekDates } from '@/lib/domain/dateUtils';
 import { failsRemaining } from '@/lib/domain/walletState';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -151,6 +152,13 @@ export default function HomeScreen() {
   // pull-to-refresh should update their own cards in place, never blank out
   // everything else while a background fetch is in flight.
   const isWeekDataLoading = checkinsLoading || excusedLoading || overridesLoading;
+  // Only ticking while there's an actual open workout to time — mirrors the
+  // exact condition the "awaiting checkout" card below renders under.
+  const awaitingCheckoutSince =
+    isCurrentWeek && todayCheckin && group?.require_checkout_photo && !todayCheckin.checkout_captured_at
+      ? todayCheckin.captured_at
+      : null;
+  const elapsedSeconds = useElapsedSeconds(awaitingCheckoutSince);
 
   if (groupLoading || !group || !membership) {
     return (
@@ -294,8 +302,11 @@ export default function HomeScreen() {
               <Text style={styles.stepPillText}>2. Foto Final</Text>
             </View>
           </View>
+          {elapsedSeconds !== null ? (
+            <Text style={styles.elapsedTimer}>{formatElapsedClock(elapsedSeconds)}</Text>
+          ) : null}
           <Text style={styles.hint}>Cuando termines de entrenar, toma tu foto final para que cuente la duración.</Text>
-          <Button label="Tomar foto final 🏁" onPress={() => router.push('/checkin')} />
+          <Button label="Tomar Foto Final" onPress={() => router.push('/checkin')} />
         </Card>
       ) : isCurrentWeek && todayCheckin ? (
         <Card style={styles.doneCard}>
@@ -404,6 +415,7 @@ const styles = StyleSheet.create({
   dayLabelToday: { color: colors.primary, fontWeight: '700' },
   doneCard: { gap: spacing.sm },
   doneText: { color: colors.success, fontWeight: '600', textAlign: 'center' },
+  elapsedTimer: { color: colors.primary, fontSize: 28, fontWeight: '700', textAlign: 'center', fontVariant: ['tabular-nums'] },
   stepsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   stepPill: {
     paddingHorizontal: spacing.md,

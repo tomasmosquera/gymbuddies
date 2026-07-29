@@ -11,10 +11,11 @@ import { supabase } from '@/lib/supabase/client';
 import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
 import { formatBogotaDateTime, toBogotaDateString } from '@/lib/domain/dateUtils';
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
+import { getActiveEnergyBurnedKcal } from '@/lib/health/appleHealth';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function CheckinPreviewScreen() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const { group } = useActiveGroup();
   const draft = useCheckinDraftStore((s) => s.draft);
   const setDraft = useCheckinDraftStore((s) => s.setDraft);
@@ -79,6 +80,23 @@ export default function CheckinPreviewScreen() {
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
 
         await cancelCheckoutReminders(draft.existingCheckinId);
+
+        // Fire-and-forget — never awaited before navigating away. Also
+        // retried on every future app foreground (useAppleHealthForegroundSync)
+        // in case Health hasn't synced from a wearable yet at this exact moment.
+        if (profile?.apple_health_enabled && data.checkout_captured_at) {
+          getActiveEnergyBurnedKcal(new Date(data.captured_at), new Date(data.checkout_captured_at))
+            .then((kcal) => {
+              if (kcal !== null) {
+                return supabase.rpc('set_checkin_active_energy', {
+                  p_checkin_id: data.id,
+                  p_active_energy_kcal: kcal,
+                });
+              }
+            })
+            .catch(() => {});
+        }
+
         setDraft(null);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;

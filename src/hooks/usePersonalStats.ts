@@ -10,11 +10,14 @@ import {
   type BadgeCheckinFact,
 } from '@/lib/domain/badges';
 import {
+  addDaysToDateString,
   averageCheckinHour,
+  averageDurationByDay,
   averageDurationByMonth,
   averageDurationByWeek,
   buildHeatmapWeeks,
   checkinHourBuckets,
+  dailyConsistency,
   weekdayCompletionRates,
   weeklyConsistency,
   type HourBucket,
@@ -35,13 +38,19 @@ export interface PersonalStats {
   currency: string;
   requireCheckoutPhoto: boolean;
 
-  // Trend (1, 2, 3) — both a monthly and a weekly cut, the screen lets the user pick.
+  // Trend (1, 2, 3) — a monthly, weekly, and daily (trailing DAYS_TO_SHOW days) cut, the screen lets the user pick.
   monthlyConsistencySeries: { month: string; percent: number }[];
   monthlyGroupConsistencySeries: { month: string; percent: number }[];
   monthlyDurationSeries: MonthlyDuration[];
+  monthlyGroupDurationSeries: { month: string; avgMinutes: number | null }[];
   weeklyConsistencySeries: { weekStart: string; percent: number }[];
   weeklyGroupConsistencySeries: { weekStart: string; percent: number }[];
   weeklyDurationSeries: WeeklyDuration[];
+  weeklyGroupDurationSeries: { weekStart: string; avgMinutes: number | null }[];
+  dailyConsistencySeries: { date: string; percent: number | null }[];
+  dailyGroupConsistencySeries: { date: string; percent: number | null }[];
+  dailyDurationSeries: { date: string; avgMinutes: number | null }[];
+  dailyGroupDurationSeries: { date: string; avgMinutes: number | null }[];
 
   // Streaks (4)
   currentStreak: number;
@@ -81,8 +90,9 @@ export interface PersonalStats {
   mostReactedToMe: NamedCount | null;
 }
 
-const MONTHS_TO_SHOW = 6;
-const WEEKS_TO_SHOW = 12;
+const MONTHS_TO_SHOW = 12;
+const WEEKS_TO_SHOW = 24;
+const DAYS_TO_SHOW = 60;
 const HEATMAP_WEEKS_TO_SHOW = 26;
 
 /**
@@ -209,6 +219,10 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     // applied here too.
     const isOwnedByMember = (m: (typeof records)[number], date: string) => !m.activatedDate || date >= m.activatedDate;
     const myCheckins = (checkinsByUser.get(userId) ?? []).filter((c) => isOwnedByMember(me, c.date));
+    // Every member's checkins pooled together — averageDurationByWeek/Month/Day
+    // don't care whose checkins they're given, so reusing them on this pool
+    // is what turns a "mine" duration series into a "group" one for free.
+    const allCheckins = records.flatMap((m) => (checkinsByUser.get(m.userId) ?? []).filter((c) => isOwnedByMember(m, c.date)));
 
     // --- 1, 3: monthly consistency, mine and the group's ---
     // The trend chart includes the current, still-forming month/week as its
@@ -238,6 +252,13 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
 
     // --- 2: monthly average duration (gated to groups that require checkout photos) ---
     const monthlyDurationSeries = groupInfo.requireCheckoutPhoto ? averageDurationByMonth(myCheckins).slice(-MONTHS_TO_SHOW) : [];
+    const monthlyGroupDurationByKey = new Map(
+      groupInfo.requireCheckoutPhoto ? averageDurationByMonth(allCheckins).map((m) => [m.month, m.avgMinutes]) : []
+    );
+    const monthlyGroupDurationSeries = monthlyDurationSeries.map((m) => ({
+      month: m.month,
+      avgMinutes: monthlyGroupDurationByKey.get(m.month) ?? null,
+    }));
 
     // --- 1, 2, 3 again, but weekly instead of monthly — also includes the current week ---
     const myWeeklyForTrend = weeklyConsistency(me.days);
@@ -259,6 +280,49 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       return { weekStart: w.weekStart, percent: totals ? consistencyPercent(totals.completed, totals.failed) ?? 0 : 0 };
     });
     const weeklyDurationSeries = groupInfo.requireCheckoutPhoto ? averageDurationByWeek(myCheckins).slice(-WEEKS_TO_SHOW) : [];
+    const weeklyGroupDurationByKey = new Map(
+      groupInfo.requireCheckoutPhoto ? averageDurationByWeek(allCheckins).map((w) => [w.weekStart, w.avgMinutes]) : []
+    );
+    const weeklyGroupDurationSeries = weeklyDurationSeries.map((w) => ({
+      weekStart: w.weekStart,
+      avgMinutes: weeklyGroupDurationByKey.get(w.weekStart) ?? null,
+    }));
+
+    // --- 1, 2, 3 again, but daily instead of weekly/monthly. Clipped to
+    // my own activation date the same way weeklyConsistency/monthlyConsistency
+    // naturally are (their source, me.days, simply doesn't go back further) —
+    // a member who joined 10 days ago shouldn't see 50 empty days before that. ---
+    const dailyNaiveStart = addDaysToDateString(todayString, -(DAYS_TO_SHOW - 1));
+    const dailyWindowStart = me.days[0] && me.days[0].date > dailyNaiveStart ? me.days[0].date : dailyNaiveStart;
+    const myDailyConsistency = dailyConsistency(me.days, dailyWindowStart, todayString);
+    const dailyConsistencySeries = myDailyConsistency.map((d) => ({ date: d.date, percent: d.percent }));
+    const groupDailyTotals = new Map<string, { completed: number; failed: number }>();
+    for (const member of records) {
+      for (const d of dailyConsistency(member.days, dailyWindowStart, todayString)) {
+        const entry = groupDailyTotals.get(d.date) ?? { completed: 0, failed: 0 };
+        entry.completed += d.completed;
+        entry.failed += d.failed;
+        groupDailyTotals.set(d.date, entry);
+      }
+    }
+    // Unlike the weekly/monthly group series (which default a data-less
+    // period to 0%), a bare calendar day with nobody's data at all means
+    // "nothing happened yet", not "the group failed" — so it stays a gap.
+    const dailyGroupConsistencySeries = dailyConsistencySeries.map((d) => {
+      const totals = groupDailyTotals.get(d.date);
+      const total = (totals?.completed ?? 0) + (totals?.failed ?? 0);
+      return { date: d.date, percent: total > 0 ? consistencyPercent(totals!.completed, totals!.failed) : null };
+    });
+
+    const myDailyDuration = groupInfo.requireCheckoutPhoto ? averageDurationByDay(myCheckins, dailyWindowStart, todayString) : [];
+    const dailyDurationSeries = myDailyDuration.map((d) => ({ date: d.date, avgMinutes: d.avgMinutes }));
+    const dailyGroupDurationByKey = new Map(
+      groupInfo.requireCheckoutPhoto ? averageDurationByDay(allCheckins, dailyWindowStart, todayString).map((d) => [d.date, d.avgMinutes]) : []
+    );
+    const dailyGroupDurationSeries = dailyDurationSeries.map((d) => ({
+      date: d.date,
+      avgMinutes: dailyGroupDurationByKey.get(d.date) ?? null,
+    }));
 
     // --- 7, 8: weekday and hour patterns ---
     const weekdayRates = weekdayCompletionRates(me.days);
@@ -343,9 +407,15 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       monthlyConsistencySeries,
       monthlyGroupConsistencySeries,
       monthlyDurationSeries,
+      monthlyGroupDurationSeries,
       weeklyConsistencySeries,
       weeklyGroupConsistencySeries,
       weeklyDurationSeries,
+      weeklyGroupDurationSeries,
+      dailyConsistencySeries,
+      dailyGroupConsistencySeries,
+      dailyDurationSeries,
+      dailyGroupDurationSeries,
       currentStreak: currentCompletedStreak(me.days),
       longestStreak: longestCompletedStreak(me.days),
       weekdayRates,

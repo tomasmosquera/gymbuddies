@@ -1,9 +1,11 @@
 import {
   averageCheckinHour,
+  averageDurationByDay,
   averageDurationByMonth,
   averageDurationByWeek,
   buildHeatmapWeeks,
   checkinHourBuckets,
+  dailyConsistency,
   formatHour,
   weekdayCompletionRates,
   weeklyConsistency,
@@ -129,6 +131,56 @@ describe('averageDurationByWeek', () => {
       { weekStart: '2026-07-20', avgMinutes: 40, sessions: 2 },
       { weekStart: '2026-07-27', avgMinutes: 40, sessions: 1 },
     ]);
+  });
+});
+
+describe('dailyConsistency', () => {
+  it('returns every date in the given window, gaps included, as 100/0/null', () => {
+    const result = dailyConsistency(
+      days([
+        ['2026-07-19', 'completed'],
+        ['2026-07-20', 'failed'],
+        ['2026-07-21', 'excused'],
+      ]),
+      '2026-07-18',
+      '2026-07-21'
+    );
+    expect(result).toEqual([
+      { date: '2026-07-18', completed: 0, failed: 0, percent: null },
+      { date: '2026-07-19', completed: 1, failed: 0, percent: 100 },
+      { date: '2026-07-20', completed: 0, failed: 1, percent: 0 },
+      { date: '2026-07-21', completed: 0, failed: 0, percent: null },
+    ]);
+  });
+});
+
+describe('averageDurationByDay', () => {
+  it('returns every date in the given window, raw minutes for a single session per day', () => {
+    const result = averageDurationByDay(
+      checkins([
+        ['2026-07-19', 7, 45],
+        ['2026-07-20', 7, null],
+      ]),
+      '2026-07-19',
+      '2026-07-21'
+    );
+    expect(result).toEqual([
+      { date: '2026-07-19', avgMinutes: 45, sessions: 1 },
+      { date: '2026-07-20', avgMinutes: null, sessions: 0 },
+      { date: '2026-07-21', avgMinutes: null, sessions: 0 },
+    ]);
+  });
+
+  it('averages multiple sessions on the same day, e.g. a pooled group of members', () => {
+    const result = averageDurationByDay(
+      checkins([
+        ['2026-07-20', 7, 30],
+        ['2026-07-20', 8, 50],
+      ]),
+      '2026-07-20',
+      '2026-07-20'
+    );
+    expect(result).toEqual([{ date: '2026-07-20', avgMinutes: 40, sessions: 2 }]);
   });
 });
 

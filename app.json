@@ -69,7 +69,13 @@
           "photosPermission": "Gym Buddies necesita acceso a tus fotos para adjuntar el comprobante de tu transferencia."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Gym Buddies puede leer las calorías activas quemadas durante tu entreno desde Apple Health, si lo conectas."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

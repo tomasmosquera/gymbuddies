@@ -19,14 +19,23 @@ function formatMonthLabel(month: string): string {
   return MONTH_LABELS[m - 1];
 }
 
-function formatWeekLabel(weekStart: string): string {
-  const [, month, day] = weekStart.split('-');
+function formatShortDate(dateString: string): string {
+  const [, month, day] = dateString.split('-');
   return `${day}/${month}`;
 }
 
-type TrendPeriod = 'week' | 'month';
+function formatWeekLabel(weekStart: string): string {
+  return formatShortDate(weekStart);
+}
+
+function formatDayLabel(date: string): string {
+  return formatShortDate(date);
+}
+
+type TrendPeriod = 'day' | 'week' | 'month';
 
 const TREND_PERIOD_OPTIONS: { key: TrendPeriod; label: string }[] = [
+  { key: 'day', label: 'Día' },
   { key: 'week', label: 'Semana' },
   { key: 'month', label: 'Mes' },
 ];
@@ -89,21 +98,46 @@ export default function PersonalStatsScreen() {
   const timesLabel = (n: number) => `${n} ${n === 1 ? 'vez' : 'veces'}`;
 
   const trendXLabels =
-    trendPeriod === 'week'
-      ? stats.weeklyConsistencySeries.map((w) => formatWeekLabel(w.weekStart))
-      : stats.monthlyConsistencySeries.map((m) => formatMonthLabel(m.month));
+    trendPeriod === 'day'
+      ? stats.dailyConsistencySeries.map((d) => formatDayLabel(d.date))
+      : trendPeriod === 'week'
+        ? stats.weeklyConsistencySeries.map((w) => formatWeekLabel(w.weekStart))
+        : stats.monthlyConsistencySeries.map((m) => formatMonthLabel(m.month));
   const trendConsistencyMine =
-    trendPeriod === 'week' ? stats.weeklyConsistencySeries.map((w) => w.percent) : stats.monthlyConsistencySeries.map((m) => m.percent);
+    trendPeriod === 'day'
+      ? stats.dailyConsistencySeries.map((d) => d.percent)
+      : trendPeriod === 'week'
+        ? stats.weeklyConsistencySeries.map((w) => w.percent)
+        : stats.monthlyConsistencySeries.map((m) => m.percent);
   const trendConsistencyGroup =
-    trendPeriod === 'week'
-      ? stats.weeklyGroupConsistencySeries.map((w) => w.percent)
-      : stats.monthlyGroupConsistencySeries.map((m) => m.percent);
+    trendPeriod === 'day'
+      ? stats.dailyGroupConsistencySeries.map((d) => d.percent)
+      : trendPeriod === 'week'
+        ? stats.weeklyGroupConsistencySeries.map((w) => w.percent)
+        : stats.monthlyGroupConsistencySeries.map((m) => m.percent);
   const durationXLabels =
-    trendPeriod === 'week'
-      ? stats.weeklyDurationSeries.map((w) => formatWeekLabel(w.weekStart))
-      : stats.monthlyDurationSeries.map((m) => formatMonthLabel(m.month));
-  const durationValues =
-    trendPeriod === 'week' ? stats.weeklyDurationSeries.map((w) => w.avgMinutes) : stats.monthlyDurationSeries.map((m) => m.avgMinutes);
+    trendPeriod === 'day'
+      ? stats.dailyDurationSeries.map((d) => formatDayLabel(d.date))
+      : trendPeriod === 'week'
+        ? stats.weeklyDurationSeries.map((w) => formatWeekLabel(w.weekStart))
+        : stats.monthlyDurationSeries.map((m) => formatMonthLabel(m.month));
+  const durationValuesMine =
+    trendPeriod === 'day'
+      ? stats.dailyDurationSeries.map((d) => d.avgMinutes)
+      : trendPeriod === 'week'
+        ? stats.weeklyDurationSeries.map((w) => w.avgMinutes)
+        : stats.monthlyDurationSeries.map((m) => m.avgMinutes);
+  const durationValuesGroup =
+    trendPeriod === 'day'
+      ? stats.dailyGroupDurationSeries.map((d) => d.avgMinutes)
+      : trendPeriod === 'week'
+        ? stats.weeklyGroupDurationSeries.map((w) => w.avgMinutes)
+        : stats.monthlyGroupDurationSeries.map((m) => m.avgMinutes);
+  // All three periods can have more points than fit legibly at once
+  // (DAYS_TO_SHOW=60, WEEKS_TO_SHOW=24, MONTHS_TO_SHOW=12 in usePersonalStats)
+  // — LineChart scrolls horizontally past visiblePoints, defaulted to the
+  // most recent end.
+  const trendVisiblePoints = trendPeriod === 'day' ? 10 : trendPeriod === 'week' ? 10 : 4;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -113,10 +147,13 @@ export default function PersonalStatsScreen() {
           <SegmentedControl options={TREND_PERIOD_OPTIONS} value={trendPeriod} onChange={setTrendPeriod} />
         </View>
         <Card style={styles.card}>
-          <Text style={styles.cardTitle}>{trendPeriod === 'week' ? 'Consistencia semana a semana' : 'Consistencia mes a mes'}</Text>
+          <Text style={styles.cardTitle}>
+            {trendPeriod === 'day' ? 'Consistencia día a día' : trendPeriod === 'week' ? 'Consistencia semana a semana' : 'Consistencia mes a mes'}
+          </Text>
           <LineChart
             xLabels={trendXLabels}
             unit="%"
+            visiblePoints={trendVisiblePoints}
             series={[
               { label: 'Tú', color: colors.primary, values: trendConsistencyMine },
               { label: 'Grupo', color: colors.warning, values: trendConsistencyGroup },
@@ -125,11 +162,15 @@ export default function PersonalStatsScreen() {
         </Card>
         {stats.requireCheckoutPhoto ? (
           <Card style={styles.card}>
-            <Text style={styles.cardTitle}>Minutos promedio de entreno</Text>
+            <Text style={styles.cardTitle}>{trendPeriod === 'day' ? 'Minutos de entreno' : 'Minutos promedio de entreno'}</Text>
             <LineChart
               xLabels={durationXLabels}
               unit=" min"
-              series={[{ label: trendPeriod === 'week' ? 'Promedio semanal' : 'Promedio mensual', color: colors.primary, values: durationValues }]}
+              visiblePoints={trendVisiblePoints}
+              series={[
+                { label: 'Tú', color: colors.primary, values: durationValuesMine },
+                { label: 'Grupo', color: colors.warning, values: durationValuesGroup },
+              ]}
             />
           </Card>
         ) : null}

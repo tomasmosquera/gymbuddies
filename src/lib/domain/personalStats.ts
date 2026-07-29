@@ -1,5 +1,5 @@
 import type { BadgeCheckinFact, BadgeDayRecord } from '@/lib/domain/badges';
-import { getWeekBoundsForDateString, weekDates } from '@/lib/domain/dateUtils';
+import { enumerateDates, getWeekBoundsForDateString, weekDates } from '@/lib/domain/dateUtils';
 
 /**
  * Personal Stats (Perfil > Mi Progreso > Estadísticas) is a read-only,
@@ -9,7 +9,7 @@ import { getWeekBoundsForDateString, weekDates } from '@/lib/domain/dateUtils';
  * consumes) into series a chart or summary card can render directly.
  */
 
-function addDaysToDateString(date: string, n: number): string {
+export function addDaysToDateString(date: string, n: number): string {
   const [y, m, d] = date.split('-').map(Number);
   const ms = Date.UTC(y, m - 1, d) + n * 24 * 60 * 60 * 1000;
   return new Date(ms).toISOString().slice(0, 10);
@@ -115,6 +115,36 @@ export function weeklyConsistency(days: readonly BadgeDayRecord[]): WeeklyConsis
     }));
 }
 
+export interface DailyConsistency {
+  date: string;
+  completed: number;
+  failed: number;
+  /** A single day has no in-between: 100 (completed) or 0 (failed) — null when excused or no data that day. */
+  percent: number | null;
+}
+
+/**
+ * Every calendar date from `start` through `end` (inclusive), gaps included
+ * — unlike weeklyConsistency/monthlyConsistency's own period-detection (which
+ * only lists periods that have data), a day chart needs the gaps too so it
+ * reads as a real calendar instead of a compressed data-only strip. The
+ * caller picks `start` (see usePersonalStats' dailyWindowStart) so it can
+ * clip to the member's own activation date instead of always going back a
+ * fixed number of days, matching how the weekly/monthly series behave.
+ */
+export function dailyConsistency(days: readonly BadgeDayRecord[], start: string, end: string): DailyConsistency[] {
+  const statusByDate = new Map(days.map((d) => [d.date, d.status]));
+  return enumerateDates(start, end).map((date) => {
+    const status = statusByDate.get(date);
+    return {
+      date,
+      completed: status === 'completed' ? 1 : 0,
+      failed: status === 'failed' ? 1 : 0,
+      percent: status === 'completed' ? 100 : status === 'failed' ? 0 : null,
+    };
+  });
+}
+
 export interface MonthlyDuration {
   month: string;
   avgMinutes: number;
@@ -141,6 +171,35 @@ export function averageDurationByWeek(checkins: readonly BadgeCheckinFact[]): We
   return [...byWeek.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([weekStart, { total, sessions }]) => ({ weekStart, avgMinutes: Math.round(total / sessions), sessions }));
+}
+
+export interface DailyDuration {
+  date: string;
+  avgMinutes: number | null;
+  sessions: number;
+}
+
+/**
+ * Same `start`..`end` window as dailyConsistency (pass the same bounds so
+ * both day charts share one x-axis). Given one member's checkins this is
+ * just that day's raw minutes (at most one check-in per day per user), so
+ * it's never actually an average for "me" — passed a pooled multi-member
+ * list instead, it becomes a real per-day group average. Same function
+ * either way; the caller decides which checkins to pass in.
+ */
+export function averageDurationByDay(checkins: readonly BadgeCheckinFact[], start: string, end: string): DailyDuration[] {
+  const byDate = new Map<string, { total: number; sessions: number }>();
+  for (const c of checkins) {
+    if (c.workoutMinutes === null) continue;
+    const entry = byDate.get(c.date) ?? { total: 0, sessions: 0 };
+    entry.total += c.workoutMinutes;
+    entry.sessions += 1;
+    byDate.set(c.date, entry);
+  }
+  return enumerateDates(start, end).map((date) => {
+    const entry = byDate.get(date);
+    return { date, avgMinutes: entry ? Math.round(entry.total / entry.sessions) : null, sessions: entry?.sessions ?? 0 };
+  });
 }
 
 /** Average recorded workout duration per calendar month — months with no recorded duration are omitted, not zero. */

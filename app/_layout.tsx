@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useAuthBootstrap } from '@/hooks/useAuth';
+import { useAppleHealthForegroundSync, useAppleHealthOnboardingPrompt } from '@/hooks/useAppleHealth';
 import { colors } from '@/constants/theme';
 import '@/lib/notifications/checkoutGeofenceTask';
 
@@ -18,6 +19,8 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   useAuthBootstrap();
+  useAppleHealthOnboardingPrompt();
+  useAppleHealthForegroundSync();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -107,6 +107,12 @@ export function useAuth() {
     [session, setProfile]
   );
 
+  /** Re-fetches the current user's profile row — call after an RPC that mutates it server-side (e.g. set_apple_health_enabled) so the in-memory copy doesn't go stale. */
+  const refreshProfile = useCallback(async () => {
+    if (!session) return;
+    setProfile(await fetchProfile(session.user.id));
+  }, [session, setProfile]);
+
   const deleteAccount = useCallback(
     async (currentPassword: string) => {
       const email = session?.user.email;
@@ -130,6 +136,7 @@ export function useAuth() {
     signOut,
     updatePassword,
     updateProfile,
+    refreshProfile,
     deleteAccount,
   };
 }

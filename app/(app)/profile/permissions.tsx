@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useAuth } from '@/hooks/useAuth';
 import { registerForPushNotificationsAsync } from '@/lib/notifications/pushToken';
 import { setRemindersEnabledCache } from '@/lib/notifications/reminderPreference';
+import { requestAppleHealthAuthorization } from '@/lib/health/appleHealth';
 import { supabase } from '@/lib/supabase/client';
 import type { NotificationCategory, NotificationPreferences } from '@/lib/supabase/types';
 import { colors, spacing, typography } from '@/constants/theme';
@@ -42,11 +44,13 @@ function statusBadge(status: PermissionState) {
 
 export default function PermissionsScreen() {
   const { group, membership, isLoading: isLoadingGroup, refresh: refreshActiveGroup } = useActiveGroup();
+  const { profile, refreshProfile } = useAuth();
   const [notifStatus, setNotifStatus] = useState<PermissionState>('undetermined');
   const [locationForeground, setLocationForeground] = useState<PermissionState>('undetermined');
   const [locationBackground, setLocationBackground] = useState<PermissionState>('undetermined');
   const [isRequesting, setIsRequesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingHealth, setIsSavingHealth] = useState(false);
 
   const refreshPermissionStatus = useCallback(async () => {
     const notif = await Notifications.getPermissionsAsync();
@@ -130,6 +134,20 @@ export default function PermissionsScreen() {
       await refreshPermissionStatus();
     } finally {
       setIsRequesting(false);
+    }
+  };
+
+  const handleToggleAppleHealth = async (value: boolean) => {
+    setIsSavingHealth(true);
+    try {
+      if (value) {
+        await requestAppleHealthAuthorization();
+      }
+      const { error } = await supabase.rpc('set_apple_health_enabled', { p_enabled: value });
+      if (error) throw error;
+      await refreshProfile();
+    } finally {
+      setIsSavingHealth(false);
     }
   };
 
@@ -227,6 +245,40 @@ export default function PermissionsScreen() {
           <Button label="Configuración del sistema" variant="secondary" onPress={() => Linking.openSettings()} />
         )}
       </Card>
+
+      {Platform.OS === 'ios' ? (
+        <Card style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>🍎 Apple Health</Text>
+          </View>
+          <Text style={styles.hint}>
+            Si la conectas, Gym Buddies lee las calorías activas que quemaste durante tu entreno (desde tu Apple Watch
+            u otro dispositivo conectado a Health) y las muestra junto a tu foto final. Es solo informativo — nunca
+            afecta tus penalizaciones ni tu ranking.
+          </Text>
+          <View style={styles.masterRow}>
+            <View style={styles.masterTextWrap}>
+              <Text style={styles.masterLabel}>Conectar Apple Health</Text>
+            </View>
+            <Switch
+              value={profile?.apple_health_enabled ?? false}
+              onValueChange={handleToggleAppleHealth}
+              disabled={isSavingHealth}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.text}
+            />
+          </View>
+          <Text style={styles.hint}>
+            Apagar esto solo detiene la app — no revoca el permiso a nivel del sistema. Para eso, ve a Ajustes &gt;
+            Salud &gt; Acceso a Datos y Dispositivos &gt; Gym Buddies.
+          </Text>
+          <Text style={styles.hint}>
+            Si conectas pero nunca ves calorías en tus entrenos, es probable que hayas denegado el permiso en el
+            aviso del sistema — iOS no le permite a la app saberlo directamente. Revisa en Ajustes &gt; Salud &gt;
+            Acceso a Datos y Dispositivos &gt; Gym Buddies que &quot;Calorías activas&quot; esté permitido.
+          </Text>
+        </Card>
+      ) : null}
     </ScrollView>
   );
 }

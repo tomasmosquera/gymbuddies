@@ -9,11 +9,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckins } from '@/hooks/useCheckins';
+import { useElapsedSeconds } from '@/hooks/useElapsedSeconds';
 import { useLocationLock } from '@/hooks/useLocationLock';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { cancelCheckoutReminders, stopCheckoutGeofence } from '@/lib/notifications/checkoutReminders';
 import { supabase } from '@/lib/supabase/client';
-import { formatBogotaDateTime } from '@/lib/domain/dateUtils';
+import { formatBogotaDateTime, formatElapsedClock } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function CheckinCameraScreen() {
@@ -37,6 +38,7 @@ export default function CheckinCameraScreen() {
   const checkoutRequired = group?.require_checkout_photo ?? false;
   const needsCheckout = checkoutRequired && !!todayCheckin && !todayCheckin.checkout_captured_at;
   const isCheckoutFlow = needsCheckout && checkoutRequested;
+  const elapsedSeconds = useElapsedSeconds(needsCheckout && todayCheckin ? todayCheckin.captured_at : null);
 
   // This tab stays mounted across switches, so simply returning to it after
   // taking a photo elsewhere (or having the admin change something) would
@@ -155,11 +157,17 @@ export default function CheckinCameraScreen() {
             <Text style={styles.stepPillText}>2. Foto Final</Text>
           </View>
         </View>
+        {elapsedSeconds !== null ? (
+          <View style={styles.bigTimerBlock}>
+            <Text style={styles.bigTimer}>{formatElapsedClock(elapsedSeconds)}</Text>
+            <Text style={styles.bigTimerLabel}>Tiempo de Entreno</Text>
+          </View>
+        ) : null}
         <EmptyState
-          title="Paso 2: foto final"
+          title="Paso 2: Foto Final"
           description={`Registraste tu foto inicial a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Este grupo pide una segunda foto cuando termines de entrenar, para medir cuánto duró tu sesión — tócala cuando estés por irte del gimnasio.`}
         />
-        <Button label="Tomar foto final 🏁" onPress={() => setCheckoutRequested(true)} />
+        <Button label="Tomar Foto Final" onPress={() => setCheckoutRequested(true)} />
         <Button label="Eliminar registro de hoy" variant="danger" onPress={confirmDeleteToday} loading={isDeleting} />
       </View>
     );
@@ -281,6 +289,9 @@ const styles = StyleSheet.create({
   stepPillPending: { backgroundColor: colors.surfaceAlt },
   stepPillText: { color: colors.text, fontWeight: '700', fontSize: 13 },
   stepsArrow: { color: colors.textMuted },
+  bigTimerBlock: { alignItems: 'center' },
+  bigTimer: { color: colors.text, fontSize: 56, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  bigTimerLabel: { color: colors.textMuted, fontSize: 13, marginTop: -spacing.xs },
   camera: { flex: 1 },
   flipButton: {
     position: 'absolute',
