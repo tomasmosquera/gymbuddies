@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { getSignedUrl } from '@/lib/supabase/storage';
-import { formatBogotaDateTime } from '@/lib/domain/dateUtils';
+import { formatBogotaTime12h } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing } from '@/constants/theme';
 
 export function useReverseGeocode(latitude: number | null, longitude: number | null): string | null {
@@ -81,7 +81,7 @@ export function CheckinPhotoColumn({
         )}
       </Pressable>
       <Text style={styles.label}>{label}</Text>
-      {capturedAt ? <Text style={styles.meta}>{formatBogotaDateTime(new Date(capturedAt)).split(' ')[1]}</Text> : null}
+      {capturedAt ? <Text style={styles.meta}>{formatBogotaTime12h(new Date(capturedAt))}</Text> : null}
       {latitude !== null ? (
         <Pressable onPress={openMap} hitSlop={4}>
           <Text style={[styles.meta, styles.locationLink]} numberOfLines={2}>

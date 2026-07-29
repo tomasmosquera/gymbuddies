@@ -146,6 +146,13 @@ export default function ProfileScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.topBar}>
+        {group && membership ? (
+          <Pressable onPress={() => router.push('/profile/invite')} style={styles.bellButton}>
+            <Ionicons name="person-add-outline" size={24} color={colors.text} />
+          </Pressable>
+        ) : (
+          <View />
+        )}
         <Pressable onPress={() => router.push('/profile/notifications')} style={styles.bellButton}>
           <Ionicons name="notifications-outline" size={24} color={colors.text} />
           {hasUnreadNotifications ? <View style={styles.bellDot} /> : null}
@@ -292,7 +299,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
-  topBar: { flexDirection: 'row', justifyContent: 'flex-end' },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between' },
   bellButton: { padding: spacing.xs },
   bellDot: {
     position: 'absolute',

@@ -1,7 +1,8 @@
 import {
   enumerateDates,
   enumerateMonths,
-  formatBogotaDateTime,
+  formatBogotaDateTime12h,
+  formatBogotaTime12h,
   formatElapsedClock,
   getWeekBounds,
   getWeekBoundsForDateString,
@@ -71,13 +72,25 @@ describe('enumerateMonths', () => {
   });
 });
 
-describe('formatBogotaDateTime', () => {
-  it('formats a UTC instant as DD/MM/YYYY HH:mm in Bogota local time', () => {
-    expect(formatBogotaDateTime(new Date('2026-07-17T19:05:00Z'))).toBe('17/07/2026 14:05');
+describe('formatBogotaDateTime12h', () => {
+  it('formats a UTC instant as DD/MM/YYYY with a zero-padded 12-hour clock in Bogota local time', () => {
+    expect(formatBogotaDateTime12h(new Date('2026-07-17T19:05:00Z'))).toBe('17/07/2026 02:05 pm');
   });
 
   it('rolls over to the previous day when the UTC instant is before 05:00', () => {
-    expect(formatBogotaDateTime(new Date('2026-07-17T02:00:00Z'))).toBe('16/07/2026 21:00');
+    expect(formatBogotaDateTime12h(new Date('2026-07-17T02:00:00Z'))).toBe('16/07/2026 09:00 pm');
+  });
+});
+
+describe('formatBogotaTime12h', () => {
+  it('formats afternoon and morning instants as zero-padded 12-hour time', () => {
+    expect(formatBogotaTime12h(new Date('2026-07-17T19:05:00Z'))).toBe('02:05 pm');
+    expect(formatBogotaTime12h(new Date('2026-07-17T14:30:00Z'))).toBe('09:30 am');
+  });
+
+  it('shows midnight as 12:00 am and noon as 12:00 pm', () => {
+    expect(formatBogotaTime12h(new Date('2026-07-17T05:00:00Z'))).toBe('12:00 am');
+    expect(formatBogotaTime12h(new Date('2026-07-17T17:00:00Z'))).toBe('12:00 pm');
   });
 });
 

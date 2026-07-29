@@ -106,17 +106,32 @@ export function nextMondayAfter(date: Date): Date {
   return new Date(nextMondayBogotaMidnightMs - BOGOTA_OFFSET_MS);
 }
 
-/** "17/07/2026 14:35" in America/Bogota local time — for the check-in photo overlay. */
-export function formatBogotaDateTime(date: Date): string {
-  const bogotaMs = toBogotaMs(date);
-  const shifted = new Date(bogotaMs);
+function bogotaDateTimeParts(date: Date) {
+  const shifted = new Date(toBogotaMs(date));
   const pad = (n: number) => String(n).padStart(2, '0');
-  const day = pad(shifted.getUTCDate());
-  const month = pad(shifted.getUTCMonth() + 1);
-  const year = shifted.getUTCFullYear();
-  const hours = pad(shifted.getUTCHours());
-  const minutes = pad(shifted.getUTCMinutes());
-  return `${day}/${month}/${year} ${hours}:${minutes}`;
+  const hour24 = shifted.getUTCHours();
+  const period = hour24 >= 12 ? 'pm' : 'am';
+  const hour12 = pad(hour24 % 12 === 0 ? 12 : hour24 % 12);
+  return {
+    day: pad(shifted.getUTCDate()),
+    month: pad(shifted.getUTCMonth() + 1),
+    year: shifted.getUTCFullYear(),
+    minutes: pad(shifted.getUTCMinutes()),
+    hour12,
+    period,
+  };
+}
+
+/** "07:47 pm" in America/Bogota local time — 12-hour clock, zero-padded, lowercase am/pm. */
+export function formatBogotaTime12h(date: Date): string {
+  const { hour12, minutes, period } = bogotaDateTimeParts(date);
+  return `${hour12}:${minutes} ${period}`;
+}
+
+/** "17/07/2026 02:35 pm" in America/Bogota local time — full date with a 12-hour clock, for photo watermarks and admin-facing text. */
+export function formatBogotaDateTime12h(date: Date): string {
+  const { day, month, year, hour12, minutes, period } = bogotaDateTimeParts(date);
+  return `${day}/${month}/${year} ${hour12}:${minutes} ${period}`;
 }
 
 /** "1:23:45" / "23:45" from whole seconds — a stopwatch-style clock face for a prominent live counter. */

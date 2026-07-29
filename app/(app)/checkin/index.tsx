@@ -14,7 +14,7 @@ import { useLocationLock } from '@/hooks/useLocationLock';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { cancelCheckoutReminders, stopCheckoutGeofence } from '@/lib/notifications/checkoutReminders';
 import { supabase } from '@/lib/supabase/client';
-import { formatBogotaDateTime, formatElapsedClock } from '@/lib/domain/dateUtils';
+import { formatBogotaTime12h, formatElapsedClock } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function CheckinCameraScreen() {
@@ -165,7 +165,7 @@ export default function CheckinCameraScreen() {
         ) : null}
         <EmptyState
           title="Paso 2: Foto Final"
-          description={`Registraste tu foto inicial a las ${formatBogotaDateTime(new Date(todayCheckin.captured_at)).split(' ')[1]}. Este grupo pide una segunda foto cuando termines de entrenar, para medir cuánto duró tu sesión — tócala cuando estés por irte del gimnasio.`}
+          description={`Registraste tu foto inicial a las ${formatBogotaTime12h(new Date(todayCheckin.captured_at))}. Este grupo pide una segunda foto cuando termines de entrenar, para medir cuánto duró tu sesión — tócala cuando estés por irte del gimnasio.`}
         />
         <Button label="Tomar Foto Final" onPress={() => setCheckoutRequested(true)} />
         <Button label="Eliminar registro de hoy" variant="danger" onPress={confirmDeleteToday} loading={isDeleting} />

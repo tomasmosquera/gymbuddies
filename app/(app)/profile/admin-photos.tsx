@@ -10,7 +10,7 @@ import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupWeekCheckins, type GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { supabase } from '@/lib/supabase/client';
-import { formatBogotaDateTime } from '@/lib/domain/dateUtils';
+import { formatBogotaDateTime12h } from '@/lib/domain/dateUtils';
 import { colors, spacing, typography } from '@/constants/theme';
 
 function CheckinModerationRow({
@@ -31,7 +31,7 @@ function CheckinModerationRow({
   const confirmDelete = () => {
     Alert.alert(
       'Borrar check-in',
-      `¿Borrar el check-in de ${checkin.profile.full_name} del ${formatBogotaDateTime(new Date(checkin.captured_at))}? Ese día deja de contar como entrenado.`,
+      `¿Borrar el check-in de ${checkin.profile.full_name} del ${formatBogotaDateTime12h(new Date(checkin.captured_at))}? Ese día deja de contar como entrenado.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Borrar', style: 'destructive', onPress: handleDelete },
