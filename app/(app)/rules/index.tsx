@@ -10,6 +10,8 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
+import { useGroupMembers } from '@/hooks/useGroupMembers';
+import { supabase } from '@/lib/supabase/client';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { getSignedUrl } from '@/lib/supabase/storage';
@@ -33,6 +35,12 @@ const CHANGE_LABELS: Record<string, string> = {
 
 const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'exit_fee_amount']);
 const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
+
+/** Whole days remaining until `dateString` (never negative — the day it becomes effective still reads as 0, not -1). */
+function daysUntil(dateString: string): number {
+  const ms = new Date(dateString).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
 
 function formatChangeValue(key: string, value: unknown): string {
   if (BOOLEAN_CHANGE_FIELDS.has(key)) {
@@ -73,7 +81,9 @@ export default function RulesScreen() {
     castVote: castChallengeVote,
     adminDecide,
   } = usePhotoChallenges(group?.id ?? null);
+  const { members, isLoading: membersLoading, refresh: refreshMembers } = useGroupMembers(group?.id ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [excuseProofUrl, setExcuseProofUrl] = useState<string | null>(null);
 
@@ -96,10 +106,11 @@ export default function RulesScreen() {
       refreshProposal();
       refreshExcuseVote();
       refreshChallenges();
-    }, [refreshGroup, refreshProposal, refreshExcuseVote, refreshChallenges])
+      refreshMembers();
+    }, [refreshGroup, refreshProposal, refreshExcuseVote, refreshChallenges, refreshMembers])
   );
 
-  if (groupLoading || proposalLoading || excuseVoteLoading || challengesLoading || !group || !membership) {
+  if (groupLoading || proposalLoading || excuseVoteLoading || challengesLoading || membersLoading || !group || !membership) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -144,11 +155,29 @@ export default function RulesScreen() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refreshGroup(), refreshProposal(), refreshExcuseVote(), refreshChallenges()]);
+      await Promise.all([refreshGroup(), refreshProposal(), refreshExcuseVote(), refreshChallenges(), refreshMembers()]);
     } finally {
       setIsRefreshing(false);
     }
   };
+
+  const handleCancelLeave = async () => {
+    if (!group) return;
+    setIsCancellingLeave(true);
+    try {
+      const { error } = await supabase.rpc('cancel_leave_request', { p_group_id: group.id });
+      if (error) throw new Error(error.message);
+      await refreshMembers();
+    } catch (err) {
+      Alert.alert('No se pudo cancelar el aviso', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsCancellingLeave(false);
+    }
+  };
+
+  const membersLeaving = members.filter(
+    (m) => m.leave_requested_at !== null && m.status !== 'left' && m.status !== 'removed'
+  );
 
   return (
     <>
@@ -195,6 +224,26 @@ export default function RulesScreen() {
           </View>
         ) : null}
       </Card>
+
+      {membersLeaving.length > 0 ? (
+        <Card style={styles.proposalCard}>
+          <Text style={styles.cardTitle}>Salidas en proceso</Text>
+          {membersLeaving.map((m) => (
+            <View key={m.id} style={styles.leaveRow}>
+              <View>
+                <Text style={styles.changeText}>{m.profile.full_name}</Text>
+                <Text style={styles.tally}>
+                  Sale el {new Date(m.leave_effective_at!).toLocaleDateString('es-CO')} (faltan{' '}
+                  {daysUntil(m.leave_effective_at!)} día{daysUntil(m.leave_effective_at!) === 1 ? '' : 's'})
+                </Text>
+              </View>
+              {m.user_id === session?.user.id ? (
+                <Button label="Cancelar aviso" variant="secondary" onPress={handleCancelLeave} loading={isCancellingLeave} />
+              ) : null}
+            </View>
+          ))}
+        </Card>
+      ) : null}
 
       {proposal ? (
         <Card style={styles.proposalCard}>
@@ -349,6 +398,7 @@ const styles = StyleSheet.create({
   ruleLabel: { color: colors.textMuted },
   ruleValue: { color: colors.text, fontWeight: '600' },
   proposalCard: { gap: spacing.sm },
+  leaveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
   proposalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   changeText: { color: colors.text },
   excuseProof: { width: '100%', height: 220, borderRadius: radii.md },

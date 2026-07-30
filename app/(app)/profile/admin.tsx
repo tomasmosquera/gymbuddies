@@ -32,7 +32,14 @@ const STATUS_TONE: Record<GroupMemberStatus, 'neutral' | 'success' | 'warning' |
   removed: 'neutral',
 };
 
+/** Whole days remaining until `dateString` (never negative — the day it becomes effective still reads as 0, not -1). */
+function daysUntil(dateString: string): number {
+  const ms = new Date(dateString).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
 function MemberRow({ member }: { member: GroupMemberWithProfile }) {
+  const hasPendingLeave = member.leave_requested_at !== null && member.status !== 'left' && member.status !== 'removed';
   return (
     <Card style={styles.row}>
       <View style={styles.rowMain}>
@@ -44,6 +51,12 @@ function MemberRow({ member }: { member: GroupMemberWithProfile }) {
         </View>
         <Badge label={STATUS_LABELS[member.status]} tone={STATUS_TONE[member.status]} />
       </View>
+      {hasPendingLeave ? (
+        <Text style={styles.leaveNotice}>
+          🚪 Avisó su salida — sale el {new Date(member.leave_effective_at!).toLocaleDateString('es-CO')} (faltan{' '}
+          {daysUntil(member.leave_effective_at!)} día{daysUntil(member.leave_effective_at!) === 1 ? '' : 's'})
+        </Text>
+      ) : null}
     </Card>
   );
 }
@@ -275,6 +288,7 @@ const styles = StyleSheet.create({
   rowMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowTitle: { color: colors.text, fontWeight: '600' },
   rowSubtitle: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
+  leaveNotice: { color: colors.warning, fontSize: 12, fontWeight: '600' },
   ruleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
   ruleLabel: { color: colors.textMuted },
   ruleValue: { color: colors.text, fontWeight: '600' },
