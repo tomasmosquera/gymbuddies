@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupBadges, type MemberBadges } from '@/hooks/useGroupBadges';
@@ -90,6 +91,7 @@ function BadgeRow({
   earned,
   ratio,
   statusText,
+  statusTextHighlighted,
   secondaryStatusText,
 }: {
   emoji: string;
@@ -99,8 +101,11 @@ function BadgeRow({
   earned: boolean;
   ratio: number;
   statusText: string;
+  /** Colors statusText independently of `earned` — defaults to `earned` when omitted. Monthly challenges need this: the bar reflects the current month, but the "conseguido x veces" text should stay highlighted once ever earned, regardless of this month's status. */
+  statusTextHighlighted?: boolean;
   secondaryStatusText?: string;
 }) {
+  const highlightStatusText = statusTextHighlighted ?? earned;
   return (
     <View style={[styles.row, !earned && styles.rowUnearned]}>
       <Text style={[styles.rowEmoji, !earned && styles.rowEmojiDim]}>{emoji}</Text>
@@ -118,7 +123,7 @@ function BadgeRow({
         </Text>
         <ProgressBar ratio={ratio} color={earned ? colors.success : colors.primary} thin />
         <View style={styles.rowStatusLine}>
-          <Text style={earned ? styles.rowEarned : styles.rowProgress}>{statusText}</Text>
+          <Text style={highlightStatusText ? styles.rowEarned : styles.rowProgress}>{statusText}</Text>
           {secondaryStatusText ? <Text style={styles.rowSecondaryStatus}>{secondaryStatusText}</Text> : null}
         </View>
       </View>
@@ -146,16 +151,21 @@ function BadgeListRow({ member, badgeId }: { member: MemberBadges; badgeId: stri
 function MonthlyChallengeRow({ member, challengeId }: { member: MemberBadges; challengeId: string }) {
   const def = MONTHLY_CHALLENGES.find((c) => c.id === challengeId)!;
   const status = member.monthlyStatuses[challengeId];
-  const unlocked = status.timesAchieved > 0;
+  // The bar/earned styling track the still-open current month, not the
+  // lifetime "timesAchieved" counter — otherwise a challenge earned once
+  // months ago would stay permanently full/green regardless of this month's
+  // actual status. "Conseguido x veces" below is where the lifetime count belongs.
+  const earnedThisMonth = status.currentMonthEarned === true;
   return (
     <BadgeRow
       emoji={def.emoji}
       name={def.name}
       description={def.description}
       xpLabel={`+${def.xpPerOccurrence} XP c/u`}
-      earned={unlocked}
-      ratio={unlocked ? 1 : 0}
+      earned={earnedThisMonth}
+      ratio={earnedThisMonth ? 1 : 0}
       statusText={`Conseguido ${status.timesAchieved} ${status.timesAchieved === 1 ? 'vez' : 'veces'}`}
+      statusTextHighlighted={status.timesAchieved > 0}
       secondaryStatusText={
         status.currentMonthEarned === null ? 'No aplica este mes' : status.currentMonthEarned ? '✓ Este mes' : 'En curso este mes'
       }
@@ -167,7 +177,11 @@ export default function BadgesScreen() {
   const { session } = useAuth();
   const { group, isLoading: groupLoading } = useActiveGroup();
   const { membersBadges, isLoading: badgesLoading } = useGroupBadges(group?.id ?? null);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  // Set when a notification about someone else's achievement was tapped
+  // (see notificationRouting.ts) — opens straight on that member instead of
+  // always defaulting to your own.
+  const { userId: userIdParam } = useLocalSearchParams<{ userId?: string }>();
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(userIdParam ?? null);
   const [view, setView] = useState<ViewMode>('historic');
   const [filter, setFilter] = useState<UnlockFilter>('all');
 
@@ -274,8 +288,11 @@ export default function BadgesScreen() {
             Se reinician cada mes — el contador suma cuántas veces los has conseguido.
           </Text>
           {(() => {
+            // Unlike the lifetime "X/23" summary above, the filter tracks
+            // this still-open month specifically — a challenge earned in a
+            // past month but not (yet) this one belongs under "Bloqueados".
             const visibleChallenges = MONTHLY_CHALLENGES.filter((c) =>
-              matchesFilter(selected.monthlyStatuses[c.id].timesAchieved > 0)
+              matchesFilter(selected.monthlyStatuses[c.id].currentMonthEarned === true)
             );
             return visibleChallenges.length > 0 ? (
               <View style={styles.list}>

@@ -41,7 +41,7 @@ export function useGroupBadges(groupId: string | null) {
   const [weeklyPenaltiesByUser, setWeeklyPenaltiesByUser] = useState<Map<string, { weekStartDate: string; penaltyCharged: number }[]>>(
     new Map()
   );
-  const [initialDepositUsers, setInitialDepositUsers] = useState<Set<string>>(new Set());
+  const [fundedWalletUsers, setFundedWalletUsers] = useState<Set<string>>(new Set());
   // Raw rows (not pre-aggregated) so each member's own activation date can
   // filter out practice/pre-membership reactions before tallying — see the
   // membersBadges useMemo below, which does the actual give/receive counting.
@@ -53,7 +53,7 @@ export function useGroupBadges(groupId: string | null) {
     if (!groupId) {
       setCheckinsByUser(new Map());
       setWeeklyPenaltiesByUser(new Map());
-      setInitialDepositUsers(new Set());
+      setFundedWalletUsers(new Set());
       setRawReactions([]);
       setRuleProposalsWonByUser(new Map());
       setExtrasLoading(false);
@@ -72,7 +72,12 @@ export function useGroupBadges(groupId: string | null) {
         .from('weekly_evaluation_results')
         .select('user_id, penalty_charged, run:weekly_evaluation_runs(week_start_date)')
         .eq('group_id', groupId),
-      supabase.from('wallet_transactions').select('user_id').eq('group_id', groupId).eq('type', 'initial_deposit'),
+      supabase
+        .from('wallet_transactions')
+        .select('user_id')
+        .eq('group_id', groupId)
+        .in('type', ['initial_deposit', 'recharge'])
+        .eq('status', 'confirmed'),
       supabase
         .from('checkin_reactions')
         .select('user_id, created_at, checkin:checkins(user_id)')
@@ -106,7 +111,7 @@ export function useGroupBadges(groupId: string | null) {
     }
     setWeeklyPenaltiesByUser(nextPenalties);
 
-    setInitialDepositUsers(new Set((depositsRes.data ?? []).map((d) => d.user_id)));
+    setFundedWalletUsers(new Set((depositsRes.data ?? []).map((d) => d.user_id)));
 
     const reactions = (reactionsRes.data ?? []) as unknown as {
       user_id: string;
@@ -173,7 +178,7 @@ export function useGroupBadges(groupId: string | null) {
         days: m.days,
         checkins,
         weeklyPenalties,
-        hasInitialDeposit: initialDepositUsers.has(m.userId),
+        hasFundedWallet: fundedWalletUsers.has(m.userId),
         reactionsGivenDates,
         reactionsGivenByRecipient,
         reactionsReceivedCount,
@@ -202,7 +207,7 @@ export function useGroupBadges(groupId: string | null) {
     groupCreatedDate,
     checkinsByUser,
     weeklyPenaltiesByUser,
-    initialDepositUsers,
+    fundedWalletUsers,
     rawReactions,
     ruleProposalsWonByUser,
     monthlyByUserId,

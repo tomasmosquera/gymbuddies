@@ -68,7 +68,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
     const [resultsRes, reactionsRes, checkinsRes, groupRes] = await Promise.all([
       supabase
         .from('weekly_evaluation_results')
-        .select('user_id, failed_days, penalty_charged, run:weekly_evaluation_runs(week_start_date)')
+        .select('user_id, failed_days, penalty_charged, penalty_protected, run:weekly_evaluation_runs(week_start_date)')
         .eq('group_id', groupId),
       supabase.from('checkin_reactions').select('user_id, created_at, checkin:checkins(user_id)').eq('group_id', groupId),
       supabase
@@ -93,15 +93,19 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       user_id: string;
       failed_days: number;
       penalty_charged: number;
+      penalty_protected: boolean;
       run: { week_start_date: string } | null;
     }[];
     const nextClosedWeeks = new Map<string, ClosedWeekFacts[]>();
     for (const r of results) {
       if (!r.run) continue;
       if (!nextClosedWeeks.has(r.user_id)) nextClosedWeeks.set(r.user_id, []);
-      nextClosedWeeks
-        .get(r.user_id)!
-        .push({ weekStartDate: r.run.week_start_date, failedDays: r.failed_days, penaltyCharged: r.penalty_charged });
+      nextClosedWeeks.get(r.user_id)!.push({
+        weekStartDate: r.run.week_start_date,
+        failedDays: r.failed_days,
+        penaltyCharged: r.penalty_charged,
+        penaltyProtected: r.penalty_protected,
+      });
     }
     setClosedWeeksByUser(nextClosedWeeks);
 
@@ -228,6 +232,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
             (r) => r.giverId === m.userId && r.date.slice(0, 7) === month && isOwnedByMember(m, r.date)
           ).length,
           rank: rankByUserId.get(m.userId) ?? null,
+          rankedGroupSize: rankable.length,
           previousMonthRank: previousMonthRankByUserId.get(m.userId) ?? null,
           isMostReactedThisMonth: mostReacted.has(m.userId),
           mvpWeeksThisMonth: mvpTallyThisMonth.get(m.userId) ?? 0,

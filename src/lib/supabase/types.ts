@@ -78,6 +78,8 @@ export type GroupMember = {
   balance: number;
   joined_at: string;
   activated_at: string | null;
+  /** When set (and later than activated_at), missed days before this date never generate a monetary penalty — the member is still counted normally everywhere else (ranking, badges, consistency). Null means penalties apply as soon as the member is activated, same as before this field existed. */
+  penalty_start_date: string | null;
   leave_requested_at: string | null;
   leave_effective_at: string | null;
   notification_preferences: NotificationPreferences;
@@ -253,6 +255,8 @@ export type WeeklyEvaluationResult = {
   excused_days_used: number;
   failed_days: number;
   penalty_charged: number;
+  /** True if penalty_start_date hadn't arrived yet at any point during this week — the week's real failed_days still reflects performance, but penalty_charged may be reduced/zeroed because of it. */
+  penalty_protected: boolean;
   balance_before: number;
   balance_after: number;
   status_after: WeeklyEvaluationStatus;
@@ -357,6 +361,7 @@ export type Database = {
       close_expired_proposals: { Args: Record<string, never>; Returns: void };
       admin_remove_member: { Args: { p_member_id: string }; Returns: GroupMember };
       admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
+      admin_set_member_penalty_start_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       register_push_token: { Args: { p_token: string }; Returns: void };
       unregister_push_token: { Args: { p_token: string }; Returns: void };
       react_to_checkin: { Args: { p_checkin_id: string; p_emoji: string }; Returns: CheckinReaction };
@@ -378,6 +383,10 @@ export type Database = {
       close_expired_photo_challenges: { Args: Record<string, never>; Returns: void };
       admin_adjust_balance: {
         Args: { p_group_id: string; p_user_id: string; p_amount: number; p_note?: string | null };
+        Returns: WalletTransaction;
+      };
+      admin_confirm_deposit_without_receipt: {
+        Args: { p_group_id: string; p_user_id: string; p_amount?: number | null };
         Returns: WalletTransaction;
       };
       delete_own_account: { Args: Record<string, never>; Returns: void };

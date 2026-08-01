@@ -45,9 +45,12 @@ function MemberPicker({
 function InlineDatePicker({
   value,
   onChange,
+  maximumDate,
 }: {
   value: Date;
   onChange: (date: Date) => void;
+  /** Omit for no upper bound — e.g. an activation date, which is routinely set in the future. */
+  maximumDate?: Date;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -69,7 +72,7 @@ function InlineDatePicker({
           display="compact"
           themeVariant="dark"
           accentColor={colors.primary}
-          maximumDate={new Date()}
+          maximumDate={maximumDate}
           onChange={handleChange}
         />
       </View>
@@ -85,7 +88,7 @@ function InlineDatePicker({
         variant="secondary"
         onPress={() => setIsOpen(true)}
       />
-      {isOpen ? <DateTimePicker value={value} mode="date" maximumDate={new Date()} onChange={handleChange} /> : null}
+      {isOpen ? <DateTimePicker value={value} mode="date" maximumDate={maximumDate} onChange={handleChange} /> : null}
     </View>
   );
 }
@@ -100,6 +103,10 @@ export default function AdminMembersScreen() {
   // --- Section 1: activation date ---
   const [activationDate, setActivationDate] = useState(new Date());
   const [isSavingActivation, setIsSavingActivation] = useState(false);
+
+  // --- Section 1b: penalty start date ---
+  const [penaltyStartDate, setPenaltyStartDate] = useState(new Date());
+  const [isSavingPenaltyStart, setIsSavingPenaltyStart] = useState(false);
 
   // --- Section 2: attendance override ---
   const [attendanceDate, setAttendanceDate] = useState(new Date());
@@ -116,6 +123,10 @@ export default function AdminMembersScreen() {
   const [adjustments, setAdjustments] = useState<WalletTransaction[]>([]);
   const [adjustmentsLoading, setAdjustmentsLoading] = useState(false);
 
+  // --- Section: confirm initial deposit without a receipt photo ---
+  const [depositAmount, setDepositAmount] = useState('');
+  const [isConfirmingDeposit, setIsConfirmingDeposit] = useState(false);
+
   // --- Section 4: remove ---
   const [isRemoving, setIsRemoving] = useState(false);
 
@@ -124,10 +135,16 @@ export default function AdminMembersScreen() {
     setActivationDate(
       selectedMember ? new Date(selectedMember.activated_at ?? selectedMember.joined_at) : new Date()
     );
+    setPenaltyStartDate(
+      selectedMember
+        ? new Date(selectedMember.penalty_start_date ?? selectedMember.activated_at ?? selectedMember.joined_at)
+        : new Date()
+    );
     setAttendanceDate(new Date());
     setAttendanceNote('');
     setBalanceAmount('');
     setBalanceNote('');
+    setDepositAmount(group ? String(group.initial_deposit_amount) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUserId]);
 
@@ -207,6 +224,24 @@ export default function AdminMembersScreen() {
     }
   };
 
+  const handleSavePenaltyStartDate = async () => {
+    if (!selectedMember) return;
+    setIsSavingPenaltyStart(true);
+    try {
+      const { error } = await supabase.rpc('admin_set_member_penalty_start_date', {
+        p_member_id: selectedMember.id,
+        p_date: toBogotaDateString(penaltyStartDate),
+      });
+      if (error) throw new Error(error.message);
+      await refreshMembers();
+      Alert.alert('Listo', 'Se actualizó la fecha de inicio de penalizaciones.');
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingPenaltyStart(false);
+    }
+  };
+
   const handleSetDayStatus = async (status: 'valid' | 'failed') => {
     if (!group || !selectedUserId) return;
     setIsSubmittingAttendance(true);
@@ -273,6 +308,30 @@ export default function AdminMembersScreen() {
     }
   };
 
+  const handleConfirmDepositWithoutReceipt = async () => {
+    if (!group || !selectedUserId) return;
+    const numeric = Number(depositAmount);
+    if (!depositAmount || Number.isNaN(numeric) || numeric <= 0) {
+      Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.');
+      return;
+    }
+    setIsConfirmingDeposit(true);
+    try {
+      const { error } = await supabase.rpc('admin_confirm_deposit_without_receipt', {
+        p_group_id: group.id,
+        p_user_id: selectedUserId,
+        p_amount: numeric,
+      });
+      if (error) throw new Error(error.message);
+      await refreshMembers();
+      Alert.alert('Listo', 'El depósito quedó confirmado y el miembro ya está activo.');
+    } catch (err) {
+      Alert.alert('No se pudo confirmar el depósito', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsConfirmingDeposit(false);
+    }
+  };
+
   const confirmRemove = () => {
     if (!selectedMember) return;
     Alert.alert(
@@ -336,8 +395,25 @@ export default function AdminMembersScreen() {
           </Card>
 
           <Card style={styles.section}>
+            <Text style={styles.sectionTitle}>Fecha de inicio de penalizaciones</Text>
+            <Text style={styles.sectionHint}>
+              Actual:{' '}
+              {new Date(
+                selectedMember.penalty_start_date ?? selectedMember.activated_at ?? selectedMember.joined_at
+              ).toLocaleDateString('es-CO')}
+            </Text>
+            <Text style={styles.sectionHint}>
+              El jugador cuenta normal para ranking, consistencia y logros desde su fecha de entrada — esta fecha
+              solo controla desde cuándo se le puede cobrar una penalización en dinero. Déjala igual a la fecha de
+              entrada si quieres que las penalizaciones apliquen de inmediato.
+            </Text>
+            <InlineDatePicker value={penaltyStartDate} onChange={setPenaltyStartDate} />
+            <Button label="Guardar fecha" onPress={handleSavePenaltyStartDate} loading={isSavingPenaltyStart} />
+          </Card>
+
+          <Card style={styles.section}>
             <Text style={styles.sectionTitle}>Asignar día válido/fallado</Text>
-            <InlineDatePicker value={attendanceDate} onChange={setAttendanceDate} />
+            <InlineDatePicker value={attendanceDate} onChange={setAttendanceDate} maximumDate={new Date()} />
             <View style={styles.dayStatusRow}>
               <Text style={styles.sectionHint}>Estado actual:</Text>
               <Badge label={dayStatusLabel} tone={dayStatusTone} />
@@ -365,6 +441,28 @@ export default function AdminMembersScreen() {
               />
             ) : null}
           </Card>
+
+          {selectedMember.status === 'pending_deposit' ? (
+            <Card style={styles.section}>
+              <Text style={styles.sectionTitle}>Confirmar depósito sin comprobante</Text>
+              <Text style={styles.sectionHint}>
+                Úsalo si el pago llegó por fuera de la app (efectivo, u otro medio que ya verificaste) y el miembro no
+                necesita subir foto de comprobante. Si ya había enviado una, queda reemplazada por esta confirmación.
+              </Text>
+              <TextField
+                label={`Monto del depósito (${group.currency})`}
+                value={depositAmount}
+                onChangeText={setDepositAmount}
+                keyboardType="numeric"
+                placeholder={group.initial_deposit_amount.toLocaleString('es-CO')}
+              />
+              <Button
+                label="Confirmar depósito sin comprobante"
+                onPress={handleConfirmDepositWithoutReceipt}
+                loading={isConfirmingDeposit}
+              />
+            </Card>
+          ) : null}
 
           <Card style={styles.section}>
             <Text style={styles.sectionTitle}>Ajustar saldo</Text>

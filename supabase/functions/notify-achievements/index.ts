@@ -54,7 +54,7 @@ interface MemberRaw {
   days: DayRecord[];
   checkins: BadgeCheckinFact[];
   weeklyPenalties: { weekStartDate: string; penaltyCharged: number }[];
-  hasInitialDeposit: boolean;
+  hasFundedWallet: boolean;
   reactionsGivenDates: string[];
   reactionsGivenByRecipient: Record<string, number>;
   reactionsReceivedCount: number;
@@ -112,7 +112,12 @@ async function processGroup(
       .from('weekly_evaluation_results')
       .select('user_id, failed_days, penalty_charged, run:weekly_evaluation_runs(week_start_date)')
       .eq('group_id', group.id),
-    supabase.from('wallet_transactions').select('user_id').eq('group_id', group.id).eq('type', 'initial_deposit'),
+    supabase
+      .from('wallet_transactions')
+      .select('user_id')
+      .eq('group_id', group.id)
+      .in('type', ['initial_deposit', 'recharge'])
+      .eq('status', 'confirmed'),
     supabase.from('checkin_reactions').select('user_id, created_at, checkin:checkins(user_id)').eq('group_id', group.id),
     supabase.from('rule_proposals').select('proposed_by, status').eq('group_id', group.id).in('status', ['approved', 'applied']),
     supabase.from('member_achievement_notifications').select('user_id, badge_id, period').eq('group_id', group.id),
@@ -190,7 +195,7 @@ async function processGroup(
     weeklyPenaltiesByUser.get(r.user_id)!.push({ weekStartDate: r.run.week_start_date, penaltyCharged: r.penalty_charged });
   }
 
-  const initialDepositUsers = new Set(((depositsRes.data ?? []) as { user_id: string }[]).map((d) => d.user_id));
+  const fundedWalletUsers = new Set(((depositsRes.data ?? []) as { user_id: string }[]).map((d) => d.user_id));
 
   const reactionsGivenDatesByUser = new Map<string, string[]>();
   const reactionsGivenByRecipientByUser = new Map<string, Record<string, number>>();
@@ -271,7 +276,7 @@ async function processGroup(
       days,
       checkins: checkinFactsByUser.get(m.user_id) ?? [],
       weeklyPenalties: weeklyPenaltiesByUser.get(m.user_id) ?? [],
-      hasInitialDeposit: initialDepositUsers.has(m.user_id),
+      hasFundedWallet: fundedWalletUsers.has(m.user_id),
       reactionsGivenDates: reactionsGivenDatesByUser.get(m.user_id) ?? [],
       reactionsGivenByRecipient: reactionsGivenByRecipientByUser.get(m.user_id) ?? {},
       reactionsReceivedCount: reactionsReceivedByUser.get(m.user_id) ?? 0,
@@ -357,6 +362,7 @@ async function processGroup(
         anyWeekendCompleted: anyWeekendCompleted(daysInMonth),
         reactionsGivenCount: reactionsGivenByUserMonth.get(m.userId)?.get(month) ?? 0,
         rank: rankByUserId.get(m.userId) ?? null,
+        rankedGroupSize: rankable.length,
         previousMonthRank: previousMonthRankByUserId.get(m.userId) ?? null,
         isMostReactedThisMonth: mostReacted.has(m.userId),
         mvpWeeksThisMonth: mvpTallyThisMonth.get(m.userId) ?? 0,
@@ -386,7 +392,7 @@ async function processGroup(
       days: m.days,
       checkins: m.checkins,
       weeklyPenalties: m.weeklyPenalties,
-      hasInitialDeposit: m.hasInitialDeposit,
+      hasFundedWallet: m.hasFundedWallet,
       reactionsGivenDates: m.reactionsGivenDates,
       reactionsGivenByRecipient: m.reactionsGivenByRecipient,
       reactionsReceivedCount: m.reactionsReceivedCount,
@@ -460,12 +466,16 @@ async function processGroup(
     if (!baselineOnly) {
       const otherMemberIds = allMemberIds.filter((id) => id !== m.userId);
       for (const n of notifications) {
+        // data.user_id is always the achiever, whether the recipient is that
+        // person (tapping opens "Tus logros") or a teammate (tapping opens
+        // the achiever's own logros) — see notificationRouting.ts.
         await supabase.rpc('send_push_notification', {
           p_user_ids: [m.userId],
           p_title: n.title,
           p_body: n.body,
           p_group_id: group.id,
           p_category: 'achievements',
+          p_data: { user_id: m.userId },
         });
         if (otherMemberIds.length > 0) {
           await supabase.rpc('send_push_notification', {
@@ -474,6 +484,7 @@ async function processGroup(
             p_body: n.broadcastBody,
             p_group_id: group.id,
             p_category: 'achievements',
+            p_data: { user_id: m.userId },
           });
         }
       }

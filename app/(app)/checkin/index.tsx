@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -49,9 +49,29 @@ export default function CheckinCameraScreen() {
     }, [refreshCheckins])
   );
 
+  // Same "stays mounted" issue applies to location: a lock taken the last
+  // time this tab was focused (e.g. at home, before leaving for the gym)
+  // would otherwise sit there stale — a photo taken minutes or hours later
+  // must never carry an old fix. Re-lock on every focus, not just first
+  // mount, so both the initial and (if the screen was left and re-entered
+  // mid check-in) the checkout photo always use a fresh position.
+  useFocusEffect(
+    useCallback(() => {
+      requestLock();
+    }, [requestLock])
+  );
+
+  // The more common version of the same problem: the screen never lost
+  // navigation focus at all — the whole app was just backgrounded (locked
+  // phone, switched apps) while walking from home to the gym, so
+  // useFocusEffect above never re-fires. Re-lock when the app comes back
+  // to the foreground too.
   useEffect(() => {
-    if (locationStatus === 'idle') requestLock();
-  }, [locationStatus, requestLock]);
+    const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') requestLock();
+    });
+    return () => subscription.remove();
+  }, [requestLock]);
 
   // A fresh capture (retake or checkout) must never reuse an earlier lock —
   // this screen's tab instance can stay mounted across a whole visit to the

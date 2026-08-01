@@ -77,10 +77,20 @@
       "WebFetch(domain:stellar-fiber-5bf.notion.site)",
       "Bash(mkdir -p \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Admin-Documents-Gym-Buddies\\\\e2a1037e-db37-4375-8e0a-b8f0a0924ccb\\\\scratchpad\")",
       "Bash(nohup npx eas-cli build --platform ios --profile production --non-interactive --auto-submit)",
-      "Bash(echo \"Started with PID $!\")"
+      "Bash(echo \"Started with PID $!\")",
+      "Bash(nslookup github.com)",
+      "Bash(npx tsc *)",
+      "Bash(npx eslint *)",
+      "Bash(curl -s '__TRACKED_VAR__/rest/v1/profiles?select=id,full_name&full_name=ilike.*Daniel*Aristizabal*' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(curl -s 'https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/group_members?select=*&user_id=eq.__TRACKED_VAR__' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(curl -s 'https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?select=*&user_id=eq.__TRACKED_VAR__' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(curl -s -X PATCH https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?id=eq.__TRACKED_VAR__ -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -H 'Prefer: return=representation' -d '{\"type\":\"initial_deposit\",\"note\":\"Reclasificado de recarga a depósito inicial — este fue el primer pago con el que Daniel pasó de pending_deposit a active.\"}')",
+      "Bash(curl -s -X PATCH https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?id=eq.__TRACKED_VAR__ -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -H 'Prefer: return=representation' --data-binary @/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json)",
+      "Bash(rm -f \"/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json\")"
     ],
     "additionalDirectories": [
-      "\\tmp"
+      "\\tmp",
+      "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\c--Users-Admin-Documents-Gym-Buddies\\49951912-9498-4c6c-89b1-fd2bf6e687be\\scratchpad"
     ]
   }
 }

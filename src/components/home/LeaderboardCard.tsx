@@ -108,6 +108,11 @@ export function LeaderboardCard({
                       <Text style={styles.owed} numberOfLines={1}>
                         {row.chargedAmount > 0 ? `-${currency} ${row.chargedAmount.toLocaleString('es-CO')}` : `${currency} 0`}
                       </Text>
+                      {row.penaltyProtectedUntil ? (
+                        <Text style={styles.protectedHint} numberOfLines={1}>
+                          🛡️ Protegido hasta {formatShortDate(row.penaltyProtectedUntil)}
+                        </Text>
+                      ) : null}
                     </View>
                     <Text style={[styles.stat, styles.statGood]}>{row.completedDays}</Text>
                     <Text style={[styles.stat, styles.statBad]}>{row.failedDays}</Text>
@@ -151,6 +156,7 @@ const styles = StyleSheet.create({
   name: { color: colors.text, fontWeight: '600' },
   nameMe: { color: colors.primary },
   owed: { color: colors.warning, fontSize: 12, marginTop: 1, fontWeight: '600' },
+  protectedHint: { color: colors.textMuted, fontSize: 11, marginTop: 1 },
   stat: { width: 38, textAlign: 'center', fontSize: 15, fontWeight: '700' },
   statGood: { color: colors.success },
   statBad: { color: colors.danger },

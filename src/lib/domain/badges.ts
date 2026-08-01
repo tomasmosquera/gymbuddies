@@ -39,7 +39,8 @@ export interface BadgeContext {
   checkins: BadgeCheckinFact[];
   /** One entry per already-CLOSED week this member was evaluated in. */
   weeklyPenalties: BadgeWeeklyPenalty[];
-  hasInitialDeposit: boolean;
+  /** True once this member has any confirmed wallet_transactions row of type 'initial_deposit' or 'recharge' — i.e. they've actually put money into the group, regardless of which of the two flows it came through. */
+  hasFundedWallet: boolean;
   /** Calendar dates (Bogota) this member gave at least one reaction on. */
   reactionsGivenDates: string[];
   /** How many reactions this member gave, keyed by the checkin owner's userId. */
@@ -622,9 +623,9 @@ export const BADGES: BadgeDefinition[] = [
     id: 'piel-en-el-juego',
     name: 'Piel en el Juego',
     emoji: '💵',
-    description: 'Primer depósito realizado.',
+    description: 'Meter dinero al grupo (depósito inicial o recarga).',
     category: 'financiero',
-    evaluate: (ctx) => bool(ctx.hasInitialDeposit),
+    evaluate: (ctx) => bool(ctx.hasFundedWallet),
   },
   {
     id: 'ahorrador-involuntario',

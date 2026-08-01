@@ -36,7 +36,7 @@ function baseContext(overrides: Partial<BadgeContext> = {}): BadgeContext {
     days: [],
     checkins: [],
     weeklyPenalties: [],
-    hasInitialDeposit: false,
+    hasFundedWallet: false,
     reactionsGivenDates: [],
     reactionsGivenByRecipient: {},
     reactionsReceivedCount: 0,
@@ -196,6 +196,11 @@ describe('representative badge evaluations', () => {
       ]),
     });
     expect(badge('impecable').evaluate(ctx).earned).toBe(false);
+  });
+
+  it('Piel en el Juego earns from either an initial deposit or a recharge', () => {
+    expect(badge('piel-en-el-juego').evaluate(baseContext({ hasFundedWallet: false })).earned).toBe(false);
+    expect(badge('piel-en-el-juego').evaluate(baseContext({ hasFundedWallet: true })).earned).toBe(true);
   });
 
   it('Ahorrador Involuntario requires at least one evaluated week with zero penalties', () => {

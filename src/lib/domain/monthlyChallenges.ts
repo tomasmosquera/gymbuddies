@@ -18,6 +18,8 @@ export interface ClosedWeekFacts {
   weekStartDate: string;
   failedDays: number;
   penaltyCharged: number;
+  /** True if the member's penalty_start_date hadn't arrived yet at any point during this week — penaltyCharged may be reduced/zeroed because of it, not because the week was actually clean. */
+  penaltyProtected: boolean;
 }
 
 export interface MonthlyMemberContext {
@@ -35,6 +37,8 @@ export interface MonthlyMemberContext {
   reactionsGivenCount: number;
   /** This member's rank in the group this month by consistency percent (never balance/money); null if they had no decided day that month. */
   rank: number | null;
+  /** How many members had at least one decided day this month (the same pool `rank` is computed over) — gates rank-based challenges that need a minimum number of competitors to be meaningful (e.g. Podio del Mes). */
+  rankedGroupSize: number;
   previousMonthRank: number | null;
   isMostReactedThisMonth: boolean;
   mvpWeeksThisMonth: number;
@@ -255,7 +259,13 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     emoji: '🚫',
     description: 'No recibir ninguna penalización monetaria en el mes.',
     xpPerOccurrence: 30,
-    evaluate: (ctx) => (ctx.closedWeeksInMonth.length > 0 ? ctx.closedWeeksInMonth.every((w) => w.penaltyCharged === 0) : null),
+    // Weeks still under penalty-grace protection are excluded rather than
+    // counted as "clean" — a $0 penalty there reflects the grace period, not
+    // an actual accomplishment, so it shouldn't trivially earn this badge.
+    evaluate: (ctx) => {
+      const eligibleWeeks = ctx.closedWeeksInMonth.filter((w) => !w.penaltyProtected);
+      return eligibleWeeks.length > 0 ? eligibleWeeks.every((w) => w.penaltyCharged === 0) : null;
+    },
   },
   {
     id: 'festivo-cumplido',
@@ -289,7 +299,9 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     emoji: '🧵',
     description: 'Terminar el mes sin haber roto la racha ni un solo día.',
     xpPerOccurrence: 50,
-    evaluate: (ctx) => ctx.failedCount === 0,
+    // Requires at least one completed day — a member who never trained that
+    // month has no streak to keep intact, so failedCount === 0 alone isn't enough.
+    evaluate: (ctx) => ctx.completedCount > 0 && ctx.failedCount === 0,
   },
   {
     id: 'top-del-grupo',
@@ -303,9 +315,11 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     id: 'podio-del-mes',
     name: 'Podio del Mes',
     emoji: '🏆',
-    description: 'Terminar el mes en el top 3 del ranking del grupo.',
+    description: 'Terminar el mes en el top 3 del ranking del grupo (mínimo 4 participantes).',
     xpPerOccurrence: 50,
-    evaluate: (ctx) => (ctx.rank !== null ? ctx.rank <= 3 : null),
+    // A top-3 finish is meaningless (guaranteed or nearly so) with fewer than
+    // 4 people competing that month, so it's not applicable at all then.
+    evaluate: (ctx) => (ctx.rank !== null && ctx.rankedGroupSize >= 4 ? ctx.rank <= 3 : null),
   },
   {
     id: 'noventa-consistencia-mensual',

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
 import { consistencyPercent, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
+import { daysPresentInWeek } from '@/lib/domain/weeklyEvaluation';
 import { useGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
 
 export type LeaderboardPeriod = 'week' | 'month' | 'all';
@@ -19,6 +20,8 @@ export interface LeaderboardRow {
   totalWorkoutMinutes: number;
   /** 1-based rank by consistency percent, then (only if the group requires checkout photos) total workout duration. Ties share a rank; money never factors in. */
   rank: number;
+  /** True right now if this member's penalty_start_date is still in the future — so a $0 charge reads as "protected", not "perfect". */
+  penaltyProtectedUntil: string | null;
 }
 
 export interface LastClosedWeekSummary {
@@ -194,11 +197,19 @@ export function useLeaderboard(groupId: string | null, referenceDate: Date = new
 
     // Guaranteed-misses-only projection for the still-open current week —
     // see the doc comment above for why this can't just be "required - completed".
+    // requiredDays is clamped to how many days of *this* week the member was
+    // even penalty-eligible for (mirrors run_weekly_evaluation's parallel
+    // penalty-quota calculation, keyed off penaltyStartDate rather than
+    // activatedDate) — a member still within their penalty grace period
+    // must never show a live projected charge, even if they're missing days
+    // for consistency purposes.
     const liveChargedFailedDays = (m: MemberAttendanceRecord): number => {
       const weekDays = m.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
       const completed = weekDays.filter((d) => d.status === 'completed').length;
       const excused = weekDays.filter((d) => d.status === 'excused').length;
-      const effectiveRequired = Math.max(m.minDaysPerWeek - excused, 0);
+      const presentDays = m.penaltyStartDate ? daysPresentInWeek(m.penaltyStartDate, weekStart, weekEnd) : 7;
+      const requiredDays = Math.min(m.minDaysPerWeek, presentDays);
+      const effectiveRequired = Math.max(requiredDays - excused, 0);
       const stillNeeded = Math.max(effectiveRequired - completed, 0);
       return Math.max(stillNeeded - remainingDays, 0);
     };
@@ -223,6 +234,7 @@ export function useLeaderboard(groupId: string | null, referenceDate: Date = new
           consistencyPercent: consistencyPercent(tally.completedCount, tally.failedCount),
           chargedAmount: chargedAmountFn(m),
           totalWorkoutMinutes,
+          penaltyProtectedUntil: m.penaltyStartDate && m.penaltyStartDate > todayString ? m.penaltyStartDate : null,
         };
       });
       const rankByUserId = rankMembersByConsistency(

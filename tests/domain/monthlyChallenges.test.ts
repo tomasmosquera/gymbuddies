@@ -188,6 +188,7 @@ function baseContext(overrides: Partial<MonthlyMemberContext> = {}): MonthlyMemb
     anyWeekendCompleted: null,
     reactionsGivenCount: 0,
     rank: null,
+    rankedGroupSize: 0,
     previousMonthRank: null,
     isMostReactedThisMonth: false,
     mvpWeeksThisMonth: 0,
@@ -211,15 +212,50 @@ describe('representative monthly challenge evaluations', () => {
     expect(challenge('mes-perfecto-mensual').evaluate(baseContext())).toBeNull();
     expect(
       challenge('mes-perfecto-mensual').evaluate(
-        baseContext({ closedWeeksInMonth: [{ weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0 }] })
+        baseContext({
+          closedWeeksInMonth: [{ weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0, penaltyProtected: false }],
+        })
       )
     ).toBe(true);
     expect(
       challenge('mes-perfecto-mensual').evaluate(
         baseContext({
           closedWeeksInMonth: [
-            { weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0 },
-            { weekStartDate: '2026-02-09', failedDays: 1, penaltyCharged: 5000 },
+            { weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0, penaltyProtected: false },
+            { weekStartDate: '2026-02-09', failedDays: 1, penaltyCharged: 5000, penaltyProtected: false },
+          ],
+        })
+      )
+    ).toBe(false);
+  });
+
+  it('Cero Multas ignores weeks still under penalty-grace protection — a protected $0 week is not a real accomplishment', () => {
+    // Only protected weeks this month -> not applicable (null), not trivially true.
+    expect(
+      challenge('cero-multas-mensual').evaluate(
+        baseContext({
+          closedWeeksInMonth: [{ weekStartDate: '2026-02-02', failedDays: 3, penaltyCharged: 0, penaltyProtected: true }],
+        })
+      )
+    ).toBeNull();
+
+    // A real $0 week (not protected) still earns it.
+    expect(
+      challenge('cero-multas-mensual').evaluate(
+        baseContext({
+          closedWeeksInMonth: [{ weekStartDate: '2026-02-02', failedDays: 0, penaltyCharged: 0, penaltyProtected: false }],
+        })
+      )
+    ).toBe(true);
+
+    // A protected week alongside a real penalty elsewhere in the month still fails it —
+    // the protected week is excluded, not counted in either direction.
+    expect(
+      challenge('cero-multas-mensual').evaluate(
+        baseContext({
+          closedWeeksInMonth: [
+            { weekStartDate: '2026-02-02', failedDays: 3, penaltyCharged: 0, penaltyProtected: true },
+            { weekStartDate: '2026-02-09', failedDays: 1, penaltyCharged: 5000, penaltyProtected: false },
           ],
         })
       )
@@ -236,8 +272,21 @@ describe('representative monthly challenge evaluations', () => {
     expect(challenge('top-del-grupo').evaluate(baseContext({ rank: null }))).toBeNull();
     expect(challenge('top-del-grupo').evaluate(baseContext({ rank: 1 }))).toBe(true);
     expect(challenge('top-del-grupo').evaluate(baseContext({ rank: 2 }))).toBe(false);
-    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 3 }))).toBe(true);
-    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 4 }))).toBe(false);
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 3, rankedGroupSize: 4 }))).toBe(true);
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 4, rankedGroupSize: 4 }))).toBe(false);
+  });
+
+  it('Podio del Mes is not applicable with fewer than 4 participants that month', () => {
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 1, rankedGroupSize: 3 }))).toBeNull();
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 3, rankedGroupSize: 3 }))).toBeNull();
+    expect(challenge('podio-del-mes').evaluate(baseContext({ rank: 1, rankedGroupSize: 4 }))).toBe(true);
+  });
+
+  it('Racha Intacta requires at least one completed day, not just zero failed days', () => {
+    expect(challenge('racha-intacta-mensual').evaluate(baseContext({ completedCount: 0, failedCount: 0 }))).toBe(false);
+    expect(challenge('racha-intacta-mensual').evaluate(baseContext({ completedCount: 0, failedCount: 2 }))).toBe(false);
+    expect(challenge('racha-intacta-mensual').evaluate(baseContext({ completedCount: 5, failedCount: 1 }))).toBe(false);
+    expect(challenge('racha-intacta-mensual').evaluate(baseContext({ completedCount: 5, failedCount: 0 }))).toBe(true);
   });
 
   it('Comeback del Mes requires both a current and previous rank, and a strict improvement', () => {

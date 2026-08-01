@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useNotifications } from '@/hooks/useNotifications';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import type { NotificationCategory } from '@/lib/supabase/types';
+import { getNotificationRoute } from '@/lib/notifications/notificationRouting';
+import { useActiveGroupStore } from '@/state/activeGroupStore';
+import type { AppNotification, NotificationCategory } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const CATEGORY_ICONS: Record<NotificationCategory, keyof typeof Ionicons.glyphMap> = {
@@ -31,6 +34,16 @@ function formatRelativeTime(isoDate: string): string {
   if (days < 7) return `Hace ${days} ${days === 1 ? 'día' : 'días'}`;
   const date = new Date(isoDate);
   return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+}
+
+function handlePressNotification(n: AppNotification) {
+  const route = getNotificationRoute(n);
+  if (!route) return;
+  // The notification's own group, which may not be the one currently active
+  // (a member can belong to several groups) — the destination screen needs
+  // to show that group's data, not whatever was active before the tap.
+  useActiveGroupStore.getState().setActiveGroupId(n.group_id);
+  router.push(route);
 }
 
 export default function NotificationsScreen() {
@@ -66,20 +79,22 @@ export default function NotificationsScreen() {
       {notifications.map((n) => {
         const isNew = !lastSeenAt || n.created_at > lastSeenAt;
         return (
-          <Card key={n.id} style={styles.row}>
-            <View style={styles.iconWrap}>
-              <Ionicons name={iconFor(n.category)} size={20} color={colors.text} />
-            </View>
-            <View style={styles.body}>
-              <View style={styles.titleLine}>
-                <Text style={styles.title} numberOfLines={2}>
-                  {n.title}
-                </Text>
-                {isNew ? <View style={styles.newDot} /> : null}
+          <Card key={n.id}>
+            <Pressable style={styles.row} onPress={() => handlePressNotification(n)}>
+              <View style={styles.iconWrap}>
+                <Ionicons name={iconFor(n.category)} size={20} color={colors.text} />
               </View>
-              <Text style={styles.description}>{n.body}</Text>
-              <Text style={styles.time}>{formatRelativeTime(n.created_at)}</Text>
-            </View>
+              <View style={styles.body}>
+                <View style={styles.titleLine}>
+                  <Text style={styles.title} numberOfLines={2}>
+                    {n.title}
+                  </Text>
+                  {isNew ? <View style={styles.newDot} /> : null}
+                </View>
+                <Text style={styles.description}>{n.body}</Text>
+                <Text style={styles.time}>{formatRelativeTime(n.created_at)}</Text>
+              </View>
+            </Pressable>
           </Card>
         );
       })}

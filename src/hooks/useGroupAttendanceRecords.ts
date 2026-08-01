@@ -16,6 +16,8 @@ export interface MemberAttendanceRecord {
   /** Raw join timestamp, e.g. to compare against the group's own created_at for "founder" badges. */
   joinedAt: string;
   activatedDate: string | null;
+  /** Same coalesce-to-activation rule as the server (run_weekly_evaluation) — null means penalties apply as soon as the member is activated. */
+  penaltyStartDate: string | null;
   /**
    * One entry per day from this member's activation date through today,
    * classified with the exact same rule the Dashboard's attendance view
@@ -28,6 +30,11 @@ export interface MemberAttendanceRecord {
 function activatedDateOf(m: { activated_at: string | null; joined_at: string }): string | null {
   const activatedAt = m.activated_at ?? m.joined_at;
   return activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+}
+
+function penaltyStartDateOf(m: { penalty_start_date: string | null; activated_at: string | null; joined_at: string }): string | null {
+  const date = m.penalty_start_date ?? m.activated_at ?? m.joined_at;
+  return date ? toBogotaDateString(new Date(date)) : null;
 }
 
 /**
@@ -54,7 +61,9 @@ export function useGroupAttendanceRecords(groupId: string | null) {
     const [membersRes, checkinsRes, excusedRes, overridesRes] = await Promise.all([
       supabase
         .from('group_members')
-        .select('user_id, balance, activated_at, joined_at, profile:profiles(full_name), group:groups(min_days_per_week, created_at)')
+        .select(
+          'user_id, balance, activated_at, penalty_start_date, joined_at, profile:profiles(full_name), group:groups(min_days_per_week, created_at)'
+        )
         .eq('group_id', groupId)
         .in('status', ['active', 'needs_recharge']),
       // No lower bound needed — a check-in can't predate the group itself.
@@ -71,6 +80,7 @@ export function useGroupAttendanceRecords(groupId: string | null) {
       user_id: string;
       balance: number;
       activated_at: string | null;
+      penalty_start_date: string | null;
       joined_at: string;
       profile: { full_name: string } | null;
       group: { min_days_per_week: number; created_at: string } | null;
@@ -132,6 +142,7 @@ export function useGroupAttendanceRecords(groupId: string | null) {
         minDaysPerWeek: m.group?.min_days_per_week ?? 0,
         joinedAt: m.joined_at,
         activatedDate,
+        penaltyStartDate: penaltyStartDateOf(m),
         days,
       };
     });
