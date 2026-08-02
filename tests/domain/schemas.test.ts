@@ -70,6 +70,57 @@ describe('createGroupSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('defaults to cooperative mode when payoutMode is omitted', () => {
+    const result = createGroupSchema.safeParse({
+      name: 'Gym Buddies Bogotá',
+      initialDepositAmount: 100000,
+      minDaysPerWeek: 3,
+      penaltyAmount: 15000,
+      weeklyPenaltyCap: 300000,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.payoutMode).toBe('cooperative');
+  });
+
+  it('accepts a league mode with custom duration and prize splits', () => {
+    const result = createGroupSchema.safeParse({
+      name: 'Gym Buddies Bogotá',
+      initialDepositAmount: 100000,
+      minDaysPerWeek: 3,
+      penaltyAmount: 15000,
+      weeklyPenaltyCap: 300000,
+      payoutMode: 'league',
+      leagueDurationMonths: 6,
+      leaguePrizeSplits: [100],
+      gameStartsAt: '2026-08-15',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects league prize splits summing over 100%', () => {
+    const result = createGroupSchema.safeParse({
+      name: 'Gym Buddies Bogotá',
+      initialDepositAmount: 100000,
+      minDaysPerWeek: 3,
+      penaltyAmount: 15000,
+      weeklyPenaltyCap: 300000,
+      leaguePrizeSplits: [80, 40],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an invalid game start date', () => {
+    const result = createGroupSchema.safeParse({
+      name: 'Gym Buddies Bogotá',
+      initialDepositAmount: 100000,
+      minDaysPerWeek: 3,
+      penaltyAmount: 15000,
+      weeklyPenaltyCap: 300000,
+      gameStartsAt: '15/08/2026',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('joinGroupSchema', () => {
@@ -95,6 +146,30 @@ describe('ruleProposalSchema', () => {
 
   it('rejects an empty proposal with no changes', () => {
     const result = ruleProposalSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a payout-mode change with valid league fields', () => {
+    const result = ruleProposalSchema.safeParse({
+      payoutMode: 'league',
+      leagueDurationMonths: 3,
+      leaguePrizeSplits: [60, 30, 10],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects prize splits that sum over 100%', () => {
+    const result = ruleProposalSchema.safeParse({ leaguePrizeSplits: [70, 40] });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a winner-take-all split', () => {
+    const result = ruleProposalSchema.safeParse({ leaguePrizeSplits: [100] });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a mixed share percent out of range', () => {
+    const result = ruleProposalSchema.safeParse({ mixedLeagueSharePercent: 150 });
     expect(result.success).toBe(false);
   });
 });

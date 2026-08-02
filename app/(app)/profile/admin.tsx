@@ -243,6 +243,9 @@ export default function AdminGroupScreen() {
           <Text style={styles.sectionTitle}>Herramientas</Text>
           <Button label="Moderar fotos de la semana" variant="secondary" onPress={() => router.push('/profile/admin-photos')} />
           <Button label="Administrar Miembros" variant="secondary" onPress={() => router.push('/profile/admin-members')} />
+          {group.payout_mode !== 'cooperative' ? (
+            <Button label="Ciclo de Liga" variant="secondary" onPress={() => router.push('/rules')} />
+          ) : null}
 
           <Text style={styles.sectionTitle}>Miembros ({members.length})</Text>
         </View>

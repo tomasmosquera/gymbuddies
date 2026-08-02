@@ -13,7 +13,7 @@
 
 export type GroupMemberRole = 'admin' | 'member';
 export type GroupMemberStatus = 'pending_deposit' | 'active' | 'needs_recharge' | 'left' | 'removed';
-export type WalletTransactionType = 'initial_deposit' | 'penalty' | 'recharge' | 'adjustment';
+export type WalletTransactionType = 'initial_deposit' | 'penalty' | 'recharge' | 'adjustment' | 'payout';
 export type WalletTransactionStatus = 'pending' | 'confirmed' | 'rejected';
 export type RuleProposalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'applied';
 export type VoteChoice = 'yes' | 'no';
@@ -21,6 +21,8 @@ export type WeeklyEvaluationStatus = 'active' | 'needs_recharge';
 export type ExcuseType = 'travel' | 'medical' | 'other';
 export type ExcuseRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export type AttendanceOverrideStatus = 'valid' | 'failed';
+export type PayoutMode = 'cooperative' | 'league' | 'mixed';
+export type LeagueCycleStatus = 'running' | 'completed' | 'cancelled';
 
 export type NotificationCategory = 'group_activity' | 'money' | 'votes' | 'reminders' | 'admin_actions' | 'achievements';
 
@@ -66,6 +68,41 @@ export type Group = {
   min_workout_minutes: number;
   admin_payment_info: string | null;
   timezone: string;
+  /** How the group's pooled balance gets distributed — see league_cycles for 'league'/'mixed' cycle state. */
+  payout_mode: PayoutMode;
+  league_duration_months: number;
+  /** Percent of the league-share pool each place gets, in order (1st, 2nd, ...). Sum ≤ 100 — a sum below 100 leaves the remainder unpaid. */
+  league_prize_splits: number[];
+  /** Only meaningful when payout_mode = 'mixed': % of the pool that follows the league mechanic (the rest follows cooperative). */
+  mixed_league_share_percent: number;
+  /** Group-wide floor under every member's activated_at, set at creation — "we're creating the group today but really start playing on Aug 15". Null means no delay (existing behavior). */
+  game_starts_at: string | null;
+  created_at: string;
+};
+
+export type LeagueCycle = {
+  id: string;
+  group_id: string;
+  cycle_number: number;
+  prize_splits: number[];
+  duration_months: number;
+  league_share_percent: number;
+  started_at: string;
+  ends_at: string;
+  status: LeagueCycleStatus;
+  completed_at: string | null;
+  pool_at_payout: number | null;
+  created_at: string;
+};
+
+export type LeagueCyclePayout = {
+  id: string;
+  cycle_id: string;
+  user_id: string;
+  place: number;
+  share_percent: number;
+  amount: number;
+  wallet_transaction_id: string | null;
   created_at: string;
 };
 
@@ -129,6 +166,10 @@ export type RuleProposalChanges = {
   exit_notice_days?: number;
   require_checkout_photo?: boolean;
   min_workout_minutes?: number;
+  payout_mode?: PayoutMode;
+  league_duration_months?: number;
+  league_prize_splits?: number[];
+  mixed_league_share_percent?: number;
 };
 
 export type RuleProposal = {
@@ -325,6 +366,11 @@ export type Database = {
           p_require_checkout_photo?: boolean;
           p_min_workout_minutes?: number;
           p_admin_payment_info?: string | null;
+          p_payout_mode?: PayoutMode;
+          p_league_duration_months?: number;
+          p_league_prize_splits?: number[];
+          p_mixed_league_share_percent?: number;
+          p_game_starts_at?: string | null;
         };
         Returns: Group;
       };
@@ -359,7 +405,8 @@ export type Database = {
       process_scheduled_leaves: { Args: Record<string, never>; Returns: void };
       run_weekly_evaluation: { Args: Record<string, never>; Returns: WeeklyEvaluationRun[] };
       close_expired_proposals: { Args: Record<string, never>; Returns: void };
-      admin_remove_member: { Args: { p_member_id: string }; Returns: GroupMember };
+      admin_remove_member: { Args: { p_member_id: string; p_pay_out?: boolean }; Returns: GroupMember };
+      start_league_cycle: { Args: { p_group_id: string }; Returns: LeagueCycle };
       admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       admin_set_member_penalty_start_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       register_push_token: { Args: { p_token: string }; Returns: void };

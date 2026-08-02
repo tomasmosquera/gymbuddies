@@ -11,10 +11,12 @@ import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import { useGroupMembers } from '@/hooks/useGroupMembers';
+import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { getSignedUrl } from '@/lib/supabase/storage';
+import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const EXCUSE_TYPE_LABELS: Record<string, string> = {
@@ -31,10 +33,16 @@ const CHANGE_LABELS: Record<string, string> = {
   exit_notice_days: 'Días de aviso para salir sin costo',
   require_checkout_photo: 'Foto final requerida',
   min_workout_minutes: 'Duración mínima del entreno (min)',
+  payout_mode: 'Modo de juego',
+  league_duration_months: 'Duración del ciclo de Liga (meses)',
+  league_prize_splits: 'Premio por puesto',
+  mixed_league_share_percent: '% del fondo para el premio de Liga',
 };
 
 const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'exit_fee_amount']);
 const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
+const PAYOUT_MODE_FIELDS = new Set(['payout_mode']);
+const PERCENT_ARRAY_FIELDS = new Set(['league_prize_splits']);
 
 /** Whole days remaining until `dateString` (never negative — the day it becomes effective still reads as 0, not -1). */
 function daysUntil(dateString: string): number {
@@ -48,6 +56,12 @@ function formatChangeValue(key: string, value: unknown): string {
   }
   if (MONEY_CHANGE_FIELDS.has(key) && typeof value === 'number') {
     return value.toLocaleString('es-CO');
+  }
+  if (PAYOUT_MODE_FIELDS.has(key)) {
+    return (PAYOUT_MODE_LABELS as Record<string, string>)[String(value)] ?? String(value);
+  }
+  if (PERCENT_ARRAY_FIELDS.has(key) && Array.isArray(value)) {
+    return value.map((v) => `${v}%`).join(' / ');
   }
   return String(value);
 }
@@ -82,8 +96,15 @@ export default function RulesScreen() {
     adminDecide,
   } = usePhotoChallenges(group?.id ?? null);
   const { members, isLoading: membersLoading, refresh: refreshMembers } = useGroupMembers(group?.id ?? null);
+  const {
+    cycle: leagueCycle,
+    isLoading: leagueCycleLoading,
+    refresh: refreshLeagueCycle,
+    startCycle: startLeagueCycle,
+  } = useLeagueCycle(group?.id ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
+  const [isStartingCycle, setIsStartingCycle] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [excuseProofUrl, setExcuseProofUrl] = useState<string | null>(null);
 
@@ -107,10 +128,20 @@ export default function RulesScreen() {
       refreshExcuseVote();
       refreshChallenges();
       refreshMembers();
-    }, [refreshGroup, refreshProposal, refreshExcuseVote, refreshChallenges, refreshMembers])
+      refreshLeagueCycle();
+    }, [refreshGroup, refreshProposal, refreshExcuseVote, refreshChallenges, refreshMembers, refreshLeagueCycle])
   );
 
-  if (groupLoading || proposalLoading || excuseVoteLoading || challengesLoading || membersLoading || !group || !membership) {
+  if (
+    groupLoading ||
+    proposalLoading ||
+    excuseVoteLoading ||
+    challengesLoading ||
+    membersLoading ||
+    leagueCycleLoading ||
+    !group ||
+    !membership
+  ) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -155,9 +186,27 @@ export default function RulesScreen() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refreshGroup(), refreshProposal(), refreshExcuseVote(), refreshChallenges(), refreshMembers()]);
+      await Promise.all([
+        refreshGroup(),
+        refreshProposal(),
+        refreshExcuseVote(),
+        refreshChallenges(),
+        refreshMembers(),
+        refreshLeagueCycle(),
+      ]);
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleStartLeagueCycle = async () => {
+    setIsStartingCycle(true);
+    try {
+      await startLeagueCycle();
+    } catch (err) {
+      Alert.alert('No se pudo iniciar el ciclo', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsStartingCycle(false);
     }
   };
 
@@ -188,21 +237,36 @@ export default function RulesScreen() {
       <Card>
         <Text style={styles.cardTitle}>Reglas actuales</Text>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Días mínimos por semana</Text>
-          <Text style={styles.ruleValue}>{group.min_days_per_week}</Text>
+          <Text style={styles.ruleLabel}>Modo de juego</Text>
+          <Text style={styles.ruleValue}>{PAYOUT_MODE_LABELS[group.payout_mode]}</Text>
         </View>
-        <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Penalización por día fallado</Text>
-          <Text style={styles.ruleValue}>
-            {group.currency} {group.penalty_amount.toLocaleString('es-CO')}
-          </Text>
-        </View>
-        <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Tope de multa por semana</Text>
-          <Text style={styles.ruleValue}>
-            {group.currency} {group.weekly_penalty_cap.toLocaleString('es-CO')}
-          </Text>
-        </View>
+        <Text style={styles.modeDescription}>{PAYOUT_MODE_DESCRIPTIONS[group.payout_mode]}</Text>
+        {group.game_starts_at ? (
+          <View style={styles.ruleRow}>
+            <Text style={styles.ruleLabel}>Fecha de inicio del juego</Text>
+            <Text style={styles.ruleValue}>{new Date(group.game_starts_at).toLocaleDateString('es-CO')}</Text>
+          </View>
+        ) : null}
+        {isFieldRelevantForMode('attendanceRules', group.payout_mode) ? (
+          <>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Días mínimos por semana</Text>
+              <Text style={styles.ruleValue}>{group.min_days_per_week}</Text>
+            </View>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Penalización por día fallado</Text>
+              <Text style={styles.ruleValue}>
+                {group.currency} {group.penalty_amount.toLocaleString('es-CO')}
+              </Text>
+            </View>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Tope de multa por semana</Text>
+              <Text style={styles.ruleValue}>
+                {group.currency} {group.weekly_penalty_cap.toLocaleString('es-CO')}
+              </Text>
+            </View>
+          </>
+        ) : null}
         <View style={styles.ruleRow}>
           <Text style={styles.ruleLabel}>Cuota por salir sin aviso</Text>
           <Text style={styles.ruleValue}>
@@ -223,7 +287,47 @@ export default function RulesScreen() {
             <Text style={styles.ruleValue}>{group.min_workout_minutes} min</Text>
           </View>
         ) : null}
+        {isFieldRelevantForMode('leagueConfig', group.payout_mode) ? (
+          <>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Duración del ciclo de Liga</Text>
+              <Text style={styles.ruleValue}>{group.league_duration_months} mes(es)</Text>
+            </View>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Premio por puesto</Text>
+              <Text style={styles.ruleValue}>{group.league_prize_splits.map((v) => `${v}%`).join(' / ')}</Text>
+            </View>
+          </>
+        ) : null}
+        {isFieldRelevantForMode('mixedShare', group.payout_mode) ? (
+          <View style={styles.ruleRow}>
+            <Text style={styles.ruleLabel}>% del fondo para el premio de Liga</Text>
+            <Text style={styles.ruleValue}>{group.mixed_league_share_percent}%</Text>
+          </View>
+        ) : null}
       </Card>
+
+      {group.payout_mode !== 'cooperative' ? (
+        <Card style={styles.proposalCard}>
+          <Text style={styles.cardTitle}>Ciclo de Liga</Text>
+          {leagueCycle ? (
+            <>
+              <Text style={styles.changeText}>Ciclo #{leagueCycle.cycle_number} en curso</Text>
+              <Text style={styles.tally}>
+                Termina el {new Date(leagueCycle.ends_at).toLocaleDateString('es-CO')} (faltan{' '}
+                {daysUntil(leagueCycle.ends_at)} día{daysUntil(leagueCycle.ends_at) === 1 ? '' : 's'})
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.tally}>No hay un ciclo activo — el reparto de Liga está en pausa.</Text>
+              {isAdmin ? (
+                <Button label="Iniciar ciclo de Liga" onPress={handleStartLeagueCycle} loading={isStartingCycle} />
+              ) : null}
+            </>
+          )}
+        </Card>
+      ) : null}
 
       {membersLeaving.length > 0 ? (
         <Card style={styles.proposalCard}>
@@ -397,6 +501,7 @@ const styles = StyleSheet.create({
   ruleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
   ruleLabel: { color: colors.textMuted },
   ruleValue: { color: colors.text, fontWeight: '600' },
+  modeDescription: { color: colors.textMuted, fontSize: 13, lineHeight: 18, marginBottom: spacing.xs },
   proposalCard: { gap: spacing.sm },
   leaveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
   proposalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

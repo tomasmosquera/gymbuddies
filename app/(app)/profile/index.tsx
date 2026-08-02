@@ -8,10 +8,12 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useGroupMoneyOverview } from '@/hooks/useGroupMoneyOverview';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useNotifications } from '@/hooks/useNotifications';
 import type { LevelProgress } from '@/lib/domain/xp';
+import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -74,6 +76,7 @@ export default function ProfileScreen() {
   const { profile, session, signOut } = useAuth();
   const { group, membership, isLoading, refresh } = useActiveGroup();
   const { rowsByPeriod, isLoading: leaderboardLoading } = useLeaderboard(group?.id ?? null);
+  const { overview: moneyOverview, isLoading: moneyOverviewLoading } = useGroupMoneyOverview(group?.id ?? null);
   const { membersBadges } = useGroupBadges(group?.id ?? null);
   const { hasUnread: hasUnreadNotifications } = useNotifications();
   const [isLeaving, setIsLeaving] = useState(false);
@@ -96,7 +99,15 @@ export default function ProfileScreen() {
       group.exit_fee_amount > 0
         ? `Se te cobrará una cuota de salida de ${group.currency} ${group.exit_fee_amount.toLocaleString('es-CO')}.`
         : 'Este grupo no tiene cuota de salida configurada.';
-    Alert.alert('Salir ahora', feeText, [
+    const payoutText =
+      group.payout_mode !== 'league'
+        ? ` Además, te corresponden aproximadamente ${group.currency} ${computeCooperativeShare(
+            moneyOverview.totalGroupBalance,
+            moneyOverview.activeMemberCount,
+            group.payout_mode === 'mixed' ? group.mixed_league_share_percent : undefined
+          ).toLocaleString('es-CO')} del fondo común.`
+        : '';
+    Alert.alert('Salir ahora', feeText + payoutText, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Salir ahora', style: 'destructive', onPress: () => handleLeave(true) },
     ]);
@@ -173,14 +184,14 @@ export default function ProfileScreen() {
 
       {group && membership ? (
         <View>
-          <SectionLabel>TU SALDO</SectionLabel>
+          <SectionLabel>SALDO</SectionLabel>
           <Card style={styles.balanceCard}>
             <View style={styles.balanceRow}>
               <View>
                 <Text style={styles.balance}>
                   {group.currency} {membership.balance.toLocaleString('es-CO')}
                 </Text>
-                <Text style={styles.balanceHint}>{group.name}</Text>
+                <Text style={styles.balanceHint}>Tu saldo · {group.name}</Text>
               </View>
               <Button label="Ver saldo" variant="secondary" onPress={() => router.push('/profile/wallet')} />
             </View>
@@ -206,6 +217,25 @@ export default function ProfileScreen() {
             ) : leaderboardLoading ? (
               <ActivityIndicator color={colors.primary} style={styles.weekStatsLoading} />
             ) : null}
+            {moneyOverviewLoading ? (
+              <ActivityIndicator color={colors.primary} style={styles.weekStatsLoading} />
+            ) : (
+              <View style={styles.groupMoneyRow}>
+                <View style={styles.groupMoneyTile}>
+                  <Text style={styles.groupMoneyValue}>
+                    {group.currency} {moneyOverview.totalGroupBalance.toLocaleString('es-CO')}
+                  </Text>
+                  <Text style={styles.groupMoneyLabel}>Saldo total del grupo</Text>
+                </View>
+                <View style={styles.weekStatDivider} />
+                <View style={styles.groupMoneyTile}>
+                  <Text style={styles.groupMoneyValue}>
+                    {group.currency} {moneyOverview.totalPenaltiesCharged.toLocaleString('es-CO')}
+                  </Text>
+                  <Text style={styles.groupMoneyLabel}>Total penalizado en el grupo</Text>
+                </View>
+              </View>
+            )}
           </Card>
         </View>
       ) : null}
@@ -376,6 +406,16 @@ const styles = StyleSheet.create({
   weekStatBad: { color: colors.danger },
   weekStatPercent: { color: colors.primary },
   weekStatLabel: { color: colors.textMuted, fontSize: 11, marginTop: 2, textAlign: 'center' },
+  groupMoneyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  groupMoneyTile: { flex: 1, alignItems: 'center' },
+  groupMoneyValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  groupMoneyLabel: { color: colors.textMuted, fontSize: 11, marginTop: 2, textAlign: 'center' },
   groupCard: { gap: spacing.md },
   groupRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   groupName: { ...typography.heading, fontSize: 17, color: colors.text },

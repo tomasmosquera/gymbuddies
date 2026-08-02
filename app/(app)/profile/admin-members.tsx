@@ -334,21 +334,33 @@ export default function AdminMembersScreen() {
 
   const confirmRemove = () => {
     if (!selectedMember) return;
+    const name = selectedMember.profile.full_name;
+    if (group && group.payout_mode !== 'league') {
+      Alert.alert('Sacar del grupo', `¿Sacar a ${name} del grupo? No podrá volver a entrar con el código de invitación.`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Sacar y pagar su parte', onPress: () => handleRemove(true) },
+        { text: 'Sacar sin pagar', style: 'destructive', onPress: () => handleRemove(false) },
+      ]);
+      return;
+    }
     Alert.alert(
       'Sacar del grupo',
-      `¿Sacar a ${selectedMember.profile.full_name} del grupo? No podrá volver a entrar con el código de invitación.`,
+      `¿Sacar a ${name} del grupo? No podrá volver a entrar con el código de invitación.`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sacar', style: 'destructive', onPress: handleRemove },
+        { text: 'Sacar', style: 'destructive', onPress: () => handleRemove(false) },
       ]
     );
   };
 
-  const handleRemove = async () => {
+  const handleRemove = async (payOut: boolean) => {
     if (!selectedMember) return;
     setIsRemoving(true);
     try {
-      const { error } = await supabase.rpc('admin_remove_member', { p_member_id: selectedMember.id });
+      const { error } = await supabase.rpc('admin_remove_member', {
+        p_member_id: selectedMember.id,
+        p_pay_out: payOut,
+      });
       if (error) throw new Error(error.message);
       setSelectedUserId(null);
       await refreshMembers();

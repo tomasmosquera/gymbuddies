@@ -18,6 +18,7 @@ const TYPE_LABELS: Record<WalletTransactionType, string> = {
   recharge: 'Recarga',
   penalty: 'Penalización',
   adjustment: 'Ajuste',
+  payout: 'Fondo común / Liga',
 };
 
 const STATUS_TONE: Record<WalletTransactionStatus, 'success' | 'warning' | 'danger'> = {

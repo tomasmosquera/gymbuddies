@@ -42,6 +42,21 @@ export const createGroupSchema = z.object({
   requireCheckoutPhoto: z.boolean().default(false),
   minWorkoutMinutes: z.number().int().min(0).default(0),
   adminPaymentInfo: z.string().trim().max(280).optional().or(z.literal('')),
+  payoutMode: z.enum(['cooperative', 'league', 'mixed']).default('cooperative'),
+  leagueDurationMonths: z.number().int().min(1).max(24).default(3),
+  leaguePrizeSplits: z
+    .array(z.number().min(0))
+    .max(10)
+    .default([60, 30, 10])
+    .refine((splits) => splits.reduce((sum, v) => sum + v, 0) <= 100, {
+      message: 'La suma de los porcentajes no puede superar 100%',
+    }),
+  mixedLeagueSharePercent: z.number().min(0).max(100).default(50),
+  gameStartsAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
+    .optional()
+    .or(z.literal('')),
 });
 
 export const joinGroupSchema = z.object({
@@ -66,6 +81,16 @@ export const ruleProposalSchema = z
     exitNoticeDays: z.number().int().min(0).optional(),
     requireCheckoutPhoto: z.boolean().optional(),
     minWorkoutMinutes: z.number().int().min(0).optional(),
+    payoutMode: z.enum(['cooperative', 'league', 'mixed']).optional(),
+    leagueDurationMonths: z.number().int().min(1).max(24).optional(),
+    leaguePrizeSplits: z
+      .array(z.number().min(0))
+      .max(10)
+      .optional()
+      .refine((splits) => !splits || splits.reduce((sum, v) => sum + v, 0) <= 100, {
+        message: 'La suma de los porcentajes no puede superar 100%',
+      }),
+    mixedLeagueSharePercent: z.number().min(0).max(100).optional(),
   })
   .refine((changes) => Object.values(changes).some((v) => v !== undefined), {
     message: 'Propón al menos un cambio',

@@ -86,7 +86,9 @@
       "Bash(curl -s 'https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?select=*&user_id=eq.__TRACKED_VAR__' -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__')",
       "Bash(curl -s -X PATCH https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?id=eq.__TRACKED_VAR__ -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -H 'Prefer: return=representation' -d '{\"type\":\"initial_deposit\",\"note\":\"Reclasificado de recarga a depósito inicial — este fue el primer pago con el que Daniel pasó de pending_deposit a active.\"}')",
       "Bash(curl -s -X PATCH https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?id=eq.__TRACKED_VAR__ -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -H 'Prefer: return=representation' --data-binary @/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json)",
-      "Bash(rm -f \"/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json\")"
+      "Bash(rm -f \"/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json\")",
+      "Bash(which psql *)",
+      "Read(//c/Users/Admin/.supabase/**)"
     ],
     "additionalDirectories": [
       "\\tmp",
