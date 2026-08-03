@@ -5,20 +5,30 @@ import * as Clipboard from 'expo-clipboard';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { INVITE_LINK_DOMAIN } from '@/constants/config';
 import { colors, spacing, typography } from '@/constants/theme';
 
-// Deliberately just the code, not the gymbuddies://join-group deep link:
-// WhatsApp only auto-linkifies http(s) URLs, so a custom-scheme link would
-// show as inert, confusing plain text here. The deep link still earns its
-// keep elsewhere — the QR code below encodes it, and scanning never depends
-// on WhatsApp's link detection.
+/** https://<domain>/join/<code> — a real Universal/App Link (opens the app directly if installed, the store if not). Empty INVITE_LINK_DOMAIN (not configured yet) degrades to null rather than building a broken link. */
+function inviteLink(code: string): string | null {
+  return INVITE_LINK_DOMAIN ? `https://${INVITE_LINK_DOMAIN}/join/${code}` : null;
+}
+
+// The code-only line stays first: WhatsApp only auto-linkifies http(s)
+// URLs, so on its own a custom-scheme deep link would've shown as inert
+// text — the reason this message used to be code-only. The https link
+// (once INVITE_LINK_DOMAIN is configured) WhatsApp WILL auto-linkify, so
+// it's added as a second line rather than replacing the code, which still
+// works as a manual-entry fallback.
 function inviteMessage(groupName: string, code: string): string {
-  return `Únete a mi grupo "${groupName}" en Gym Buddies. Abre la app y toca "Unirme con un código" con este código: ${code}`;
+  const base = `Únete a mi grupo "${groupName}" en Gym Buddies. Abre la app y toca "Unirme con un código" con este código: ${code}`;
+  const link = inviteLink(code);
+  return link ? `${base}\n\nO abre este link directo: ${link}` : base;
 }
 
 export default function InviteScreen() {
   const { group, isLoading } = useActiveGroup();
   const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [isSendingWhatsapp, setIsSendingWhatsapp] = useState(false);
 
   if (isLoading || !group) {
@@ -29,10 +39,19 @@ export default function InviteScreen() {
     );
   }
 
+  const link = inviteLink(group.invite_code);
+
   const handleCopyCode = async () => {
     await Clipboard.setStringAsync(group.invite_code);
     setCodeCopied(true);
     setTimeout(() => setCodeCopied(false), 2000);
+  };
+
+  const handleCopyLink = async () => {
+    if (!link) return;
+    await Clipboard.setStringAsync(link);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   const handleSendWhatsapp = async () => {
@@ -60,6 +79,9 @@ export default function InviteScreen() {
         <Text style={styles.groupName}>{group.name}</Text>
         <Text style={styles.inviteCode}>{group.invite_code}</Text>
         <Button label={codeCopied ? 'Copiado ✓' : 'Copiar código'} variant="secondary" onPress={handleCopyCode} />
+        {link ? (
+          <Button label={linkCopied ? 'Copiado ✓' : 'Copiar link'} variant="secondary" onPress={handleCopyLink} />
+        ) : null}
         <Button label="Enviar por WhatsApp" onPress={handleSendWhatsapp} loading={isSendingWhatsapp} />
       </Card>
 

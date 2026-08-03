@@ -88,7 +88,15 @@
       "Bash(curl -s -X PATCH https://iaiyntjmchndfmnvhbfm.supabase.co/rest/v1/wallet_transactions?id=eq.__TRACKED_VAR__ -H 'apikey: __TRACKED_VAR__' -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -H 'Prefer: return=representation' --data-binary @/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json)",
       "Bash(rm -f \"/c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/49951912-9498-4c6c-89b1-fd2bf6e687be/scratchpad/daniel_tx_patch.json\")",
       "Bash(which psql *)",
-      "Read(//c/Users/Admin/.supabase/**)"
+      "Read(//c/Users/Admin/.supabase/**)",
+      "Bash(awk '/create or replace function join_group/,/^\\\\$\\\\$;/' supabase/migrations/0061_notification_tap_routing.sql)",
+      "Bash(python3)",
+      "Bash(sort -t_ -k1 -n)",
+      "Read(//tmp/**)",
+      "Bash(awk 'NR==270,/^\\\\];/' src/lib/domain/badges.ts)",
+      "WebFetch(domain:docs.expo.dev)",
+      "Bash(git worktree *)",
+      "Bash(git branch *)"
     ],
     "additionalDirectories": [
       "\\tmp",

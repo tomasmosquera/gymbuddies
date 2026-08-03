@@ -1,0 +1,343 @@
+=== run_weekly_evaluation  (from supabase/migrations\0064_league_mode_no_penalty_and_game_start.sql) ===
+      perform send_push_notification(
+        array[v_member.user_id], 'Resultado semanal', v_message,
+        p_group_id => v_group.id, p_category => 'money'
+      );
+---
+        perform send_push_notification(
+          array[v_member.user_id], 'Gym Buddies', 'Tu saldo llegó a $0 — recarga para seguir participando en el grupo.',
+          p_group_id => v_group.id, p_category => 'money'
+        );
+---
+=== send_checkin_reminders  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+      perform send_push_notification(
+        v_user_ids, 'Gym Buddies',
+        format('No olvides hacer tu check-in de hoy en "%s" 💪', v_group.name),
+        p_group_id => v_group.id, p_category => 'reminders'
+      );
+---
+=== apply_wallet_transaction_effect  (from supabase/migrations\0064_league_mode_no_penalty_and_game_start.sql) ===
+    perform send_push_notification(
+      array[new.user_id], 'Gym Buddies', 'Tu recarga fue confirmada por el administrador.',
+      p_group_id => new.group_id, p_category => 'money'
+    );
+---
+    perform send_push_notification(
+      array[new.user_id], 'Gym Buddies', 'Tu recarga fue rechazada por el administrador. Revisa el comprobante y vuelve a intentarlo.',
+      p_group_id => new.group_id, p_category => 'money'
+    );
+---
+=== notify_wallet_transaction_pending  (from supabase/migrations\0061_notification_tap_routing.sql) ===
+      perform send_push_notification(
+        array[v_admin_id], 'Gym Buddies', 'Hay una nueva recarga pendiente por confirmar.',
+        p_group_id => new.group_id, p_category => 'money', p_data => jsonb_build_object('route', 'admin_review')
+      );
+---
+=== propose_rule_change  (from supabase/migrations\0060_penalty_start_date.sql) ===
+    perform send_push_notification(
+      v_recipient_ids, 'Nueva propuesta de regla', format('%s propuso un cambio de reglas — ve a votar.', v_full_name),
+      p_group_id => p_group_id, p_category => 'votes'
+    );
+---
+=== resolve_rule_proposal  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+      perform send_push_notification(
+        v_recipient_ids, 'Propuesta aprobada',
+        case when v_proposal.apply_immediately
+          then 'La propuesta de regla fue aprobada y ya está vigente.'
+          else 'La propuesta de regla fue aprobada — aplica desde el próximo lunes.'
+        end,
+        p_group_id => v_proposal.group_id, p_category => 'votes'
+      );
+---
+      perform send_push_notification(
+        v_recipient_ids, 'Propuesta rechazada', 'La propuesta de regla fue rechazada por el grupo.',
+        p_group_id => v_proposal.group_id, p_category => 'votes'
+      );
+---
+=== close_expired_proposals  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+        perform send_push_notification(
+          v_recipient_ids, 'Propuesta aprobada',
+          case when v_proposal.apply_immediately
+            then 'La propuesta de regla fue aprobada y ya está vigente.'
+            else 'La propuesta de regla fue aprobada — aplica desde el próximo lunes.'
+          end,
+          p_group_id => v_proposal.group_id, p_category => 'votes'
+        );
+---
+        perform send_push_notification(
+          v_recipient_ids, 'Propuesta rechazada', 'La propuesta de regla fue rechazada por el grupo.',
+          p_group_id => v_proposal.group_id, p_category => 'votes'
+        );
+---
+=== create_excuse_request  (from supabase/migrations\0061_notification_tap_routing.sql) ===
+    perform send_push_notification(
+      array[v_admin_id], 'Nueva solicitud de excusa', 'Hay una solicitud de excusa pendiente por revisar.',
+      p_group_id => p_group_id, p_category => 'votes', p_data => jsonb_build_object('route', 'admin_review')
+    );
+---
+=== approve_excuse_request  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+  perform send_push_notification(
+    array[v_request.user_id], 'Tu excusa fue aprobada', 'El administrador aprobó tu solicitud de excusa.',
+    p_group_id => v_request.group_id, p_category => 'votes'
+  );
+---
+=== reject_excuse_request  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+  perform send_push_notification(
+    array[v_request.user_id], 'Tu excusa fue rechazada', 'El administrador rechazó tu solicitud de excusa.',
+    p_group_id => v_request.group_id, p_category => 'votes'
+  );
+---
+=== resolve_excuse_vote  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+    perform send_push_notification(
+      array[v_request.user_id], 'Tu excusa fue aprobada', 'El grupo votó a favor de tu solicitud de excusa.',
+      p_group_id => v_request.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_request.user_id], 'Tu excusa fue rechazada', 'El grupo votó en contra de tu solicitud de excusa.',
+      p_group_id => v_request.group_id, p_category => 'votes'
+    );
+---
+=== close_expired_excuse_votes  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+      perform send_push_notification(
+        array[v_request.user_id], 'Tu excusa fue aprobada', 'El grupo votó a favor de tu solicitud de excusa.',
+        p_group_id => v_request.group_id, p_category => 'votes'
+      );
+---
+      perform send_push_notification(
+        array[v_request.user_id], 'Tu excusa fue rechazada', 'El grupo votó en contra de tu solicitud de excusa.',
+        p_group_id => v_request.group_id, p_category => 'votes'
+      );
+---
+=== leave_group  (from supabase/migrations\0063_payout_mode_rpcs.sql) ===
+    perform send_push_notification(
+      array[auth.uid()], 'Saliste del grupo', 'Tu salida inmediata fue procesada.',
+      p_group_id => p_group_id, p_category => 'group_activity', p_data => jsonb_build_object('route', 'leave')
+    );
+---
+    perform send_push_notification(
+      array[auth.uid()], 'Salida en proceso',
+      format('Tu salida del grupo será efectiva el %s.', to_char(v_member.leave_effective_at at time zone 'America/Bogota', 'DD/MM/YYYY')),
+      p_group_id => p_group_id, p_category => 'group_activity', p_data => jsonb_build_object('route', 'leave')
+    );
+---
+    perform send_push_notification(
+      array[v_group.admin_id], 'Alguien inició su salida', 'Un miembro inició su proceso de salida del grupo.',
+      p_group_id => p_group_id, p_category => 'group_activity', p_data => jsonb_build_object('route', 'leave')
+    );
+---
+=== process_scheduled_leaves  (from supabase/migrations\0063_payout_mode_rpcs.sql) ===
+      perform send_push_notification(
+        v_user_ids, 'Tu salida ya es efectiva', 'Tu salida del grupo se hizo efectiva hoy.',
+        p_group_id => v_group.id, p_category => 'group_activity', p_data => jsonb_build_object('route', 'leave')
+      );
+---
+        perform send_push_notification(
+          array[v_admin_id], 'Un miembro salió del grupo',
+          format('%s salió del grupo — su aviso de salida se hizo efectivo hoy.', v_names),
+          p_group_id => v_group.id, p_category => 'group_activity', p_data => jsonb_build_object('route', 'leave')
+        );
+---
+=== apply_rule_change_direct  (from supabase/migrations\0063_payout_mode_rpcs.sql) ===
+    perform send_push_notification(
+      v_recipient_ids, 'Reglas actualizadas',
+      'El administrador actualizó las reglas del grupo directamente, sin necesidad de votación.',
+      p_group_id => p_group_id, p_category => 'votes'
+    );
+---
+=== create_photo_challenge  (from supabase/migrations\0060_penalty_start_date.sql) ===
+    perform send_push_notification(
+      v_recipient_ids, 'Nueva votación de foto', format('%s pidió invalidar la foto de un check-in — ve a votar.', v_full_name),
+      p_group_id => v_checkin.group_id, p_category => 'votes'
+    );
+---
+  perform send_push_notification(
+    array[v_checkin.user_id], 'Tu foto está en votación',
+    format('%s pidió invalidar tu check-in. El grupo va a votar si es válido.', v_full_name),
+    p_group_id => v_checkin.group_id, p_category => 'votes'
+  );
+---
+=== resolve_photo_challenge  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+    perform send_push_notification(
+      array[v_challenge.target_user_id], 'Tu foto fue invalidada',
+      'El grupo votó que tu check-in no era válido — ese día ahora cuenta como fallado.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_challenge.challenged_by], 'Tu votación fue aceptada', 'El grupo votó a favor de invalidar el check-in que retaste.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_challenge.target_user_id], 'Tu foto fue validada', 'El grupo votó que tu check-in sí es válido.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_challenge.challenged_by], 'Tu votación fue rechazada', 'El grupo votó que el check-in que retaste sí es válido.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+=== admin_decide_photo_challenge  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+    perform send_push_notification(
+      array[v_challenge.target_user_id], 'Tu foto fue validada', 'El administrador decidió que tu check-in sí es válido.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_challenge.challenged_by], 'Tu votación fue rechazada', 'El administrador decidió que el check-in que retaste sí es válido.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_challenge.target_user_id], 'Tu foto fue invalidada',
+      'El administrador decidió que tu check-in no era válido — ese día ahora cuenta como fallado.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+    perform send_push_notification(
+      array[v_challenge.challenged_by], 'Tu votación fue aceptada', 'El administrador invalidó el check-in que retaste.',
+      p_group_id => v_challenge.group_id, p_category => 'votes'
+    );
+---
+=== close_expired_photo_challenges  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+      perform send_push_notification(
+        array[v_challenge.target_user_id], 'Tu foto fue invalidada',
+        'El grupo votó que tu check-in no era válido — ese día ahora cuenta como fallado.',
+        p_group_id => v_challenge.group_id, p_category => 'votes'
+      );
+---
+      perform send_push_notification(
+        array[v_challenge.challenged_by], 'Tu votación fue aceptada', 'El grupo votó a favor de invalidar el check-in que retaste.',
+        p_group_id => v_challenge.group_id, p_category => 'votes'
+      );
+---
+      perform send_push_notification(
+        array[v_challenge.target_user_id], 'Tu foto fue validada', 'El grupo votó que tu check-in sí es válido.',
+        p_group_id => v_challenge.group_id, p_category => 'votes'
+      );
+---
+      perform send_push_notification(
+        array[v_challenge.challenged_by], 'Tu votación fue rechazada', 'El grupo votó que el check-in que retaste sí es válido.',
+        p_group_id => v_challenge.group_id, p_category => 'votes'
+      );
+---
+=== admin_adjust_balance  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+  perform send_push_notification(
+    array[p_user_id], 'Tu saldo fue ajustado',
+    format(
+      'El administrador %s tu saldo en %s %s.',
+      case when p_amount > 0 then 'aumentó' else 'disminuyó' end,
+      (select currency from groups where id = p_group_id),
+      to_char(abs(p_amount), 'FM999,999,999')
+    ),
+    p_group_id => p_group_id, p_category => 'money'
+  );
+---
+=== admin_set_member_activation_date  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+  perform send_push_notification(
+    array[v_member.user_id], 'Tu fecha de entrada cambió',
+    format('El administrador ajustó la fecha desde la que cuentan tus días a partir del %s.', to_char(p_date, 'DD/MM/YYYY')),
+    p_group_id => v_member.group_id, p_category => 'admin_actions'
+  );
+---
+=== admin_delete_checkin  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+  perform send_push_notification(
+    array[v_checkin.user_id], 'Tu check-in fue eliminado',
+    format('El administrador eliminó tu check-in del %s.', to_char(v_checkin.checkin_date, 'DD/MM/YYYY')),
+    p_group_id => v_checkin.group_id, p_category => 'admin_actions'
+  );
+---
+=== admin_remove_member  (from supabase/migrations\0063_payout_mode_rpcs.sql) ===
+  perform send_push_notification(
+    array[v_member.user_id], 'Fuiste removido del grupo', 'El administrador te sacó del grupo.',
+    p_group_id => v_member.group_id, p_category => 'admin_actions', p_data => jsonb_build_object('route', 'removed')
+  );
+---
+=== notify_rule_proposal_cancelled  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+      perform send_push_notification(
+        v_recipient_ids, 'Votación cancelada', 'El administrador canceló la propuesta de cambio de reglas en curso.',
+        p_group_id => new.group_id, p_category => 'votes'
+      );
+---
+=== join_group  (from supabase/migrations\0061_notification_tap_routing.sql) ===
+    perform send_push_notification(
+      array[v_group.admin_id], 'Gym Buddies',
+      format('%s se unió al grupo "%s" — falta confirmar su depósito.', v_full_name, v_group.name),
+      p_group_id => v_group.id, p_category => 'group_activity', p_data => jsonb_build_object('route', 'new_member')
+    );
+---
+=== admin_delete_wallet_transaction  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+  perform send_push_notification(
+    array[v_tx.user_id], 'Tu comprobante fue eliminado',
+    'El administrador eliminó tu comprobante pendiente. Si fue un error, puedes volver a enviarlo.',
+    p_group_id => v_tx.group_id, p_category => 'money'
+  );
+---
+=== react_to_checkin  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+    perform send_push_notification(
+      array[v_checkin.user_id], 'Gym Buddies',
+      format('%s reaccionó %s a tu entreno.', v_full_name, p_emoji),
+      p_group_id => v_checkin.group_id, p_category => 'group_activity'
+    );
+---
+=== send_excuse_request_to_vote  (from supabase/migrations\0051_group_scoped_notification_preferences.sql) ===
+    perform send_push_notification(
+      v_recipient_ids, 'Nueva votación de excusa', 'El administrador puso una solicitud de excusa a votación del grupo.',
+      p_group_id => v_request.group_id, p_category => 'votes'
+    );
+---
+  perform send_push_notification(
+    array[v_request.user_id], 'Tu excusa está en votación',
+    'El administrador puso tu solicitud de excusa a votación del grupo.',
+    p_group_id => v_request.group_id, p_category => 'votes'
+  );
+---
+=== admin_confirm_deposit_without_receipt  (from supabase/migrations\0059_admin_confirm_deposit_without_receipt.sql) ===
+  perform send_push_notification(
+    array[p_user_id], 'Tu depósito fue confirmado',
+    'El administrador confirmó tu depósito inicial — ya puedes participar con normalidad.',
+    p_group_id => p_group_id, p_category => 'money'
+  );
+---
+=== admin_set_member_penalty_start_date  (from supabase/migrations\0060_penalty_start_date.sql) ===
+  perform send_push_notification(
+    array[v_member.user_id], 'Tu fecha de inicio de penalizaciones cambió',
+    format('El administrador ajustó la fecha desde la que pueden penalizarte a partir del %s.', to_char(p_date, 'DD/MM/YYYY')),
+    p_group_id => v_member.group_id, p_category => 'admin_actions'
+  );
+---
+=== pay_out_departing_member  (from supabase/migrations\0065_liquidation_and_weights.sql) ===
+  perform send_push_notification(
+    array[p_user_id], 'Saldo liquidado',
+    format('Tu salida del fondo común te corresponde %s %s.', v_share, v_group.currency),
+    p_group_id => p_group_id, p_category => 'money'
+  );
+---
+    perform send_push_notification(
+      array[v_group.admin_id], 'Pago de salida registrado',
+      format('Se liquidó el saldo de un miembro que salió del grupo — le corresponden %s %s del fondo común.', v_share, v_group.currency),
+      p_group_id => p_group_id, p_category => 'money'
+    );
+---
+=== evaluate_due_league_cycle  (from supabase/migrations\0063_payout_mode_rpcs.sql) ===
+  perform send_push_notification(
+    (select array_agg(user_id) from group_members where group_id = p_group_id and status in ('active', 'needs_recharge')),
+    'Ciclo de Liga terminado', 'Se repartió el premio del ciclo de Liga — revisa Reglas para ver los resultados.',
+    p_group_id => p_group_id, p_category => 'money'
+  );
+---
+    perform send_push_notification(
+      array[v_group.admin_id], 'Inicia un nuevo ciclo de Liga',
+      'El ciclo anterior terminó y el premio ya se repartió. Puedes iniciar el próximo ciclo desde Reglas.',
+      p_group_id => p_group_id, p_category => 'admin_actions'
+    );
+---
+=== start_league_cycle  (from supabase/migrations\0063_payout_mode_rpcs.sql) ===
+    perform send_push_notification(
+      v_recipient_ids, 'Empezó un ciclo de Liga',
+      format('Arrancó el ciclo #%s — dura %s mes(es).', v_next_number, v_group.league_duration_months),
+      p_group_id => p_group_id, p_category => 'group_activity'
+    );
+---

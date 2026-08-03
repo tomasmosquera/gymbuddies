@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
@@ -7,9 +7,13 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { TextField } from '@/components/ui/TextField';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useWallet, type WeeklyEvaluationResultWithRun } from '@/hooks/useWallet';
+import { useLiquidationPreview } from '@/hooks/useLiquidationPreview';
+import { useGroupMembers } from '@/hooks/useGroupMembers';
+import { supabase } from '@/lib/supabase/client';
 import type { WalletTransaction, WalletTransactionStatus, WalletTransactionType } from '@/lib/supabase/types';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -37,6 +41,153 @@ const FILTER_OPTIONS: { key: 'all' | 'penalties'; label: string }[] = [
   { key: 'all', label: 'Todo' },
   { key: 'penalties', label: 'Penalizaciones' },
 ];
+
+/**
+ * Live "reparto de hoy" — what every active member gets if the group is
+ * settled right now, per liquidate_group_now (dry-run for everyone,
+ * real execution admin-only). Cooperativo/Mixto also lets the admin
+ * adjust each member's relative % inline, right where they can see its
+ * effect on the preview.
+ */
+function LiquidationCard({
+  groupId,
+  currency,
+  payoutMode,
+  isAdmin,
+}: {
+  groupId: string;
+  currency: string;
+  payoutMode: 'cooperative' | 'league' | 'mixed';
+  isAdmin: boolean;
+}) {
+  const { rows, errorMessage, isLoading, refresh, liquidateNow } = useLiquidationPreview(groupId);
+  const { members, refresh: refreshMembers } = useGroupMembers(groupId);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isLiquidating, setIsLiquidating] = useState(false);
+
+  const activeMembers = useMemo(
+    () => members.filter((m) => m.status === 'active' || m.status === 'needs_recharge'),
+    [members]
+  );
+  const totalWeight = activeMembers.reduce((sum, m) => sum + m.cooperative_weight, 0);
+  const percentByUserId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of activeMembers) map.set(m.user_id, totalWeight > 0 ? (m.cooperative_weight / totalWeight) * 100 : 0);
+    return map;
+  }, [activeMembers, totalWeight]);
+  const memberIdByUserId = useMemo(() => new Map(activeMembers.map((m) => [m.user_id, m.id])), [activeMembers]);
+
+  const canEditWeights = isAdmin && payoutMode !== 'league';
+
+  const handleSaveEdit = async (userId: string) => {
+    const memberId = memberIdByUserId.get(userId);
+    const percent = Number(editValue);
+    if (!memberId || !editValue || Number.isNaN(percent) || percent <= 0 || percent >= 100) {
+      Alert.alert('Porcentaje inválido', 'Ingresa un número mayor a 0 y menor a 100.');
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const { error } = await supabase.rpc('admin_set_cooperative_share_percent', {
+        p_member_id: memberId,
+        p_target_percent: percent,
+      });
+      if (error) throw new Error(error.message);
+      setEditingUserId(null);
+      await Promise.all([refresh(), refreshMembers()]);
+    } catch (err) {
+      Alert.alert('No se pudo ajustar el %', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleLiquidate = async () => {
+    setIsLiquidating(true);
+    try {
+      await liquidateNow();
+      await refreshMembers();
+      Alert.alert('Listo', 'El grupo fue liquidado — ya se le notificó a cada quien cuánto le corresponde.');
+    } catch (err) {
+      Alert.alert('No se pudo liquidar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsLiquidating(false);
+    }
+  };
+
+  const confirmLiquidate = () => {
+    const summary = rows.map((r) => `${r.full_name}: ${currency} ${r.amount.toLocaleString('es-CO')}`).join('\n');
+    Alert.alert('Liquidar ahora', `Esto reparte todo el fondo y deja el saldo de todos en $0. El grupo sigue activo.\n\n${summary}`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Liquidar', style: 'destructive', onPress: handleLiquidate },
+    ]);
+  };
+
+  return (
+    <Card style={styles.summaryCard}>
+      <Text style={styles.summaryTitle}>Reparto de hoy</Text>
+      {isLoading ? (
+        <ActivityIndicator color={colors.primary} />
+      ) : errorMessage ? (
+        <Text style={styles.liquidationError}>{errorMessage}</Text>
+      ) : (
+        <>
+          {[...rows]
+            .sort((a, b) => b.amount - a.amount)
+            .map((row) => (
+              <View key={row.user_id} style={styles.liquidationRow}>
+                <View style={styles.liquidationRowMain}>
+                  <Text style={styles.liquidationName}>
+                    {row.place ? '🏆 ' : ''}
+                    {row.full_name}
+                  </Text>
+                  <Text style={styles.liquidationAmount}>
+                    {currency} {row.amount.toLocaleString('es-CO')}
+                  </Text>
+                </View>
+                {canEditWeights ? (
+                  editingUserId === row.user_id ? (
+                    <View style={styles.editRow}>
+                      <TextField
+                        label=""
+                        value={editValue}
+                        onChangeText={setEditValue}
+                        keyboardType="numeric"
+                        placeholder={`${(percentByUserId.get(row.user_id) ?? 0).toFixed(1)}%`}
+                        style={styles.editInput}
+                      />
+                      <Button label="Guardar" onPress={() => handleSaveEdit(row.user_id)} loading={isSavingEdit} />
+                      <Button label="Cancelar" variant="secondary" onPress={() => setEditingUserId(null)} />
+                    </View>
+                  ) : (
+                    <Button
+                      label={`Editar % (${(percentByUserId.get(row.user_id) ?? 0).toFixed(1)}%)`}
+                      variant="secondary"
+                      onPress={() => {
+                        setEditingUserId(row.user_id);
+                        setEditValue('');
+                      }}
+                    />
+                  )
+                ) : null}
+              </View>
+            ))}
+          {isAdmin ? (
+            <Button
+              label="Liquidar ahora"
+              variant="danger"
+              onPress={confirmLiquidate}
+              loading={isLiquidating}
+              disabled={rows.length === 0}
+            />
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
 
 function TransactionRow({
   transaction,
@@ -140,6 +291,13 @@ export default function WalletScreen() {
             </View>
           </Card>
 
+          <LiquidationCard
+            groupId={group.id}
+            currency={group.currency}
+            payoutMode={group.payout_mode}
+            isAdmin={membership.role === 'admin'}
+          />
+
           <SegmentedControl options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
         </View>
       }
@@ -171,6 +329,13 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
   summaryLabel: { color: colors.textMuted },
   summaryValue: { color: colors.text, fontWeight: '700' },
+  liquidationError: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  liquidationRow: { gap: spacing.xs, paddingVertical: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+  liquidationRowMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  liquidationName: { color: colors.text, fontWeight: '600' },
+  liquidationAmount: { color: colors.text, fontWeight: '700' },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  editInput: { flex: 1, paddingVertical: spacing.xs },
   row: { gap: spacing.xs },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowLeft: { gap: 2 },

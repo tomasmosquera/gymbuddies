@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appID": "TEAMID_PLACEHOLDER.com.gymbuddiestm.app",
+        "paths": ["/join/*"]
+      }
+    ]
+  }
+}

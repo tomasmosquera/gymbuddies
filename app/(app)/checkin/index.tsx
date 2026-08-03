@@ -115,6 +115,7 @@ export default function CheckinCameraScreen() {
         latitude: location.latitude,
         longitude: location.longitude,
         accuracyMeters: location.accuracyMeters,
+        locationMocked: location.mocked,
         address: null,
         existingCheckinId: todayCheckin?.id ?? null,
         mode: isCheckoutFlow ? 'checkout' : 'checkin',
@@ -238,6 +239,22 @@ export default function CheckinCameraScreen() {
     return (
       <View style={styles.center}>
         <EmptyState title="No pudimos ubicarte" description={locationError ?? 'Intenta de nuevo'} />
+        <Button label="Reintentar" onPress={requestLock} />
+      </View>
+    );
+  }
+
+  // Caught before the camera ever renders — the RPC would reject this
+  // submission anyway (defense in depth against a scripted call straight to
+  // it), but blocking here saves the member from taking a photo just to see
+  // it fail on submit.
+  if (locationStatus === 'locked' && location?.mocked) {
+    return (
+      <View style={styles.center}>
+        <EmptyState
+          title="Ubicación simulada detectada"
+          description="Detectamos una app de ubicación falsa activa en tu teléfono. Desactívala en Opciones de Desarrollador para poder hacer check-in."
+        />
         <Button label="Reintentar" onPress={requestLock} />
       </View>
     );

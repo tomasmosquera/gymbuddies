@@ -6,14 +6,26 @@ export interface RoutableNotification {
   data: Record<string, unknown> | null | undefined;
 }
 
-const CATEGORY_DEFAULT_ROUTE: Record<NotificationCategory, Href> = {
-  achievements: '/profile/badges',
-  money: '/profile/wallet',
-  votes: '/rules',
-  group_activity: '/dashboard',
-  admin_actions: '/dashboard',
-  reminders: '/checkin',
-};
+// A switch (not a Record<NotificationCategory, Href> lookup) deliberately —
+// indexing a Record of Href (a large generated union from every typed
+// route in the app) can blow past TS's type-complexity budget as the
+// route tree grows; literal returns per case stay cheap to check.
+function categoryDefaultRoute(category: NotificationCategory): Href {
+  switch (category) {
+    case 'achievements':
+      return '/profile/badges';
+    case 'money':
+      return '/profile/wallet';
+    case 'votes':
+      return '/rules';
+    case 'group_activity':
+      return '/dashboard';
+    case 'admin_actions':
+      return '/dashboard';
+    case 'reminders':
+      return '/checkin';
+  }
+}
 
 /**
  * Where tapping a notification (in-app inbox row, or a real push) should
@@ -48,5 +60,6 @@ export function getNotificationRoute(n: RoutableNotification): Href | null {
     return userId ? { pathname: '/profile/badges', params: { userId } } : '/profile/badges';
   }
 
-  return n.category ? CATEGORY_DEFAULT_ROUTE[n.category] : null;
+  if (!n.category) return null;
+  return categoryDefaultRoute(n.category);
 }

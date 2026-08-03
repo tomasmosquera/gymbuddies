@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Gym Buddies — Invitación</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --background: #0B0F14;
+    --surface: #161C24;
+    --surface-alt: #1F2733;
+    --border: #2A3441;
+    --text: #F5F7FA;
+    --text-muted: #9AA7B5;
+    --primary: #3DDC97;
+    --primary-text: #04140D;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--background);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100%;
+  }
+  .wrap {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 24px;
+  }
+  .logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: var(--primary);
+    color: var(--primary-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 28px;
+    margin: 0 auto 20px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+  p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0 0 24px;
+  }
+  .code {
+    display: inline-block;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text);
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    margin-bottom: 24px;
+  }
+  button, a.button {
+    display: inline-block;
+    width: 100%;
+    background: var(--primary);
+    color: var(--primary-text);
+    border: none;
+    border-radius: 12px;
+    padding: 16px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .hint {
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="logo">GB</div>
+      <h1>Te invitaron a un grupo en Gym Buddies</h1>
+      <p>Instala la app para ver el grupo y unirte — tu código de invitación queda guardado automáticamente.</p>
+      <div class="code" id="code">···</div>
+      <a class="button" id="storeButton" href="#">Descargar Gym Buddies</a>
+      <p class="hint" id="hint"></p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // "join.html" is served at /join/:code via vercel.json's rewrite —
+      // the code is the last path segment of the ORIGINAL requested URL,
+      // which the browser still shows in location.pathname even though the
+      // rewrite serves this static file under the hood.
+      var parts = location.pathname.split('/').filter(Boolean);
+      var code = parts.length ? parts[parts.length - 1].toUpperCase() : '';
+      var codeEl = document.getElementById('code');
+      var storeButton = document.getElementById('storeButton');
+      var hintEl = document.getElementById('hint');
+      codeEl.textContent = code || 'Código no encontrado';
+
+      // Placeholders — replace with the real store listings once published.
+      var IOS_STORE_URL = 'https://apps.apple.com/app/idPLACEHOLDER';
+      var ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=com.gymbuddies.app';
+
+      var ua = navigator.userAgent || '';
+      var isIOS = /iPad|iPhone|iPod/.test(ua);
+      var isAndroid = /Android/.test(ua);
+      storeButton.href = isIOS ? IOS_STORE_URL : ANDROID_STORE_URL;
+      if (!isIOS && !isAndroid) {
+        hintEl.textContent = 'Abre este link desde tu celular para instalar la app.';
+      }
+
+      // Best-effort clipboard write for deferred deep linking — the app
+      // checks the clipboard for a valid invite code the first time it
+      // opens after install. Clipboard writes from a page-load script
+      // (no prior user gesture) are unreliable on some mobile browsers, so
+      // this is retried on the store-button tap too, which always counts
+      // as a user gesture.
+      function copyCode() {
+        if (!code || !navigator.clipboard || !navigator.clipboard.writeText) return;
+        navigator.clipboard.writeText(code).catch(function () {});
+      }
+      copyCode();
+      storeButton.addEventListener('click', copyCode);
+    })();
+  </script>
+</body>
+</html>

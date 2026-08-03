@@ -76,6 +76,7 @@ export default function CheckinPreviewScreen() {
           p_longitude: draft.longitude,
           p_location_accuracy_m: draft.accuracyMeters,
           p_photo_path: path,
+          p_location_mocked: draft.locationMocked,
         });
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
 
@@ -125,6 +126,7 @@ export default function CheckinPreviewScreen() {
         p_longitude: draft.longitude,
         p_location_accuracy_m: draft.accuracyMeters,
         p_photo_path: path,
+        p_location_mocked: draft.locationMocked,
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
 

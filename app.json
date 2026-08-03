@@ -16,7 +16,8 @@
         "NSLocationWhenInUseUsageDescription": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Gym Buddies puede avisarte que tomes tu foto de salida cuando detecta que te alejaste del gimnasio, incluso con la app cerrada.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": ["applinks:DOMAIN_PLACEHOLDER.vercel.app"]
     },
     "android": {
       "package": "com.gymbuddies.app",
@@ -33,6 +34,14 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "DOMAIN_PLACEHOLDER.vercel.app", "pathPrefix": "/join" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "web": {

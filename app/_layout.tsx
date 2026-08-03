@@ -6,6 +6,7 @@ import * as Notifications from 'expo-notifications';
 import { useAuthBootstrap } from '@/hooks/useAuth';
 import { useAppleHealthForegroundSync, useAppleHealthOnboardingPrompt } from '@/hooks/useAppleHealth';
 import { useNotificationTapRouting } from '@/hooks/useNotificationTapRouting';
+import { useDeferredInviteCode } from '@/hooks/useDeferredInviteCode';
 import { colors } from '@/constants/theme';
 import '@/lib/notifications/checkoutGeofenceTask';
 
@@ -23,6 +24,7 @@ export default function RootLayout() {
   useAppleHealthOnboardingPrompt();
   useAppleHealthForegroundSync();
   useNotificationTapRouting();
+  useDeferredInviteCode();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -40,6 +42,7 @@ export default function RootLayout() {
           <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
           <Stack.Screen name="(app)" options={{ headerShown: false }} />
           <Stack.Screen name="group-select" options={{ title: 'Mis grupos' }} />
+          <Stack.Screen name="join/[code]" options={{ title: 'Invitación' }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -106,6 +106,26 @@ export type LeagueCyclePayout = {
   created_at: string;
 };
 
+/** One row per active member returned by liquidate_group_now — what they'd get (or actually got) settling the group right now. place/share_percent are only set for league podium winners. */
+export type LiquidationRow = {
+  user_id: string;
+  full_name: string;
+  amount: number;
+  place: number | null;
+  share_percent: number | null;
+};
+
+/** Public, non-member-safe preview of a group by invite code — see get_group_invite_preview. Deliberately narrow: no balances, no payment info, no member list. */
+export type GroupInvitePreviewRow = {
+  group_id: string;
+  name: string;
+  member_count: number;
+  min_days_per_week: number;
+  penalty_amount: number;
+  currency: string;
+  payout_mode: PayoutMode;
+};
+
 export type GroupMember = {
   id: string;
   group_id: string;
@@ -120,6 +140,8 @@ export type GroupMember = {
   leave_requested_at: string | null;
   leave_effective_at: string | null;
   notification_preferences: NotificationPreferences;
+  /** Relative weight for Cooperativo/Mixto splits (share_i = pool * weight_i / sum(all active weights)). Default 1 = equal footing. Admin-editable via admin_set_cooperative_share_percent. */
+  cooperative_weight: number;
 };
 
 export type Checkin = {
@@ -407,6 +429,18 @@ export type Database = {
       close_expired_proposals: { Args: Record<string, never>; Returns: void };
       admin_remove_member: { Args: { p_member_id: string; p_pay_out?: boolean }; Returns: GroupMember };
       start_league_cycle: { Args: { p_group_id: string }; Returns: LeagueCycle };
+      admin_set_cooperative_share_percent: {
+        Args: { p_member_id: string; p_target_percent: number };
+        Returns: GroupMember;
+      };
+      liquidate_group_now: {
+        Args: { p_group_id: string; p_dry_run?: boolean };
+        Returns: LiquidationRow[];
+      };
+      get_group_invite_preview: {
+        Args: { p_invite_code: string };
+        Returns: GroupInvitePreviewRow[];
+      };
       admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       admin_set_member_penalty_start_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       register_push_token: { Args: { p_token: string }; Returns: void };
@@ -450,6 +484,7 @@ export type Database = {
           p_longitude: number;
           p_location_accuracy_m: number | null;
           p_photo_path: string;
+          p_location_mocked?: boolean;
         };
         Returns: Checkin;
       };
@@ -464,6 +499,7 @@ export type Database = {
           p_longitude: number;
           p_location_accuracy_m: number | null;
           p_photo_path: string;
+          p_location_mocked?: boolean;
         };
         Returns: Checkin;
       };

@@ -5,6 +5,8 @@ export interface LockedLocation {
   latitude: number;
   longitude: number;
   accuracyMeters: number | null;
+  /** true when Android reports these coordinates came from a mock-location provider (Developer Options, no root needed). Always false on iOS — expo-location has no equivalent signal there. */
+  mocked: boolean;
 }
 
 export type LocationLockStatus = 'idle' | 'requesting' | 'locked' | 'denied' | 'error';
@@ -72,6 +74,7 @@ export function useLocationLock() {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracyMeters: position.coords.accuracy,
+        mocked: position.mocked ?? false,
       });
       setStatus('locked');
     } catch (err) {

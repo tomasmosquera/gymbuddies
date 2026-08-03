@@ -4,6 +4,7 @@ import { Redirect } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyMemberships } from '@/hooks/useMyMemberships';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
+import { usePendingInviteStore } from '@/state/pendingInviteStore';
 import { colors } from '@/constants/theme';
 
 export default function Index() {
@@ -11,6 +12,8 @@ export default function Index() {
   const { memberships, isLoading: membershipsLoading } = useMyMemberships();
   const activeGroupId = useActiveGroupStore((s) => s.activeGroupId);
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
+  const pendingCode = usePendingInviteStore((s) => s.pendingCode);
+  const setPendingCode = usePendingInviteStore((s) => s.setPendingCode);
 
   const activeMembership = memberships.find((m) => m.group_id === activeGroupId) ?? memberships[0];
 
@@ -19,6 +22,16 @@ export default function Index() {
       setActiveGroupId(activeMembership.group_id);
     }
   }, [membershipsLoading, activeMembership, activeGroupId, setActiveGroupId]);
+
+  // One-shot: a pending invite (from a deferred deep link, or from opening
+  // /join/[code] while signed out) gets exactly one redirect here, right
+  // after sign-up/sign-in completes — then it's cleared so backing out of
+  // that screen doesn't keep bouncing the user back to it.
+  useEffect(() => {
+    if (!membershipsLoading && !activeMembership && pendingCode) {
+      setPendingCode(null);
+    }
+  }, [membershipsLoading, activeMembership, pendingCode, setPendingCode]);
 
   if (isInitializing || (isSignedIn && membershipsLoading)) {
     return (
@@ -33,6 +46,9 @@ export default function Index() {
   }
 
   if (!activeMembership) {
+    if (pendingCode) {
+      return <Redirect href={{ pathname: '/join/[code]', params: { code: pendingCode } }} />;
+    }
     return <Redirect href="/group-select" />;
   }
 
