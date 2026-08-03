@@ -18,7 +18,7 @@ export interface BadgeDayRecord {
 
 export interface BadgeCheckinFact {
   date: string;
-  /** America/Bogota hour (0-23) the check-in photo was captured at. */
+  /** Local hour (0-23), in the group's own timezone, the check-in photo was captured at — field kept its original name, but is populated via toZonedHour(captured_at, group.timezone), not always Bogota. */
   hourBogota: number;
   /** Only ever non-null when the group requires checkout photos and this check-in has one. */
   workoutMinutes: number | null;
@@ -33,6 +33,8 @@ export interface BadgeContext {
   todayString: string;
   groupCreatedDate: string;
   joinedDate: string;
+  /** The group's IANA timezone — gates which country's fixed-date holidays apply (see isFixedHoliday). */
+  timezone: string;
   /** Ascending, one entry per day this member has been active, from activation through today. */
   days: BadgeDayRecord[];
   /** Ascending, one entry per real check-in row (not per day — always 1:1 in practice today). */
@@ -41,7 +43,7 @@ export interface BadgeContext {
   weeklyPenalties: BadgeWeeklyPenalty[];
   /** True once this member has any confirmed wallet_transactions row of type 'initial_deposit' or 'recharge' — i.e. they've actually put money into the group, regardless of which of the two flows it came through. */
   hasFundedWallet: boolean;
-  /** Calendar dates (Bogota) this member gave at least one reaction on. */
+  /** Calendar dates (in the group's own timezone) this member gave at least one reaction on. */
   reactionsGivenDates: string[];
   /** How many reactions this member gave, keyed by the checkin owner's userId. */
   reactionsGivenByRecipient: Record<string, number>;
@@ -205,16 +207,46 @@ export function monthlyPenalties(weeklyPenalties: readonly BadgeWeeklyPenalty[])
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
-const FIXED_COLOMBIAN_HOLIDAYS = new Set(['01-01', '05-01', '07-20', '08-07', '12-08', '12-25']);
-
 /**
- * Only Colombia's FIXED-date public holidays (New Year, Labor Day,
- * Independence, Batalla de Boyacá, Immaculate Conception, Christmas) — the
- * moveable Ley Emiliani (Monday-shifted) and Easter-based holidays are
- * deliberately not modeled here to avoid a much larger date table.
+ * Fixed-date public holidays per country, keyed the same as
+ * TIMEZONE_COUNTRY below. Deliberately FIXED-Gregorian-date only, same
+ * spirit as the original Colombia-only list: moveable holidays (Easter-
+ * based, Monday-shifted observance laws like Mexico's or the US's, and
+ * especially lunar-calendar ones like Chinese New Year) are not modeled, to
+ * avoid a much larger per-year date table. A country with a sparse or
+ * missing entry here just means "Festivo Cumplido" rarely or never applies
+ * for that group — not a bug, the same tradeoff Colombia's list always had.
  */
-export function isFixedColombianHoliday(date: string): boolean {
-  return FIXED_COLOMBIAN_HOLIDAYS.has(date.slice(5));
+const FIXED_HOLIDAYS_BY_COUNTRY: Record<string, Set<string>> = {
+  CO: new Set(['01-01', '05-01', '07-20', '08-07', '12-08', '12-25']),
+  MX: new Set(['01-01', '05-01', '09-16', '12-25']),
+  PE: new Set(['01-01', '05-01', '07-28', '07-29', '12-08', '12-25']),
+  CL: new Set(['01-01', '05-01', '09-18', '09-19', '12-25']),
+  AR: new Set(['01-01', '05-01', '05-25', '07-09', '12-25']),
+  US: new Set(['01-01', '07-04', '12-25']),
+  ES: new Set(['01-01', '05-01', '10-12', '12-25']),
+  CN: new Set(['01-01', '10-01']),
+};
+
+/** Maps a group's IANA timezone to the country whose fixed-date holidays apply — see the group timezone picker for the matching option list. */
+const TIMEZONE_COUNTRY: Record<string, string> = {
+  'America/Bogota': 'CO',
+  'America/Mexico_City': 'MX',
+  'America/Lima': 'PE',
+  'America/Santiago': 'CL',
+  'America/Argentina/Buenos_Aires': 'AR',
+  'America/New_York': 'US',
+  'America/Los_Angeles': 'US',
+  'America/Chicago': 'US',
+  'Europe/Madrid': 'ES',
+  'Asia/Shanghai': 'CN',
+};
+
+/** Unrecognized timezones fall back to Colombia's list — this app's original, single-country default. */
+export function isFixedHoliday(date: string, timezone: string): boolean {
+  const country = TIMEZONE_COUNTRY[timezone] ?? 'CO';
+  const holidays = FIXED_HOLIDAYS_BY_COUNTRY[country] ?? FIXED_HOLIDAYS_BY_COUNTRY.CO;
+  return holidays.has(date.slice(5));
 }
 
 export function totalWorkoutMinutes(checkins: readonly BadgeCheckinFact[]): number {
@@ -339,7 +371,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🎌',
     description: 'Check-in registrado en un día festivo.',
     category: 'racha',
-    evaluate: (ctx) => bool(ctx.days.some((d) => d.status === 'completed' && isFixedColombianHoliday(d.date))),
+    evaluate: (ctx) => bool(ctx.days.some((d) => d.status === 'completed' && isFixedHoliday(d.date, ctx.timezone))),
   },
 
   // Consistencia

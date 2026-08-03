@@ -7,7 +7,7 @@ import {
   monthlyConsistency,
   longestConsecutiveMonthRun,
   monthlyPenalties,
-  isFixedColombianHoliday,
+  isFixedHoliday,
   totalWorkoutMinutes,
   longestSingleWorkoutMinutes,
   bestSustainedAverageWorkout,
@@ -33,6 +33,7 @@ function baseContext(overrides: Partial<BadgeContext> = {}): BadgeContext {
     todayString: '2026-07-24',
     groupCreatedDate: '2026-01-01',
     joinedDate: '2026-01-01',
+    timezone: 'America/Bogota',
     days: [],
     checkins: [],
     weeklyPenalties: [],
@@ -145,14 +146,28 @@ describe('monthlyPenalties', () => {
   });
 });
 
-describe('isFixedColombianHoliday', () => {
-  it('recognizes fixed-date holidays regardless of year', () => {
-    expect(isFixedColombianHoliday('2026-12-25')).toBe(true);
-    expect(isFixedColombianHoliday('2030-07-20')).toBe(true);
+describe('isFixedHoliday', () => {
+  it('recognizes fixed-date Colombia holidays regardless of year', () => {
+    expect(isFixedHoliday('2026-12-25', 'America/Bogota')).toBe(true);
+    expect(isFixedHoliday('2030-07-20', 'America/Bogota')).toBe(true);
   });
 
   it('rejects a non-holiday date', () => {
-    expect(isFixedColombianHoliday('2026-03-15')).toBe(false);
+    expect(isFixedHoliday('2026-03-15', 'America/Bogota')).toBe(false);
+  });
+
+  it('uses a different holiday list for a Mexico City group', () => {
+    expect(isFixedHoliday('2026-09-16', 'America/Mexico_City')).toBe(true); // Independencia
+    expect(isFixedHoliday('2026-07-20', 'America/Mexico_City')).toBe(false); // Colombia-only, not Mexico's
+  });
+
+  it('uses a different holiday list for a Shanghai group', () => {
+    expect(isFixedHoliday('2026-10-01', 'Asia/Shanghai')).toBe(true); // National Day
+    expect(isFixedHoliday('2026-07-20', 'Asia/Shanghai')).toBe(false);
+  });
+
+  it('falls back to Colombia for an unrecognized timezone', () => {
+    expect(isFixedHoliday('2026-07-20', 'Pacific/Fakezone')).toBe(true);
   });
 });
 
@@ -201,6 +216,16 @@ describe('representative badge evaluations', () => {
   it('Piel en el Juego earns from either an initial deposit or a recharge', () => {
     expect(badge('piel-en-el-juego').evaluate(baseContext({ hasFundedWallet: false })).earned).toBe(false);
     expect(badge('piel-en-el-juego').evaluate(baseContext({ hasFundedWallet: true })).earned).toBe(true);
+  });
+
+  it('Sin Excusas checks the holiday list for the context\'s own timezone', () => {
+    const mexicoIndependence = days([['2026-09-16', 'completed']]);
+    expect(badge('sin-excusas').evaluate(baseContext({ days: mexicoIndependence, timezone: 'America/Bogota' })).earned).toBe(
+      false
+    );
+    expect(badge('sin-excusas').evaluate(baseContext({ days: mexicoIndependence, timezone: 'America/Mexico_City' })).earned).toBe(
+      true
+    );
   });
 
   it('Ahorrador Involuntario requires at least one evaluated week with zero penalties', () => {

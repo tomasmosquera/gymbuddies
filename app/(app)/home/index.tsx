@@ -19,7 +19,7 @@ import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
-import { formatElapsedClock, getWeekBounds, toBogotaDateString, weekDates } from '@/lib/domain/dateUtils';
+import { formatElapsedClock, getWeekBounds, toZonedDateString, weekDates } from '@/lib/domain/dateUtils';
 import { failsRemaining } from '@/lib/domain/walletState';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -28,6 +28,7 @@ const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 export default function HomeScreen() {
   const { session } = useAuth();
   const { group, membership, isLoading: groupLoading, refresh: refreshGroup } = useActiveGroup();
+  const timezone = group?.timezone ?? 'America/Bogota';
   const [weekOffset, setWeekOffset] = useState(0);
   const isCurrentWeek = weekOffset === 0;
   const viewedDate = useMemo(() => {
@@ -39,16 +40,19 @@ export default function HomeScreen() {
   const { weekCheckins: rawWeekCheckins, todayCheckin, isLoading: checkinsLoading, refresh: refreshCheckins } = useCheckins(
     group?.id ?? null,
     session?.user.id ?? null,
+    timezone,
     viewedDate
   );
   const { weekExcusedDays: rawWeekExcusedDays, isLoading: excusedLoading } = useExcusedDays(
     group?.id ?? null,
     session?.user.id ?? null,
+    timezone,
     viewedDate
   );
   const { weekOverrides: rawWeekOverrides, isLoading: overridesLoading, refresh: refreshOverrides } = useAttendanceOverrides(
     group?.id ?? null,
     session?.user.id ?? null,
+    timezone,
     viewedDate
   );
   // These 3 hooks fetch raw rows with no awareness of the member's
@@ -57,7 +61,7 @@ export default function HomeScreen() {
   // admin) shouldn't count here either, same rule useGroupAttendanceRecords
   // already applies everywhere else.
   const activatedDateString = membership
-    ? toBogotaDateString(new Date(membership.activated_at ?? membership.joined_at))
+    ? toZonedDateString(new Date(membership.activated_at ?? membership.joined_at), timezone)
     : null;
   const weekCheckins = useMemo(
     () => (activatedDateString ? rawWeekCheckins.filter((c) => c.checkin_date >= activatedDateString) : rawWeekCheckins),
@@ -78,8 +82,8 @@ export default function HomeScreen() {
     lastClosedWeek,
     isLoading: leaderboardLoading,
     refresh: refreshLeaderboard,
-  } = useLeaderboard(group?.id ?? null, viewedDate);
-  const { membersBadges } = useGroupBadges(group?.id ?? null);
+  } = useLeaderboard(group?.id ?? null, timezone, viewedDate);
+  const { membersBadges } = useGroupBadges(group?.id ?? null, timezone);
   const levelByUserId = useMemo(
     () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
     [membersBadges]
@@ -128,8 +132,8 @@ export default function HomeScreen() {
     openChallenges.filter((c) => c.target_user_id !== session?.user.id && !c.votes.some((v) => v.user_id === session?.user.id))
       .length;
 
-  const todayString = toBogotaDateString(new Date());
-  const { weekStart, weekEnd } = getWeekBounds(viewedDate);
+  const todayString = toZonedDateString(new Date(), timezone);
+  const { weekStart, weekEnd } = getWeekBounds(viewedDate, timezone);
   const days = useMemo(() => weekDates(weekStart), [weekStart]);
 
   const validOverrideDates = useMemo(

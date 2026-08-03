@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidInviteCode, normalizeInviteCode } from '@/lib/domain/inviteCode';
+import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
 
 export const passwordSchema = z.string().min(8, 'La contraseña debe tener al menos 8 caracteres');
 
@@ -57,6 +58,7 @@ export const createGroupSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
     .optional()
     .or(z.literal('')),
+  timezone: z.string().min(1, 'Selecciona un timezone').default(DEFAULT_GROUP_TIMEZONE),
 });
 
 export const joinGroupSchema = z.object({

@@ -25,20 +25,29 @@ describe('monthly challenge catalog', () => {
 
 describe('monthHasFixedHoliday', () => {
   it('is true for a month containing a fixed holiday', () => {
-    expect(monthHasFixedHoliday('2026-12')).toBe(true); // Dec 25
-    expect(monthHasFixedHoliday('2026-07')).toBe(true); // Jul 20
+    expect(monthHasFixedHoliday('2026-12', 'America/Bogota')).toBe(true); // Dec 25
+    expect(monthHasFixedHoliday('2026-07', 'America/Bogota')).toBe(true); // Jul 20
   });
 
   it('is false for a month with no fixed holiday', () => {
-    expect(monthHasFixedHoliday('2026-02')).toBe(false);
+    expect(monthHasFixedHoliday('2026-02', 'America/Bogota')).toBe(false);
+  });
+
+  it('uses the holiday list matching the given timezone, not always Colombia', () => {
+    expect(monthHasFixedHoliday('2026-07', 'America/Mexico_City')).toBe(false); // Jul 20 is Colombia-only
+    expect(monthHasFixedHoliday('2026-09', 'America/Mexico_City')).toBe(true); // Sep 16, Mexico's independence
+  });
+
+  it('handles a leap-year February without error (datesInMonth must enumerate all 29 days)', () => {
+    expect(monthHasFixedHoliday('2028-02', 'America/Bogota')).toBe(false);
   });
 });
 
 describe('completedOnAnyHoliday', () => {
   it('is true only if a holiday date is completed', () => {
-    expect(completedOnAnyHoliday(days([['2026-12-25', 'completed']]))).toBe(true);
-    expect(completedOnAnyHoliday(days([['2026-12-25', 'failed']]))).toBe(false);
-    expect(completedOnAnyHoliday(days([['2026-12-24', 'completed']]))).toBe(false);
+    expect(completedOnAnyHoliday(days([['2026-12-25', 'completed']]), 'America/Bogota')).toBe(true);
+    expect(completedOnAnyHoliday(days([['2026-12-25', 'failed']]), 'America/Bogota')).toBe(false);
+    expect(completedOnAnyHoliday(days([['2026-12-24', 'completed']]), 'America/Bogota')).toBe(false);
   });
 });
 

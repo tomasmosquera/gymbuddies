@@ -768,3 +768,50 @@ $$;
 -- ----------------------------------------------------------------------------
 select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'weekly-evaluation'), schedule := '0 * * * *');
 select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'checkin-reminder'), schedule := '0 * * * *');
+
+-- ----------------------------------------------------------------------------
+-- admin-edit-group.tsx updates timezone via a direct client .update() (same
+-- pattern already used for name/admin_payment_info) — 0009's column grant
+-- only covered those two, so timezone needs adding here too. The RLS row
+-- policy (groups_update_admin, 0009) already covers "is this group's admin";
+-- trg_validate_group_timezone above covers "is this a real IANA zone".
+-- ----------------------------------------------------------------------------
+grant update (timezone) on groups to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- delete_own_checkin() (0037): missed in the first pass of this migration —
+-- its "only today's check-in" guard still compared against Bogota. Without
+-- this, a member in a timezone far enough ahead of Bogota (e.g. Shanghai,
+-- +13h) would routinely have their own same-day retake/delete rejected with
+-- "solo puedes eliminar el check-in de hoy", since Bogota's calendar date
+-- hadn't rolled over yet even though it genuinely was still "today" in
+-- their own group's timezone.
+-- ----------------------------------------------------------------------------
+create or replace function delete_own_checkin(p_checkin_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_checkin checkins%rowtype;
+  v_tz text;
+begin
+  select * into v_checkin from checkins where id = p_checkin_id and user_id = auth.uid();
+  if not found then
+    raise exception 'check-in not found';
+  end if;
+
+  select timezone into v_tz from groups where id = v_checkin.group_id;
+  if v_checkin.checkin_date <> (now() at time zone v_tz)::date then
+    raise exception 'solo puedes eliminar el check-in de hoy';
+  end if;
+
+  perform set_config('storage.allow_delete_query', 'true', true);
+  delete from storage.objects where bucket_id = 'checkins' and name = v_checkin.photo_path;
+  if v_checkin.checkout_photo_path is not null then
+    delete from storage.objects where bucket_id = 'checkins' and name = v_checkin.checkout_photo_path;
+  end if;
+  delete from checkins where id = p_checkin_id;
+end;
+$$;

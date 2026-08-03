@@ -16,7 +16,7 @@ import { useGroupDayAttendance, type DayAttendance, type MemberAttendance } from
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
-import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
 import { REACTION_EMOJIS, aggregateReactionCounts } from '@/lib/domain/reactions';
 import type { CheckinReaction } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -196,6 +196,7 @@ function ReactionRow({
 function DayCheckinRow({
   checkin,
   minWorkoutMinutes,
+  timezone,
   isOwnCheckin,
   isChallenged,
   reactions,
@@ -208,6 +209,7 @@ function DayCheckinRow({
 }: {
   checkin: GroupCheckinWithProfile;
   minWorkoutMinutes: number;
+  timezone: string;
   isOwnCheckin: boolean;
   isChallenged: boolean;
   reactions: CheckinReaction[];
@@ -239,6 +241,7 @@ function DayCheckinRow({
           capturedAt={checkin.captured_at}
           latitude={checkin.latitude}
           longitude={checkin.longitude}
+          timezone={timezone}
           onPress={() => onPressPhoto(checkin.photo_path)}
         />
         <CheckinPhotoColumn
@@ -247,6 +250,7 @@ function DayCheckinRow({
           capturedAt={checkin.checkout_captured_at}
           latitude={checkin.checkout_latitude}
           longitude={checkin.checkout_longitude}
+          timezone={timezone}
           onPress={() => checkin.checkout_photo_path && onPressPhoto(checkin.checkout_photo_path)}
         />
       </View>
@@ -285,6 +289,7 @@ function DayRow({
   challengedCheckinIds,
   reactionsByCheckinId,
   levelByUserId,
+  timezone,
   onToggle,
   onPressPhoto,
   onChallenge,
@@ -300,6 +305,7 @@ function DayRow({
   challengedCheckinIds: Set<string>;
   reactionsByCheckinId: Map<string, CheckinReaction[]>;
   levelByUserId: Record<string, number>;
+  timezone: string;
   onToggle: () => void;
   onPressPhoto: (path: string) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
@@ -325,6 +331,7 @@ function DayRow({
                 key={c.id}
                 checkin={c}
                 minWorkoutMinutes={minWorkoutMinutes}
+                timezone={timezone}
                 isOwnCheckin={c.user_id === currentUserId}
                 isChallenged={challengedCheckinIds.has(c.id)}
                 reactions={reactionsByCheckinId.get(c.id) ?? []}
@@ -356,6 +363,7 @@ function MemberRow({
   reactionsByCheckinId,
   levelByUserId,
   todayString,
+  timezone,
   onToggle,
   onPressPhoto,
   onChallenge,
@@ -372,6 +380,7 @@ function MemberRow({
   reactionsByCheckinId: Map<string, CheckinReaction[]>;
   levelByUserId: Record<string, number>;
   todayString: string;
+  timezone: string;
   onToggle: () => void;
   onPressPhoto: (path: string) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
@@ -414,6 +423,7 @@ function MemberRow({
                   <DayCheckinRow
                     checkin={checkin}
                     minWorkoutMinutes={minWorkoutMinutes}
+                    timezone={timezone}
                     isOwnCheckin={member.user_id === currentUserId}
                     isChallenged={challengedCheckinIds.has(checkin.id)}
                     reactions={reactionsByCheckinId.get(checkin.id) ?? []}
@@ -459,7 +469,8 @@ export default function DashboardScreen() {
   const [challengeReason, setChallengeReason] = useState('');
   const [isSubmittingChallenge, setIsSubmittingChallenge] = useState(false);
 
-  const todayString = toBogotaDateString(new Date());
+  const timezone = group?.timezone ?? 'America/Bogota';
+  const todayString = toZonedDateString(new Date(), timezone);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const [year, month] = todayString.split('-').map(Number);
@@ -484,20 +495,20 @@ export default function DashboardScreen() {
       return { rangeStart: `${calendarMonth.year}-${mm}-01`, rangeEnd: `${calendarMonth.year}-${mm}-${String(lastDay).padStart(2, '0')}` };
     }
     if (period === 'week') {
-      const { weekStart, weekEnd } = getWeekBounds(new Date());
+      const { weekStart, weekEnd } = getWeekBounds(new Date(), timezone);
       return { rangeStart: weekStart, rangeEnd: weekEnd };
     }
     if (period === 'month') {
       const [year, month] = todayString.split('-');
       return { rangeStart: `${year}-${month}-01`, rangeEnd: todayString };
     }
-    const start = group?.created_at ? toBogotaDateString(new Date(group.created_at)) : todayString;
+    const start = group?.created_at ? toZonedDateString(new Date(group.created_at), timezone) : todayString;
     return { rangeStart: start, rangeEnd: todayString };
-  }, [viewMode, calendarMonth, period, group?.created_at, todayString]);
+  }, [viewMode, calendarMonth, period, group?.created_at, todayString, timezone]);
 
   const { days, members, checkinsByDate, reactionsByCheckinId, isRefreshing, refresh, react, removeReaction } =
-    useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd);
-  const { membersBadges } = useGroupBadges(group?.id ?? null);
+    useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd, timezone);
+  const { membersBadges } = useGroupBadges(group?.id ?? null, timezone);
   const levelByUserId = useMemo(
     () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
     [membersBadges]
@@ -634,6 +645,7 @@ export default function DashboardScreen() {
               isExpanded={expandedDate === item.date}
               checkins={checkinsByDate.get(item.date) ?? []}
               minWorkoutMinutes={group.min_workout_minutes}
+              timezone={group.timezone}
               currentUserId={session?.user.id ?? null}
               challengedCheckinIds={challengedCheckinIds}
               reactionsByCheckinId={reactionsByCheckinId}
@@ -668,6 +680,7 @@ export default function DashboardScreen() {
               reactionsByCheckinId={reactionsByCheckinId}
               levelByUserId={levelByUserId}
               todayString={todayString}
+              timezone={group.timezone}
               onToggle={() => setExpandedMemberId((id) => (id === item.user_id ? null : item.user_id))}
               onPressPhoto={setViewingPhotoPath}
               onChallenge={handleChallenge}
@@ -717,6 +730,7 @@ export default function DashboardScreen() {
                       key={c.id}
                       checkin={c}
                       minWorkoutMinutes={group.min_workout_minutes}
+                      timezone={group.timezone}
                       isOwnCheckin={c.user_id === session?.user.id}
                       isChallenged={challengedCheckinIds.has(c.id)}
                       reactions={reactionsByCheckinId.get(c.id) ?? []}

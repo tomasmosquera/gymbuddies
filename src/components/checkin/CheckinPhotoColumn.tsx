@@ -83,7 +83,7 @@ export function CheckinPhotoColumn({
         )}
       </Pressable>
       <Text style={styles.label}>{label}</Text>
-      {capturedAt ? <Text style={styles.meta}>{formatBogotaTime12h(new Date(capturedAt))}</Text> : null}
+      {capturedAt ? <Text style={styles.meta}>{formatZonedTime12h(new Date(capturedAt), timezone)}</Text> : null}
       {latitude !== null ? (
         <Pressable onPress={openMap} hitSlop={4}>
           <Text style={[styles.meta, styles.locationLink]} numberOfLines={2}>

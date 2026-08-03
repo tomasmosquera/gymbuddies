@@ -7,12 +7,14 @@ import { TextField } from '@/components/ui/TextField';
 import { MoneyField } from '@/components/ui/MoneyField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PrizeSplitEditor } from '@/components/ui/PrizeSplitEditor';
+import { TimezonePicker } from '@/components/ui/TimezonePicker';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase/client';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
 import { createGroupSchema } from '@/lib/validation/schemas';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { RULE_FIELD_HELP } from '@/constants/ruleFieldHelp';
+import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
 import type { PayoutMode } from '@/lib/supabase/types';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -65,6 +67,7 @@ export default function CreateGroupScreen() {
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>(['60', '30', '10']);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
   const [gameStartsAt, setGameStartsAt] = useState('');
+  const [timezone, setTimezone] = useState(DEFAULT_GROUP_TIMEZONE);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -85,6 +88,7 @@ export default function CreateGroupScreen() {
       leaguePrizeSplits: leaguePrizeSplits.filter((v) => v.trim()).map(Number),
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
       gameStartsAt,
+      timezone,
     });
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
@@ -111,6 +115,7 @@ export default function CreateGroupScreen() {
         p_league_prize_splits: result.data.leaguePrizeSplits,
         p_mixed_league_share_percent: result.data.mixedLeagueSharePercent,
         p_game_starts_at: result.data.gameStartsAt || null,
+        p_timezone: result.data.timezone,
       });
       if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el grupo');
       setActiveGroupId(data.id);
@@ -154,6 +159,18 @@ export default function CreateGroupScreen() {
           <SectionLabel>INFORMACIÓN BÁSICA</SectionLabel>
           <Card style={styles.section}>
             <TextField label="Nombre del grupo" value={name} onChangeText={setName} error={errors.name} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionLabel>ZONA HORARIA</SectionLabel>
+          <Card style={styles.section}>
+            <Text style={styles.modeDescription}>
+              Define en qué día/semana cuenta cada check-in del grupo, y qué festivos aplican para el logro &ldquo;Festivo
+              Cumplido&rdquo;.
+            </Text>
+            <TimezonePicker value={timezone} onChange={setTimezone} />
+            {errors.timezone ? <Text style={styles.errorText}>{errors.timezone}</Text> : null}
           </Card>
         </View>
 
@@ -321,6 +338,7 @@ const styles = StyleSheet.create({
   },
   section: { gap: spacing.md },
   modeDescription: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  errorText: { color: colors.danger, fontSize: 12 },
   toggleField: { gap: spacing.xs },
   toggleLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   toggleHint: { color: colors.textMuted, fontSize: 12, lineHeight: 16 },

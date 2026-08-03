@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { toBogotaDateString } from '@/lib/domain/dateUtils';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 import { classifyMemberDay, rankMembersByConsistency } from '@/lib/domain/attendance';
 import type { CheckinReaction } from '@/lib/supabase/types';
 import type { GroupCheckinWithProfile } from './useGroupWeekCheckins';
@@ -43,7 +43,7 @@ function addOneDay(dateString: string): string {
  * — plus the raw check-ins (with profiles) per day for the photo/location/
  * duration drill-down.
  */
-export function useGroupDayAttendance(groupId: string | null, rangeStart: string, rangeEnd: string) {
+export function useGroupDayAttendance(groupId: string | null, rangeStart: string, rangeEnd: string, timezone: string) {
   const [days, setDays] = useState<DayAttendance[]>([]);
   const [members, setMembers] = useState<MemberAttendance[]>([]);
   const [checkinsByDate, setCheckinsByDate] = useState<Map<string, GroupCheckinWithProfile[]>>(new Map());
@@ -123,7 +123,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     const activatedDateByUserId = new Map<string, string | null>();
     for (const m of allMembersRaw) {
       const activatedAt = m.activated_at ?? m.joined_at;
-      activatedDateByUserId.set(m.user_id, activatedAt ? toBogotaDateString(new Date(activatedAt)) : null);
+      activatedDateByUserId.set(m.user_id, activatedAt ? toZonedDateString(new Date(activatedAt), timezone) : null);
     }
 
     const byDate = new Map<string, GroupCheckinWithProfile[]>();
@@ -149,7 +149,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       else entry.failed.add(o.user_id);
     }
 
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
     const allDates: string[] = [];
     for (let cursor = rangeStart; cursor <= rangeEnd && cursor <= todayString; cursor = addOneDay(cursor)) {
       allDates.push(cursor);
@@ -268,7 +268,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     setIsLoading(false);
     setIsRefreshing(false);
     },
-    [groupId, rangeStart, rangeEnd]
+    [groupId, rangeStart, rangeEnd, timezone]
   );
 
   useEffect(() => {

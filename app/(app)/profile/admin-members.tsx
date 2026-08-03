@@ -9,7 +9,7 @@ import { TextField } from '@/components/ui/TextField';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupMembers, type GroupMemberWithProfile } from '@/hooks/useGroupMembers';
 import { supabase } from '@/lib/supabase/client';
-import { toBogotaDateString } from '@/lib/domain/dateUtils';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 import type { AttendanceOverride, WalletTransaction } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -130,6 +130,9 @@ export default function AdminMembersScreen() {
   // --- Section 4: remove ---
   const [isRemoving, setIsRemoving] = useState(false);
 
+  // --- Section 5: allow a removed member back in ---
+  const [isAllowingRejoin, setIsAllowingRejoin] = useState(false);
+
   // Reset every section's transient state whenever a different member is picked.
   useEffect(() => {
     setActivationDate(
@@ -151,7 +154,7 @@ export default function AdminMembersScreen() {
   const refreshDayStatus = useCallback(async () => {
     if (!group || !selectedUserId) return;
     setDayStatusLoading(true);
-    const dateString = toBogotaDateString(attendanceDate);
+    const dateString = toZonedDateString(attendanceDate, group.timezone);
     const [{ data: checkinData }, { data: overrideData }] = await Promise.all([
       supabase
         .from('checkins')
@@ -212,7 +215,7 @@ export default function AdminMembersScreen() {
     try {
       const { error } = await supabase.rpc('admin_set_member_activation_date', {
         p_member_id: selectedMember.id,
-        p_date: toBogotaDateString(activationDate),
+        p_date: toZonedDateString(activationDate, group?.timezone ?? 'America/Bogota'),
       });
       if (error) throw new Error(error.message);
       await refreshMembers();
@@ -230,7 +233,7 @@ export default function AdminMembersScreen() {
     try {
       const { error } = await supabase.rpc('admin_set_member_penalty_start_date', {
         p_member_id: selectedMember.id,
-        p_date: toBogotaDateString(penaltyStartDate),
+        p_date: toZonedDateString(penaltyStartDate, group?.timezone ?? 'America/Bogota'),
       });
       if (error) throw new Error(error.message);
       await refreshMembers();
@@ -249,7 +252,7 @@ export default function AdminMembersScreen() {
       const { error } = await supabase.rpc('set_attendance_override', {
         p_group_id: group.id,
         p_user_id: selectedUserId,
-        p_date: toBogotaDateString(attendanceDate),
+        p_date: toZonedDateString(attendanceDate, group.timezone),
         p_status: status,
         p_note: attendanceNote || null,
       });
@@ -270,7 +273,7 @@ export default function AdminMembersScreen() {
       const { error } = await supabase.rpc('clear_attendance_override', {
         p_group_id: group.id,
         p_user_id: selectedUserId,
-        p_date: toBogotaDateString(attendanceDate),
+        p_date: toZonedDateString(attendanceDate, group.timezone),
       });
       if (error) throw new Error(error.message);
       await refreshDayStatus();
@@ -369,6 +372,21 @@ export default function AdminMembersScreen() {
       Alert.alert('No se pudo sacar al miembro', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsRemoving(false);
+    }
+  };
+
+  const handleAllowRejoin = async () => {
+    if (!selectedMember) return;
+    setIsAllowingRejoin(true);
+    try {
+      const { error } = await supabase.rpc('admin_allow_rejoin', { p_member_id: selectedMember.id });
+      if (error) throw new Error(error.message);
+      await refreshMembers();
+      Alert.alert('Listo', 'Ya puede volver a entrar al grupo con el código de invitación.');
+    } catch (err) {
+      Alert.alert('No se pudo permitir el reingreso', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsAllowingRejoin(false);
     }
   };
 
@@ -520,6 +538,18 @@ export default function AdminMembersScreen() {
             <Card style={styles.section}>
               <Text style={styles.sectionTitle}>Sacar del grupo</Text>
               <Button label="Sacar del grupo" variant="danger" onPress={confirmRemove} loading={isRemoving} />
+            </Card>
+          ) : null}
+
+          {selectedMember.status === 'removed' ? (
+            <Card style={styles.section}>
+              <Text style={styles.sectionTitle}>Permitir reingreso</Text>
+              <Text style={styles.sectionHint}>
+                Este jugador fue sacado del grupo y no puede volver a entrar con el código de invitación. Si querés
+                dejarlo volver, esto lo habilita — al reingresar empieza limpio, como si fuera nuevo (no arrastra su
+                fecha de entrada ni de penalizaciones anteriores).
+              </Text>
+              <Button label="Permitir que vuelva a entrar" onPress={handleAllowRejoin} loading={isAllowingRejoin} />
             </Card>
           ) : null}
         </>

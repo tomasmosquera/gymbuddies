@@ -11,11 +11,12 @@ import type { AttendanceOverride } from '@/lib/supabase/types';
 export function useAttendanceOverrides(
   groupId: string | null,
   userId: string | null,
+  timezone: string,
   referenceDate: Date = new Date()
 ) {
   const [weekOverrides, setWeekOverrides] = useState<AttendanceOverride[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { weekStart, weekEnd } = getWeekBounds(referenceDate);
+  const { weekStart, weekEnd } = getWeekBounds(referenceDate, timezone);
 
   const refresh = useCallback(async () => {
     if (!groupId || !userId) {

@@ -75,9 +75,9 @@ function AvatarWithLevel({ initials, level }: { initials: string; level: LevelPr
 export default function ProfileScreen() {
   const { profile, session, signOut } = useAuth();
   const { group, membership, isLoading, refresh } = useActiveGroup();
-  const { rowsByPeriod, isLoading: leaderboardLoading } = useLeaderboard(group?.id ?? null);
+  const { rowsByPeriod, isLoading: leaderboardLoading } = useLeaderboard(group?.id ?? null, group?.timezone ?? 'America/Bogota');
   const { overview: moneyOverview, isLoading: moneyOverviewLoading } = useGroupMoneyOverview(group?.id ?? null);
-  const { membersBadges } = useGroupBadges(group?.id ?? null);
+  const { membersBadges } = useGroupBadges(group?.id ?? null, group?.timezone ?? 'America/Bogota');
   const { hasUnread: hasUnreadNotifications } = useNotifications();
   const [isLeaving, setIsLeaving] = useState(false);
 

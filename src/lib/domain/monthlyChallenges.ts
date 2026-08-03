@@ -1,4 +1,4 @@
-import { isFixedColombianHoliday } from '@/lib/domain/badges';
+import { isFixedHoliday } from '@/lib/domain/badges';
 import { determineTopRanked, rankMembersByConsistency, type DayAttendanceStatus } from '@/lib/domain/attendance';
 
 /**
@@ -99,12 +99,12 @@ function datesInMonth(month: string): string[] {
   return Array.from({ length: daysInMonth }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
 
-export function monthHasFixedHoliday(month: string): boolean {
-  return datesInMonth(month).some(isFixedColombianHoliday);
+export function monthHasFixedHoliday(month: string, timezone: string): boolean {
+  return datesInMonth(month).some((date) => isFixedHoliday(date, timezone));
 }
 
-export function completedOnAnyHoliday(daysInMonth: readonly MonthlyDayRecord[]): boolean {
-  return daysInMonth.some((d) => d.status === 'completed' && isFixedColombianHoliday(d.date));
+export function completedOnAnyHoliday(daysInMonth: readonly MonthlyDayRecord[], timezone: string): boolean {
+  return daysInMonth.some((d) => d.status === 'completed' && isFixedHoliday(d.date, timezone));
 }
 
 /**

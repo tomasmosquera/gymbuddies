@@ -341,7 +341,7 @@ export type Database = {
       groups: {
         Row: Group;
         Insert: never;
-        Update: Partial<Pick<Group, 'name' | 'admin_payment_info'>>;
+        Update: Partial<Pick<Group, 'name' | 'admin_payment_info' | 'timezone'>>;
       } & NoRelationships;
       group_members: {
         Row: GroupMember;
@@ -393,6 +393,7 @@ export type Database = {
           p_league_prize_splits?: number[];
           p_mixed_league_share_percent?: number;
           p_game_starts_at?: string | null;
+          p_timezone?: string;
         };
         Returns: Group;
       };
@@ -443,6 +444,7 @@ export type Database = {
       };
       admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       admin_set_member_penalty_start_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
+      admin_allow_rejoin: { Args: { p_member_id: string }; Returns: GroupMember };
       register_push_token: { Args: { p_token: string }; Returns: void };
       unregister_push_token: { Args: { p_token: string }; Returns: void };
       react_to_checkin: { Args: { p_checkin_id: string; p_emoji: string }; Returns: CheckinReaction };

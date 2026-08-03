@@ -253,3 +253,33 @@ describe('isWithinClockDriftTolerance', () => {
     expect(isWithinClockDriftTolerance(captured, now, 14400)).toBe(true);
   });
 });
+
+// Edge cases added during a post-implementation audit — DST fall-back
+// (the other direction from the spring-forward case above), a leap day,
+// a week straddling a year boundary, and a timezone far outside the
+// curated app picker (nothing in dateUtils.ts special-cases the picker
+// list — isFixedHoliday's country fallback is the only place that does).
+describe('edge cases: DST fall-back, leap years, year-boundary weeks, extreme offsets', () => {
+  it('applies New York DST fall-back (Nov 1 2026) correctly — same UTC hour lands on a different local hour before/after', () => {
+    // 2026-10-15: still EDT (UTC-4). 2026-11-15: back to EST (UTC-5), well
+    // after the Nov 1 fall-back — both instants are outside the ambiguous
+    // repeated-hour window itself, which has no single "correct" answer.
+    expect(toZonedHour(new Date('2026-10-15T12:00:00Z'), NEW_YORK)).toBe(8);
+    expect(toZonedHour(new Date('2026-11-15T12:00:00Z'), NEW_YORK)).toBe(7);
+  });
+
+  it('handles a leap day without error (Feb 29 2028)', () => {
+    expect(enumerateDates('2028-02-27', '2028-03-01')).toEqual(['2028-02-27', '2028-02-28', '2028-02-29', '2028-03-01']);
+  });
+
+  it('resolves a week straddling a year boundary correctly', () => {
+    // 2026-01-01 is a Thursday, so its week starts the previous Monday, in 2025.
+    expect(getWeekBoundsForDateString('2026-01-01')).toEqual({ weekStart: '2025-12-29', weekEnd: '2026-01-04' });
+  });
+
+  it('handles a timezone far outside the curated app picker (Kiritimati, UTC+14)', () => {
+    // 2026-07-17T15:00:00Z + 14h = 2026-07-18T05:00 local — a full calendar
+    // day ahead of UTC, further than any of the app's curated timezones.
+    expect(toZonedDateString(new Date('2026-07-17T15:00:00Z'), 'Pacific/Kiritimati')).toBe('2026-07-18');
+  });
+});

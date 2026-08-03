@@ -10,17 +10,19 @@ import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupWeekCheckins, type GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { supabase } from '@/lib/supabase/client';
-import { formatBogotaDateTime12h } from '@/lib/domain/dateUtils';
+import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
 import { colors, spacing, typography } from '@/constants/theme';
 
 function CheckinModerationRow({
   checkin,
   minWorkoutMinutes,
+  timezone,
   onPressPhoto,
   onDeleted,
 }: {
   checkin: GroupCheckinWithProfile;
   minWorkoutMinutes: number;
+  timezone: string;
   onPressPhoto: (path: string) => void;
   onDeleted: () => void;
 }) {
@@ -31,7 +33,7 @@ function CheckinModerationRow({
   const confirmDelete = () => {
     Alert.alert(
       'Borrar check-in',
-      `¿Borrar el check-in de ${checkin.profile.full_name} del ${formatBogotaDateTime12h(new Date(checkin.captured_at))}? Ese día deja de contar como entrenado.`,
+      `¿Borrar el check-in de ${checkin.profile.full_name} del ${formatZonedDateTime12h(new Date(checkin.captured_at), timezone)}? Ese día deja de contar como entrenado.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Borrar', style: 'destructive', onPress: handleDelete },
@@ -64,6 +66,7 @@ function CheckinModerationRow({
           capturedAt={checkin.captured_at}
           latitude={checkin.latitude}
           longitude={checkin.longitude}
+          timezone={timezone}
           onPress={() => onPressPhoto(checkin.photo_path)}
         />
         <CheckinPhotoColumn
@@ -72,6 +75,7 @@ function CheckinModerationRow({
           capturedAt={checkin.checkout_captured_at}
           latitude={checkin.checkout_latitude}
           longitude={checkin.checkout_longitude}
+          timezone={timezone}
           onPress={() => checkin.checkout_photo_path && onPressPhoto(checkin.checkout_photo_path)}
         />
       </View>
@@ -91,7 +95,7 @@ function CheckinModerationRow({
 
 export default function AdminPhotosScreen() {
   const { group, isLoading: groupLoading } = useActiveGroup();
-  const { checkins, isLoading, refresh } = useGroupWeekCheckins(group?.id ?? null);
+  const { checkins, isLoading, refresh } = useGroupWeekCheckins(group?.id ?? null, group?.timezone ?? 'America/Bogota');
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
 
   // Refetches every time this screen gains focus — otherwise a check-in
@@ -133,6 +137,7 @@ export default function AdminPhotosScreen() {
           <CheckinModerationRow
             checkin={item}
             minWorkoutMinutes={group.min_workout_minutes}
+            timezone={group.timezone}
             onPressPhoto={setViewingPhotoPath}
             onDeleted={refresh}
           />

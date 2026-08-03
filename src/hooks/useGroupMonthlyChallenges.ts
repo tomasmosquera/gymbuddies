@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { enumerateMonths, getWeekBounds, getWeekBoundsForDateString, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { enumerateMonths, getWeekBounds, getWeekBoundsForDateString, toZonedDateString } from '@/lib/domain/dateUtils';
 import { rankMembersByConsistency } from '@/lib/domain/attendance';
 import { useGroupAttendanceRecords } from '@/hooks/useGroupAttendanceRecords';
 import {
@@ -38,13 +38,13 @@ function addDaysToDateString(date: string, n: number): string {
  * Cross-member facts (rank, weekly MVP, most-reacted) are computed once per
  * month/week here and threaded into each member's evaluation context.
  */
-export function useGroupMonthlyChallenges(groupId: string | null) {
+export function useGroupMonthlyChallenges(groupId: string | null, timezone: string) {
   const {
     records,
     groupCreatedDate,
     isLoading: recordsLoading,
     refresh: refreshRecords,
-  } = useGroupAttendanceRecords(groupId);
+  } = useGroupAttendanceRecords(groupId, timezone);
   const [closedWeeksByUser, setClosedWeeksByUser] = useState<Map<string, ClosedWeekFacts[]>>(new Map());
   // Raw (not pre-aggregated) so each member's own activation date can filter
   // out practice/pre-membership reactions before tallying by month below.
@@ -63,7 +63,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       return;
     }
     setExtrasLoading(true);
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
 
     const [resultsRes, reactionsRes, checkinsRes, groupRes] = await Promise.all([
       supabase
@@ -117,11 +117,11 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
     setRawReactions(
       reactions
         .filter((r) => r.checkin)
-        .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toBogotaDateString(new Date(r.created_at)) }))
+        .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toZonedDateString(new Date(r.created_at), timezone) }))
     );
 
     setExtrasLoading(false);
-  }, [groupId]);
+  }, [groupId, timezone]);
 
   useEffect(() => {
     refreshExtras();
@@ -133,14 +133,14 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
 
   const membersChallenges = useMemo<MemberMonthlyChallenges[]>(() => {
     if (records.length === 0 || !groupCreatedDate) return [];
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
     const currentMonth = todayString.slice(0, 7);
     const months = enumerateMonths(groupCreatedDate.slice(0, 7), currentMonth);
     const closedMonths = months.filter((m) => m < currentMonth);
 
     // --- Weekly MVP, computed once across the group's full history ---
     const firstWeekStart = getWeekBoundsForDateString(groupCreatedDate).weekStart;
-    const lastWeekStart = getWeekBounds(new Date()).weekStart;
+    const lastWeekStart = getWeekBounds(new Date(), timezone).weekStart;
     const weekStarts: string[] = [];
     for (let cursor = firstWeekStart; cursor <= lastWeekStart; cursor = addDaysToDateString(cursor, 7)) {
       weekStarts.push(cursor);
@@ -172,7 +172,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
     const contextsByMonthByUser = new Map<string, Map<string, MonthlyMemberContext>>();
 
     for (const month of months) {
-      const hasHoliday = monthHasFixedHoliday(month);
+      const hasHoliday = monthHasFixedHoliday(month, timezone);
       const tallies = new Map(records.map((m) => [m.userId, tallyMonth(m.days.filter((d) => d.date.slice(0, 7) === month))]));
       const durationsInMonthByUserId = new Map(
         records.map((m) => [
@@ -225,7 +225,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
             (w) => w.weekStartDate.slice(0, 7) === month && isOwnedByMember(m, w.weekStartDate)
           ),
           monthHasFixedHoliday: hasHoliday,
-          completedOnHoliday: completedOnAnyHoliday(daysInMonth),
+          completedOnHoliday: completedOnAnyHoliday(daysInMonth, timezone),
           allWeekendsCompleted: allWeekendsCompleted(daysInMonth),
           anyWeekendCompleted: anyWeekendCompleted(daysInMonth),
           reactionsGivenCount: rawReactions.filter(
@@ -273,7 +273,7 @@ export function useGroupMonthlyChallenges(groupId: string | null) {
       }
       return { userId: m.userId, fullName: m.fullName, statusesById, totalXp };
     });
-  }, [records, groupCreatedDate, closedWeeksByUser, rawReactions, workoutMinutesByUser, useDurationTiebreak]);
+  }, [records, groupCreatedDate, closedWeeksByUser, rawReactions, workoutMinutesByUser, useDurationTiebreak, timezone]);
 
   return { membersChallenges, isLoading: recordsLoading || extrasLoading, refresh };
 }

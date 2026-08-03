@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { enumerateDates, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { enumerateDates, toZonedDateString } from '@/lib/domain/dateUtils';
 import { classifyMemberDay, type DayAttendanceStatus } from '@/lib/domain/attendance';
 
 export interface DayRecord {
@@ -27,14 +27,17 @@ export interface MemberAttendanceRecord {
   days: DayRecord[];
 }
 
-function activatedDateOf(m: { activated_at: string | null; joined_at: string }): string | null {
+function activatedDateOf(m: { activated_at: string | null; joined_at: string }, timezone: string): string | null {
   const activatedAt = m.activated_at ?? m.joined_at;
-  return activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+  return activatedAt ? toZonedDateString(new Date(activatedAt), timezone) : null;
 }
 
-function penaltyStartDateOf(m: { penalty_start_date: string | null; activated_at: string | null; joined_at: string }): string | null {
+function penaltyStartDateOf(
+  m: { penalty_start_date: string | null; activated_at: string | null; joined_at: string },
+  timezone: string
+): string | null {
   const date = m.penalty_start_date ?? m.activated_at ?? m.joined_at;
-  return date ? toBogotaDateString(new Date(date)) : null;
+  return date ? toZonedDateString(new Date(date), timezone) : null;
 }
 
 /**
@@ -43,7 +46,7 @@ function penaltyStartDateOf(m: { penalty_start_date: string | null; activated_at
  * Shared here so a third caller (badges) can reuse it instead of copying the
  * fetch + classification loop a third time.
  */
-export function useGroupAttendanceRecords(groupId: string | null) {
+export function useGroupAttendanceRecords(groupId: string | null, timezone: string) {
   const [records, setRecords] = useState<MemberAttendanceRecord[]>([]);
   const [groupCreatedDate, setGroupCreatedDate] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,7 +59,7 @@ export function useGroupAttendanceRecords(groupId: string | null) {
       return;
     }
     setIsLoading(true);
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
 
     const [membersRes, checkinsRes, excusedRes, overridesRes] = await Promise.all([
       supabase
@@ -87,7 +90,7 @@ export function useGroupAttendanceRecords(groupId: string | null) {
     }[];
 
     const groupCreated = members[0]?.group?.created_at
-      ? toBogotaDateString(new Date(members[0].group.created_at))
+      ? toZonedDateString(new Date(members[0].group.created_at), timezone)
       : todayString;
     setGroupCreatedDate(groupCreated);
 
@@ -116,7 +119,7 @@ export function useGroupAttendanceRecords(groupId: string | null) {
     const allDates = enumerateDates(groupCreated, todayString);
 
     const nextRecords: MemberAttendanceRecord[] = members.map((m) => {
-      const activatedDate = activatedDateOf(m);
+      const activatedDate = activatedDateOf(m, timezone);
       const checkinDates = checkinDatesByUser.get(m.user_id);
       const validDates = validOverridesByUser.get(m.user_id);
       const failedDates = failedOverridesByUser.get(m.user_id);
@@ -142,14 +145,14 @@ export function useGroupAttendanceRecords(groupId: string | null) {
         minDaysPerWeek: m.group?.min_days_per_week ?? 0,
         joinedAt: m.joined_at,
         activatedDate,
-        penaltyStartDate: penaltyStartDateOf(m),
+        penaltyStartDate: penaltyStartDateOf(m, timezone),
         days,
       };
     });
     setRecords(nextRecords);
 
     setIsLoading(false);
-  }, [groupId]);
+  }, [groupId, timezone]);
 
   useEffect(() => {
     refresh();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { toBogotaDateString, toBogotaHour } from '@/lib/domain/dateUtils';
+import { toZonedDateString, toZonedHour } from '@/lib/domain/dateUtils';
 import { consistencyPercent, tallyAttendance } from '@/lib/domain/attendance';
 import {
   currentCompletedStreak,
@@ -100,9 +100,12 @@ const HEATMAP_WEEKS_TO_SHOW = 26;
  * always alongside the group's own average for context. Never feeds
  * penalties, ranking, or badges — see personalStats.ts.
  */
-export function usePersonalStats(groupId: string | null, userId: string | null) {
-  const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId);
-  const { membersChallenges, isLoading: challengesLoading, refresh: refreshChallenges } = useGroupMonthlyChallenges(groupId);
+export function usePersonalStats(groupId: string | null, userId: string | null, timezone: string) {
+  const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId, timezone);
+  const { membersChallenges, isLoading: challengesLoading, refresh: refreshChallenges } = useGroupMonthlyChallenges(
+    groupId,
+    timezone
+  );
 
   const [checkinsByUser, setCheckinsByUser] = useState<Map<string, BadgeCheckinFact[]>>(new Map());
   const [penaltiesByUser, setPenaltiesByUser] = useState<Map<string, { weekStartDate: string; penaltyCharged: number }[]>>(
@@ -126,7 +129,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       return;
     }
     setExtrasLoading(true);
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
 
     const [checkinsRes, resultsRes, reactionsRes, groupRes] = await Promise.all([
       supabase
@@ -155,7 +158,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       if (!nextCheckins.has(c.user_id)) nextCheckins.set(c.user_id, []);
       nextCheckins.get(c.user_id)!.push({
         date: c.checkin_date,
-        hourBogota: toBogotaHour(new Date(c.captured_at)),
+        hourBogota: toZonedHour(new Date(c.captured_at), timezone),
         workoutMinutes: c.workout_minutes,
       });
     }
@@ -187,7 +190,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
           giverId: r.user_id,
           giverName: r.profile?.full_name ?? 'Miembro',
           recipientId: r.checkin!.user_id,
-          date: toBogotaDateString(new Date(r.created_at)),
+          date: toZonedDateString(new Date(r.created_at), timezone),
         }))
     );
 
@@ -196,7 +199,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     );
 
     setExtrasLoading(false);
-  }, [groupId]);
+  }, [groupId, timezone]);
 
   useEffect(() => {
     refreshExtras();
@@ -211,7 +214,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
     const me = records.find((m) => m.userId === userId);
     if (!me) return null;
 
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
     const others = records.filter((m) => m.userId !== userId);
     // A check-in/reaction/penalty from before a member's own activation date
     // isn't theirs to count — m.days already applies this rule; the extras
@@ -438,7 +441,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null) 
       mostReactedToByMe,
       mostReactedToMe,
     };
-  }, [records, membersChallenges, checkinsByUser, penaltiesByUser, rawReactions, groupInfo, userId]);
+  }, [records, membersChallenges, checkinsByUser, penaltiesByUser, rawReactions, groupInfo, userId, timezone]);
 
   return { stats, isLoading: recordsLoading || challengesLoading || extrasLoading, refresh };
 }

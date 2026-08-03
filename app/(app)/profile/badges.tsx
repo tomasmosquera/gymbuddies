@@ -176,7 +176,7 @@ function MonthlyChallengeRow({ member, challengeId }: { member: MemberBadges; ch
 export default function BadgesScreen() {
   const { session } = useAuth();
   const { group, isLoading: groupLoading } = useActiveGroup();
-  const { membersBadges, isLoading: badgesLoading } = useGroupBadges(group?.id ?? null);
+  const { membersBadges, isLoading: badgesLoading } = useGroupBadges(group?.id ?? null, group?.timezone ?? 'America/Bogota');
   // Set when a notification about someone else's achievement was tapped
   // (see notificationRouting.ts) — opens straight on that member instead of
   // always defaulting to your own.

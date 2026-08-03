@@ -83,7 +83,11 @@ function ComparisonRow({ label, mine, group }: { label: string; mine: string; gr
 export default function PersonalStatsScreen() {
   const { session } = useAuth();
   const { group, isLoading: groupLoading } = useActiveGroup();
-  const { stats, isLoading: statsLoading } = usePersonalStats(group?.id ?? null, session?.user.id ?? null);
+  const { stats, isLoading: statsLoading } = usePersonalStats(
+    group?.id ?? null,
+    session?.user.id ?? null,
+    group?.timezone ?? 'America/Bogota'
+  );
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('month');
 
   if (groupLoading || statsLoading || !stats) {

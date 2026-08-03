@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
 import { consistencyPercent, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
 import { daysPresentInWeek } from '@/lib/domain/weeklyEvaluation';
 import { useGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
@@ -36,8 +36,8 @@ interface GroupRankingRules {
   requireCheckoutPhoto: boolean;
 }
 
-function currentMonthBounds(): { monthStart: string } {
-  const todayString = toBogotaDateString(new Date());
+function currentMonthBounds(timezone: string): { monthStart: string } {
+  const todayString = toZonedDateString(new Date(), timezone);
   const [year, month] = todayString.split('-');
   return { monthStart: `${year}-${month}-01` };
 }
@@ -63,8 +63,8 @@ function daysRemainingInWeek(weekEnd: string, todayString: string): number {
  * for closed weeks, a live guaranteed-misses-only projection for the still-open
  * current week, converted to money via the group's penalty_amount/weekly_penalty_cap).
  */
-export function useLeaderboard(groupId: string | null, referenceDate: Date = new Date()) {
-  const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId);
+export function useLeaderboard(groupId: string | null, timezone: string, referenceDate: Date = new Date()) {
+  const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId, timezone);
   const [monthChargedAmountByUser, setMonthChargedAmountByUser] = useState<Record<string, number>>({});
   const [allChargedAmountByUser, setAllChargedAmountByUser] = useState<Record<string, number>>({});
   // Per-week frozen amounts, for viewing a past week's already-decided
@@ -89,8 +89,8 @@ export function useLeaderboard(groupId: string | null, referenceDate: Date = new
       return;
     }
     setResultsLoading(true);
-    const { monthStart } = currentMonthBounds();
-    const todayString = toBogotaDateString(new Date());
+    const { monthStart } = currentMonthBounds(timezone);
+    const todayString = toZonedDateString(new Date(), timezone);
 
     const [resultsRes, checkinsRes, groupRes] = await Promise.all([
       supabase
@@ -166,7 +166,7 @@ export function useLeaderboard(groupId: string | null, referenceDate: Date = new
     );
 
     setResultsLoading(false);
-  }, [groupId]);
+  }, [groupId, timezone]);
 
   useEffect(() => {
     refreshResults();
@@ -188,11 +188,11 @@ export function useLeaderboard(groupId: string | null, referenceDate: Date = new
   }, [lastClosedWeek, records]);
 
   const rowsByPeriod = useMemo(() => {
-    const { weekStart, weekEnd } = getWeekBounds(referenceDate);
-    const todayString = toBogotaDateString(new Date());
-    const isCurrentWeek = weekStart === getWeekBounds(new Date()).weekStart;
+    const { weekStart, weekEnd } = getWeekBounds(referenceDate, timezone);
+    const todayString = toZonedDateString(new Date(), timezone);
+    const isCurrentWeek = weekStart === getWeekBounds(new Date(), timezone).weekStart;
     const remainingDays = daysRemainingInWeek(weekEnd, todayString);
-    const { monthStart } = currentMonthBounds();
+    const { monthStart } = currentMonthBounds(timezone);
     const useDurationTiebreak = groupRules?.requireCheckoutPhoto ?? false;
 
     // Guaranteed-misses-only projection for the still-open current week —
@@ -270,6 +270,7 @@ export function useLeaderboard(groupId: string | null, referenceDate: Date = new
     workoutMinutesByUser,
     groupRules,
     referenceDate,
+    timezone,
   ]);
 
   return { rowsByPeriod, lastClosedWeek: resolvedLastClosedWeek, isLoading: recordsLoading || resultsLoading, refresh };

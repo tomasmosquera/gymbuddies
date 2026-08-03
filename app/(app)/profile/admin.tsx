@@ -84,7 +84,8 @@ export default function AdminGroupScreen() {
   );
   const { overview, isLoading: overviewLoading, refresh: refreshOverview } = useGroupAdminOverview(
     group?.id ?? null,
-    group?.min_days_per_week ?? 0
+    group?.min_days_per_week ?? 0,
+    group?.timezone ?? 'America/Bogota'
   );
   const [isCancelling, setIsCancelling] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);

@@ -454,6 +454,7 @@ export default function RulesScreen() {
                   capturedAt={challenge.checkin.captured_at}
                   latitude={challenge.checkin.latitude}
                   longitude={challenge.checkin.longitude}
+                  timezone={group?.timezone ?? 'America/Bogota'}
                   onPress={() => setViewingPhotoPath(challenge.checkin!.photo_path)}
                 />
               </View>

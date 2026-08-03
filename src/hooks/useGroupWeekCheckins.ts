@@ -8,7 +8,7 @@ export interface GroupCheckinWithProfile extends Checkin {
 }
 
 /** This week's check-ins from every member of the group (not just the caller's own). */
-export function useGroupWeekCheckins(groupId: string | null) {
+export function useGroupWeekCheckins(groupId: string | null, timezone: string) {
   const [checkins, setCheckins] = useState<GroupCheckinWithProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -19,7 +19,7 @@ export function useGroupWeekCheckins(groupId: string | null) {
       return;
     }
     setIsLoading(true);
-    const { weekStart, weekEnd } = getWeekBounds(new Date());
+    const { weekStart, weekEnd } = getWeekBounds(new Date(), timezone);
     const { data, error } = await supabase
       .from('checkins')
       .select('*, profile:profiles(full_name)')
@@ -30,7 +30,7 @@ export function useGroupWeekCheckins(groupId: string | null) {
 
     if (!error && data) setCheckins(data as unknown as GroupCheckinWithProfile[]);
     setIsLoading(false);
-  }, [groupId]);
+  }, [groupId, timezone]);
 
   useEffect(() => {
     refresh();

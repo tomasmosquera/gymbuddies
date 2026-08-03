@@ -33,7 +33,7 @@ const EMPTY_OVERVIEW: GroupAdminOverview = {
 
 /** Group-wide stats for the "Administrar grupo" dashboard — member counts,
  * money, pending items needing admin attention, and this week's compliance. */
-export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: number) {
+export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: number, timezone: string) {
   const [overview, setOverview] = useState<GroupAdminOverview>(EMPTY_OVERVIEW);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -44,7 +44,7 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
       return;
     }
     setIsLoading(true);
-    const { weekStart, weekEnd } = getWeekBounds(new Date());
+    const { weekStart, weekEnd } = getWeekBounds(new Date(), timezone);
 
     const [
       membersRes,
@@ -152,7 +152,7 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
       weekRequiredDays,
     });
     setIsLoading(false);
-  }, [groupId, minDaysPerWeek]);
+  }, [groupId, minDaysPerWeek, timezone]);
 
   useEffect(() => {
     refresh();

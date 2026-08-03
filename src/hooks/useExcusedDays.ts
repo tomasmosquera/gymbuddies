@@ -8,10 +8,15 @@ import type { ExcuseDate } from '@/lib/supabase/types';
  * for the Mon..Sun week containing `referenceDate` (defaults to the current
  * week) — pass a past date to look at an earlier week.
  */
-export function useExcusedDays(groupId: string | null, userId: string | null, referenceDate: Date = new Date()) {
+export function useExcusedDays(
+  groupId: string | null,
+  userId: string | null,
+  timezone: string,
+  referenceDate: Date = new Date()
+) {
   const [weekExcusedDays, setWeekExcusedDays] = useState<ExcuseDate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { weekStart, weekEnd } = getWeekBounds(referenceDate);
+  const { weekStart, weekEnd } = getWeekBounds(referenceDate, timezone);
 
   const refresh = useCallback(async () => {
     if (!groupId || !userId) {

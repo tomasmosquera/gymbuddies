@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { toBogotaDateString, toBogotaHour } from '@/lib/domain/dateUtils';
+import { toZonedDateString, toZonedHour } from '@/lib/domain/dateUtils';
 import { useGroupAttendanceRecords } from '@/hooks/useGroupAttendanceRecords';
 import { BADGES, type BadgeContext, type BadgeStatus } from '@/lib/domain/badges';
 import { levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
@@ -23,18 +23,18 @@ export interface MemberBadges {
  * there is no badges table — so a member who already qualifies today shows
  * as earned immediately, with no backfill step needed.
  */
-export function useGroupBadges(groupId: string | null) {
+export function useGroupBadges(groupId: string | null, timezone: string) {
   const {
     records,
     groupCreatedDate,
     isLoading: recordsLoading,
     refresh: refreshRecords,
-  } = useGroupAttendanceRecords(groupId);
+  } = useGroupAttendanceRecords(groupId, timezone);
   const {
     membersChallenges,
     isLoading: monthlyLoading,
     refresh: refreshMonthly,
-  } = useGroupMonthlyChallenges(groupId);
+  } = useGroupMonthlyChallenges(groupId, timezone);
   const [checkinsByUser, setCheckinsByUser] = useState<
     Map<string, { date: string; hourBogota: number; workoutMinutes: number | null }[]>
   >(new Map());
@@ -60,7 +60,7 @@ export function useGroupBadges(groupId: string | null) {
       return;
     }
     setExtrasLoading(true);
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
 
     const [checkinsRes, resultsRes, depositsRes, reactionsRes, proposalsRes] = await Promise.all([
       supabase
@@ -94,7 +94,7 @@ export function useGroupBadges(groupId: string | null) {
       if (!nextCheckins.has(c.user_id)) nextCheckins.set(c.user_id, []);
       nextCheckins
         .get(c.user_id)!
-        .push({ date: c.checkin_date, hourBogota: toBogotaHour(new Date(c.captured_at)), workoutMinutes: c.workout_minutes });
+        .push({ date: c.checkin_date, hourBogota: toZonedHour(new Date(c.captured_at), timezone), workoutMinutes: c.workout_minutes });
     }
     setCheckinsByUser(nextCheckins);
 
@@ -121,7 +121,7 @@ export function useGroupBadges(groupId: string | null) {
     setRawReactions(
       reactions
         .filter((r) => r.checkin)
-        .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toBogotaDateString(new Date(r.created_at)) }))
+        .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toZonedDateString(new Date(r.created_at), timezone) }))
     );
 
     const nextProposalsWon = new Map<string, number>();
@@ -131,7 +131,7 @@ export function useGroupBadges(groupId: string | null) {
     setRuleProposalsWonByUser(nextProposalsWon);
 
     setExtrasLoading(false);
-  }, [groupId]);
+  }, [groupId, timezone]);
 
   useEffect(() => {
     refreshExtras();
@@ -147,7 +147,7 @@ export function useGroupBadges(groupId: string | null) {
   );
 
   const membersBadges = useMemo<MemberBadges[]>(() => {
-    const todayString = toBogotaDateString(new Date());
+    const todayString = toZonedDateString(new Date(), timezone);
     return records.map((m) => {
       // A check-in/penalty/reaction from before this member's own activation
       // date isn't theirs to count — they weren't an accountable member of
@@ -174,7 +174,8 @@ export function useGroupBadges(groupId: string | null) {
       const ctx: BadgeContext = {
         todayString,
         groupCreatedDate: groupCreatedDate ?? todayString,
-        joinedDate: toBogotaDateString(new Date(m.joinedAt)),
+        joinedDate: toZonedDateString(new Date(m.joinedAt), timezone),
+        timezone,
         days: m.days,
         checkins,
         weeklyPenalties,
@@ -211,6 +212,7 @@ export function useGroupBadges(groupId: string | null) {
     rawReactions,
     ruleProposalsWonByUser,
     monthlyByUserId,
+    timezone,
   ]);
 
   return {

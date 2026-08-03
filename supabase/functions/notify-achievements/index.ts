@@ -37,8 +37,8 @@ import {
   enumerateMonths,
   getWeekBounds,
   getWeekBoundsForDateString,
-  toBogotaDateString,
-  toBogotaHour,
+  toZonedDateString,
+  toZonedHour,
 } from '../../../src/lib/domain/dateUtils.ts';
 
 interface DayRecord {
@@ -69,7 +69,7 @@ function addDaysToDateString(date: string, n: number): string {
 
 async function processGroup(
   supabase: ReturnType<typeof createClient>,
-  group: { id: string; created_at: string; require_checkout_photo: boolean },
+  group: { id: string; created_at: string; require_checkout_photo: boolean; timezone: string },
   // Baseline mode: record everything currently true as "already notified"
   // WITHOUT sending a single push. Run this exactly once, by hand, before
   // the cron's first real firing — otherwise the very first run would blast
@@ -77,7 +77,7 @@ async function processGroup(
   // had before this feature existed, which is precisely what was ruled out.
   baselineOnly: boolean
 ) {
-  const todayString = toBogotaDateString(new Date());
+  const todayString = toZonedDateString(new Date(), group.timezone);
   const currentMonth = todayString.slice(0, 7);
 
   const [
@@ -132,7 +132,7 @@ async function processGroup(
   }[];
   if (rawMembers.length === 0) return;
 
-  const groupCreatedDate = toBogotaDateString(new Date(group.created_at));
+  const groupCreatedDate = toZonedDateString(new Date(group.created_at), group.timezone);
 
   // A check-in/reaction/penalty from before a member's own activation date
   // isn't theirs to count — they weren't an accountable member of the group
@@ -142,7 +142,7 @@ async function processGroup(
   const activatedDateByUserId = new Map<string, string | null>();
   for (const m of rawMembers) {
     const activatedAt = m.activated_at ?? m.joined_at;
-    activatedDateByUserId.set(m.user_id, activatedAt ? toBogotaDateString(new Date(activatedAt)) : null);
+    activatedDateByUserId.set(m.user_id, activatedAt ? toZonedDateString(new Date(activatedAt), group.timezone) : null);
   }
   const isOwned = (userId: string, date: string) => {
     const activatedDate = activatedDateByUserId.get(userId);
@@ -159,7 +159,7 @@ async function processGroup(
     if (!checkinFactsByUser.has(c.user_id)) checkinFactsByUser.set(c.user_id, []);
     checkinFactsByUser.get(c.user_id)!.push({
       date: c.checkin_date,
-      hourBogota: toBogotaHour(new Date(c.captured_at)),
+      hourBogota: toZonedHour(new Date(c.captured_at), group.timezone),
       workoutMinutes: c.workout_minutes,
     });
     if (c.workout_minutes !== null) {
@@ -203,7 +203,7 @@ async function processGroup(
   const reactionsGivenByUserMonth = new Map<string, Map<string, number>>();
   const reactionsReceivedByUserMonth = new Map<string, Map<string, number>>();
   for (const r of (reactionsRes.data ?? []) as unknown as { user_id: string; created_at: string; checkin: { user_id: string } | null }[]) {
-    const dateStr = toBogotaDateString(new Date(r.created_at));
+    const dateStr = toZonedDateString(new Date(r.created_at), group.timezone);
     const month = dateStr.slice(0, 7);
 
     // "Given" tallies are the giver's own achievement — gated by the giver's
@@ -251,7 +251,7 @@ async function processGroup(
   // --- Build each member's day-by-day record, exactly like useGroupAttendanceRecords ---
   const members: MemberRaw[] = rawMembers.map((m) => {
     const activatedAt = m.activated_at ?? m.joined_at;
-    const activatedDate = activatedAt ? toBogotaDateString(new Date(activatedAt)) : null;
+    const activatedDate = activatedAt ? toZonedDateString(new Date(activatedAt), group.timezone) : null;
     const checkinDates = checkinDatesByUser.get(m.user_id);
     const validDates = validOverridesByUser.get(m.user_id);
     const failedDates = failedOverridesByUser.get(m.user_id);
@@ -286,7 +286,7 @@ async function processGroup(
 
   // --- Weekly MVP across the group's full history, exactly like useGroupMonthlyChallenges ---
   const firstWeekStart = getWeekBoundsForDateString(groupCreatedDate).weekStart;
-  const lastWeekStart = getWeekBounds(new Date()).weekStart;
+  const lastWeekStart = getWeekBounds(new Date(), group.timezone).weekStart;
   const weekStarts: string[] = [];
   for (let cursor = firstWeekStart; cursor <= lastWeekStart; cursor = addDaysToDateString(cursor, 7)) {
     weekStarts.push(cursor);
@@ -314,7 +314,7 @@ async function processGroup(
   const contextsByMonthByUser = new Map<string, Map<string, MonthlyMemberContext>>();
 
   for (const month of months) {
-    const hasHoliday = monthHasFixedHoliday(month);
+    const hasHoliday = monthHasFixedHoliday(month, group.timezone);
     const tallies = new Map(members.map((m) => [m.userId, tallyMonth(m.days.filter((d) => d.date.slice(0, 7) === month) as MonthlyDayRecord[])]));
     const durationsInMonthByUserId = new Map(
       members.map((m) => [
@@ -357,7 +357,7 @@ async function processGroup(
         consistencyPercent: percent,
         closedWeeksInMonth: (m.weeklyPenalties as ClosedWeekFacts[]).filter((w) => w.weekStartDate.slice(0, 7) === month),
         monthHasFixedHoliday: hasHoliday,
-        completedOnHoliday: completedOnAnyHoliday(daysInMonth),
+        completedOnHoliday: completedOnAnyHoliday(daysInMonth, group.timezone),
         allWeekendsCompleted: allWeekendsCompleted(daysInMonth),
         anyWeekendCompleted: anyWeekendCompleted(daysInMonth),
         reactionsGivenCount: reactionsGivenByUserMonth.get(m.userId)?.get(month) ?? 0,
@@ -388,7 +388,8 @@ async function processGroup(
     const badgeCtx: BadgeContext = {
       todayString,
       groupCreatedDate,
-      joinedDate: toBogotaDateString(new Date(m.joinedAt)),
+      joinedDate: toZonedDateString(new Date(m.joinedAt), group.timezone),
+      timezone: group.timezone,
       days: m.days,
       checkins: m.checkins,
       weeklyPenalties: m.weeklyPenalties,
@@ -507,7 +508,7 @@ Deno.serve(async (req) => {
 
   const { data: groups, error } = await supabase
     .from('groups')
-    .select('id, created_at, require_checkout_photo');
+    .select('id, created_at, require_checkout_photo, timezone');
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
@@ -524,7 +525,7 @@ Deno.serve(async (req) => {
   );
 
   let groupsProcessed = 0;
-  for (const group of (groups ?? []) as { id: string; created_at: string; require_checkout_photo: boolean }[]) {
+  for (const group of (groups ?? []) as { id: string; created_at: string; require_checkout_photo: boolean; timezone: string }[]) {
     const state = checkStateByGroup.get(group.id);
     const isDirty = !state || !state.last_checked_at || new Date(state.dirty_at) > new Date(state.last_checked_at);
     if (!baselineOnly && !isDirty) continue;
