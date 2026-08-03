@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { getWeekBounds, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
 import type { Checkin } from '@/lib/supabase/types';
 
 /**
@@ -8,10 +8,15 @@ import type { Checkin } from '@/lib/supabase/types';
  * one group, for the Mon..Sun week containing `referenceDate` (defaults to
  * the current week) — pass a past date to look at an earlier week.
  */
-export function useCheckins(groupId: string | null, userId: string | null, referenceDate: Date = new Date()) {
+export function useCheckins(
+  groupId: string | null,
+  userId: string | null,
+  timezone: string,
+  referenceDate: Date = new Date()
+) {
   const [weekCheckins, setWeekCheckins] = useState<Checkin[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { weekStart, weekEnd } = getWeekBounds(referenceDate);
+  const { weekStart, weekEnd } = getWeekBounds(referenceDate, timezone);
   // Only the first load (or an actual change of group/user/week) should
   // block the whole screen — a useFocusEffect-triggered refresh shouldn't.
   const loadedKeyRef = useRef<string | null>(null);
@@ -43,7 +48,7 @@ export function useCheckins(groupId: string | null, userId: string | null, refer
     refresh();
   }, [refresh]);
 
-  const todayString = toBogotaDateString(new Date());
+  const todayString = toZonedDateString(new Date(), timezone);
   const todayCheckin = weekCheckins.find((c) => c.checkin_date === todayString) ?? null;
 
   return { weekCheckins, todayCheckin, isLoading, refresh };

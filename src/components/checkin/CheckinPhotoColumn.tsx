@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { getSignedUrl } from '@/lib/supabase/storage';
-import { formatBogotaTime12h } from '@/lib/domain/dateUtils';
+import { formatZonedTime12h } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing } from '@/constants/theme';
 
 export function useReverseGeocode(latitude: number | null, longitude: number | null): string | null {
@@ -31,6 +31,7 @@ export function CheckinPhotoColumn({
   capturedAt,
   latitude,
   longitude,
+  timezone,
   onPress,
 }: {
   label: string;
@@ -38,6 +39,7 @@ export function CheckinPhotoColumn({
   capturedAt: string | null;
   latitude: number | null;
   longitude: number | null;
+  timezone: string;
   onPress: () => void;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);

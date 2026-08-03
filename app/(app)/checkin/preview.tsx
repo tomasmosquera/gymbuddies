@@ -9,7 +9,7 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { supabase } from '@/lib/supabase/client';
 import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
-import { formatBogotaDateTime12h, toBogotaDateString } from '@/lib/domain/dateUtils';
+import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
 import { getActiveEnergyBurnedKcal } from '@/lib/health/appleHealth';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -49,7 +49,7 @@ export default function CheckinPreviewScreen() {
   }
 
   const capturedAtDate = new Date(draft.capturedAt);
-  const overlayText = formatBogotaDateTime12h(capturedAtDate);
+  const overlayText = formatZonedDateTime12h(capturedAtDate, group.timezone);
   const coordsText = `${draft.latitude.toFixed(5)}, ${draft.longitude.toFixed(5)}`;
 
   const handleRetake = () => {
@@ -62,7 +62,7 @@ export default function CheckinPreviewScreen() {
     setIsSubmitting(true);
     try {
       const flattenedUri = await captureRef(viewShotRef, { format: 'jpg', quality: 0.85 });
-      const checkinDate = toBogotaDateString(capturedAtDate);
+      const checkinDate = toZonedDateString(capturedAtDate, group.timezone);
 
       if (draft.mode === 'checkout') {
         if (!draft.existingCheckinId) throw new Error('No se encontró el check-in de hoy');
