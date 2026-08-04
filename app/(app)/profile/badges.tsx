@@ -151,11 +151,18 @@ function BadgeListRow({ member, badgeId }: { member: MemberBadges; badgeId: stri
 function MonthlyChallengeRow({ member, challengeId }: { member: MemberBadges; challengeId: string }) {
   const def = MONTHLY_CHALLENGES.find((c) => c.id === challengeId)!;
   const status = member.monthlyStatuses[challengeId];
-  // The bar/earned styling track the still-open current month, not the
-  // lifetime "timesAchieved" counter — otherwise a challenge earned once
-  // months ago would stay permanently full/green regardless of this month's
-  // actual status. "Conseguido x veces" below is where the lifetime count belongs.
-  const earnedThisMonth = status.currentMonthEarned === true;
+  // Only a monotonic challenge (a counter that only grows — see
+  // MONTHLY_CHALLENGES' doc comment) can show as genuinely earned before the
+  // month closes. A non-monotonic one (comparative/rank-based, or "no
+  // failures/every week so far") can still flip by month's end — crediting
+  // it from a live, still-open-month preview would trivially over-credit
+  // early in the month (e.g. day 1's only checked-in member is trivially
+  // "#1 in the group" or "most reacted-to", with nobody else to compare
+  // against yet). Its real timesAchieved/XP already correctly waits for
+  // month-close (see useGroupMonthlyChallenges' evalMonths); this only
+  // affects the live preview shown here.
+  const canShowLive = def.monotonic === true;
+  const earnedThisMonth = canShowLive && status.currentMonthEarned === true;
   return (
     <BadgeRow
       emoji={def.emoji}
@@ -167,7 +174,15 @@ function MonthlyChallengeRow({ member, challengeId }: { member: MemberBadges; ch
       statusText={`Conseguido ${status.timesAchieved} ${status.timesAchieved === 1 ? 'vez' : 'veces'}`}
       statusTextHighlighted={status.timesAchieved > 0}
       secondaryStatusText={
-        status.currentMonthEarned === null ? 'No aplica este mes' : status.currentMonthEarned ? '✓ Este mes' : 'En curso este mes'
+        status.currentMonthEarned === null
+          ? 'No aplica este mes'
+          : canShowLive
+            ? status.currentMonthEarned
+              ? '✓ Este mes'
+              : 'En curso este mes'
+            : status.currentMonthEarned
+              ? 'Vas bien — se define al cerrar el mes'
+              : 'En curso este mes'
       }
     />
   );
@@ -291,8 +306,11 @@ export default function BadgesScreen() {
             // Unlike the lifetime "X/23" summary above, the filter tracks
             // this still-open month specifically — a challenge earned in a
             // past month but not (yet) this one belongs under "Bloqueados".
+            // Same monotonic gate as the row's progress bar: a non-monotonic
+            // challenge never counts as "Desbloqueado" from a live preview
+            // alone, only once the month actually closes.
             const visibleChallenges = MONTHLY_CHALLENGES.filter((c) =>
-              matchesFilter(selected.monthlyStatuses[c.id].currentMonthEarned === true)
+              matchesFilter(c.monotonic === true && selected.monthlyStatuses[c.id].currentMonthEarned === true)
             );
             return visibleChallenges.length > 0 ? (
               <View style={styles.list}>
