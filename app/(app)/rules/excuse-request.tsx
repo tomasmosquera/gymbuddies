@@ -6,10 +6,12 @@ import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useExcuseRequests } from '@/hooks/useExcuseRequests';
 import { excuseProofPath, uploadImage } from '@/lib/supabase/storage';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 import { excuseRequestSchema } from '@/lib/validation/schemas';
 import type { ExcuseType } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -28,8 +30,8 @@ export default function ExcuseRequestScreen() {
   const { createExcuseRequest } = useExcuseRequests(group?.id ?? null, session?.user.id ?? null);
 
   const [excuseType, setExcuseType] = useState<ExcuseType>('travel');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
   const [reason, setReason] = useState('');
   const [proofUris, setProofUris] = useState<string[]>([]);
   const [error, setError] = useState<string | undefined>();
@@ -69,11 +71,19 @@ export default function ExcuseRequestScreen() {
     setProofUris((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Keeps the end date from silently pre-dating a start date the user just
+  // moved forward — the end picker's own minimumDate stops new invalid
+  // picks, but an already-set earlier end date needs correcting too.
+  const handleStartDateChange = (date: Date) => {
+    setStartDate(date);
+    if (date > endDate) setEndDate(date);
+  };
+
   const handleSubmit = async () => {
     const result = excuseRequestSchema.safeParse({
       excuseType,
-      startDate,
-      endDate,
+      startDate: toZonedDateString(startDate, group.timezone),
+      endDate: toZonedDateString(endDate, group.timezone),
       reason,
       proofImageUris: proofUris,
     });
@@ -120,18 +130,8 @@ export default function ExcuseRequestScreen() {
       <SegmentedControl options={TYPE_OPTIONS} value={excuseType} onChange={setExcuseType} />
 
       <View style={styles.form}>
-        <TextField
-          label="Fecha inicio (YYYY-MM-DD)"
-          value={startDate}
-          onChangeText={setStartDate}
-          placeholder="2026-07-20"
-        />
-        <TextField
-          label="Fecha fin (YYYY-MM-DD)"
-          value={endDate}
-          onChangeText={setEndDate}
-          placeholder="2026-07-22"
-        />
+        <InlineDatePicker label="Fecha inicio" value={startDate} onChange={handleStartDateChange} />
+        <InlineDatePicker label="Fecha fin" value={endDate} onChange={setEndDate} minimumDate={startDate} />
         <TextField
           label="Motivo (opcional)"
           value={reason}

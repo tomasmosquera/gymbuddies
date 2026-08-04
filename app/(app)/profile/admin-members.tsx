@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { TextField } from '@/components/ui/TextField';
+import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupMembers, type GroupMemberWithProfile } from '@/hooks/useGroupMembers';
 import { supabase } from '@/lib/supabase/client';
@@ -38,57 +38,6 @@ function MemberPicker({
           </Pressable>
         );
       })}
-    </View>
-  );
-}
-
-function InlineDatePicker({
-  value,
-  onChange,
-  maximumDate,
-}: {
-  value: Date;
-  onChange: (date: Date) => void;
-  /** Omit for no upper bound — e.g. an activation date, which is routinely set in the future. */
-  maximumDate?: Date;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleChange = (event: DateTimePickerEvent, date?: Date) => {
-    setIsOpen(false);
-    if (event.type === 'set' && date) onChange(date);
-  };
-
-  // iOS's "compact" style is already a self-contained tap-to-open pill —
-  // wrapping it in our own reveal button would just add a redundant tap.
-  // It renders transparent by default, so give it the same surface/border
-  // as our secondary buttons to stand out against the dark background.
-  if (Platform.OS === 'ios') {
-    return (
-      <View style={styles.iosDatePickerWrapper}>
-        <DateTimePicker
-          value={value}
-          mode="date"
-          display="compact"
-          themeVariant="dark"
-          accentColor={colors.primary}
-          maximumDate={maximumDate}
-          onChange={handleChange}
-        />
-      </View>
-    );
-  }
-
-  // Android's picker opens as a modal dialog the instant it mounts, so it
-  // has to stay unmounted until the button is pressed.
-  return (
-    <View style={styles.datePickerWrapper}>
-      <Button
-        label={`📅 ${value.toLocaleDateString('es-CO')}`}
-        variant="secondary"
-        onPress={() => setIsOpen(true)}
-      />
-      {isOpen ? <DateTimePicker value={value} mode="date" maximumDate={maximumDate} onChange={handleChange} /> : null}
     </View>
   );
 }
@@ -579,16 +528,6 @@ const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   sectionTitle: { ...typography.heading, fontSize: 15, color: colors.text },
   sectionHint: { color: colors.textMuted, fontSize: 13 },
-  datePickerWrapper: { gap: spacing.xs },
-  iosDatePickerWrapper: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
   dayStatusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   actionButtons: { flexDirection: 'row', gap: spacing.sm },
   balanceValue: { ...typography.title, color: colors.text },
