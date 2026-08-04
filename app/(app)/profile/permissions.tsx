@@ -51,6 +51,7 @@ export default function PermissionsScreen() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingHealth, setIsSavingHealth] = useState(false);
+  const [isSavingAutoCheckin, setIsSavingAutoCheckin] = useState(false);
 
   const refreshPermissionStatus = useCallback(async () => {
     const notif = await Notifications.getPermissionsAsync();
@@ -148,6 +149,17 @@ export default function PermissionsScreen() {
       await refreshProfile();
     } finally {
       setIsSavingHealth(false);
+    }
+  };
+
+  const handleToggleAutoCheckin = async (value: boolean) => {
+    setIsSavingAutoCheckin(true);
+    try {
+      const { error } = await supabase.rpc('set_auto_checkin_other_groups', { p_enabled: value });
+      if (error) throw error;
+      await refreshProfile();
+    } finally {
+      setIsSavingAutoCheckin(false);
     }
   };
 
@@ -279,6 +291,29 @@ export default function PermissionsScreen() {
           </Text>
         </Card>
       ) : null}
+
+      <Card style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>🔁 Check-in en tus otros grupos</Text>
+        </View>
+        <Text style={styles.hint}>
+          Cuando haces check-in (o registras tu foto final) en un grupo, esto lo replica automáticamente en todos tus
+          otros grupos activos — usando la misma foto y ubicación. Si en alguno de esos grupos ya habías hecho tu
+          propio check-in distinto ese día, ese no se toca.
+        </Text>
+        <View style={styles.masterRow}>
+          <View style={styles.masterTextWrap}>
+            <Text style={styles.masterLabel}>Replicar en mis otros grupos</Text>
+          </View>
+          <Switch
+            value={profile?.auto_checkin_other_groups ?? true}
+            onValueChange={handleToggleAutoCheckin}
+            disabled={isSavingAutoCheckin}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.text}
+          />
+        </View>
+      </Card>
     </ScrollView>
   );
 }

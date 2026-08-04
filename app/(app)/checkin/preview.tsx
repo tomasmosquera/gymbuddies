@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useMyMemberships, type MembershipWithGroup } from '@/hooks/useMyMemberships';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { supabase } from '@/lib/supabase/client';
 import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
@@ -14,9 +15,103 @@ import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifi
 import { getActiveEnergyBurnedKcal } from '@/lib/health/appleHealth';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
+interface FanOutParams {
+  otherGroups: MembershipWithGroup[];
+  userId: string;
+  flattenedUri: string;
+  capturedAtDate: Date;
+  capturedAtIso: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  locationMocked: boolean;
+}
+
+/**
+ * Auto check-in fan-out (profile.auto_checkin_other_groups): the same
+ * photo/location that just satisfied one group also gets submitted to
+ * every other group the user actively belongs to. Each group gets its own
+ * uploaded copy of the photo — the 'checkins' storage bucket's read policy
+ * scopes access by the group_id folder segment of the path, so reusing one
+ * path across groups would silently break photo viewing for the other
+ * groups' members. Best-effort per group (own try/catch) — a failure or a
+ * skip in one other group must never affect the primary check-in, which
+ * has already succeeded by the time this runs.
+ */
+async function fanOutCheckinToOtherGroups(params: FanOutParams) {
+  const { otherGroups, userId, flattenedUri, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
+    params;
+  await Promise.all(
+    otherGroups.map(async (m) => {
+      try {
+        const otherDate = toZonedDateString(capturedAtDate, m.group.timezone);
+        const path = checkinPhotoPath(m.group_id, userId, otherDate);
+        await uploadImage('checkins', path, flattenedUri);
+        const { data } = await supabase.rpc('submit_checkin', {
+          p_group_id: m.group_id,
+          p_captured_at: capturedAtIso,
+          p_latitude: latitude,
+          p_longitude: longitude,
+          p_location_accuracy_m: accuracyMeters,
+          p_photo_path: path,
+          p_location_mocked: locationMocked,
+          p_auto_created: true,
+        });
+        // data is null when a genuinely separate manual check-in already
+        // existed that day in this group — respected as-is, nothing to do.
+        if (data && m.group.require_checkout_photo) {
+          await scheduleCheckoutReminders(data.id, latitude, longitude);
+        }
+      } catch {
+        // Best-effort — see function doc.
+      }
+    })
+  );
+}
+
+/** Same idea as fanOutCheckinToOtherGroups, for the checkout half — only ever attaches to a checkin THIS fan-out created (auto_created), never a manual one, and never overwrites an already-completed checkout. */
+async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
+  const { otherGroups, userId, flattenedUri, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
+    params;
+  await Promise.all(
+    otherGroups.map(async (m) => {
+      try {
+        const otherDate = toZonedDateString(capturedAtDate, m.group.timezone);
+        const { data: existing } = await supabase
+          .from('checkins')
+          .select('id, auto_created, checkout_captured_at')
+          .eq('group_id', m.group_id)
+          .eq('user_id', userId)
+          .eq('checkin_date', otherDate)
+          .maybeSingle();
+        if (!existing || !existing.auto_created || existing.checkout_captured_at) return;
+
+        const path = checkoutPhotoPath(m.group_id, userId, otherDate);
+        await uploadImage('checkins', path, flattenedUri);
+        const { data } = await supabase.rpc('submit_workout_checkout', {
+          p_checkin_id: existing.id,
+          p_captured_at: capturedAtIso,
+          p_latitude: latitude,
+          p_longitude: longitude,
+          p_location_accuracy_m: accuracyMeters,
+          p_photo_path: path,
+          p_location_mocked: locationMocked,
+          p_auto_created: true,
+        });
+        if (data) {
+          await cancelCheckoutReminders(existing.id);
+        }
+      } catch {
+        // Best-effort — see fanOutCheckinToOtherGroups's doc.
+      }
+    })
+  );
+}
+
 export default function CheckinPreviewScreen() {
   const { session, profile } = useAuth();
   const { group } = useActiveGroup();
+  const { memberships } = useMyMemberships();
   const draft = useCheckinDraftStore((s) => s.draft);
   const setDraft = useCheckinDraftStore((s) => s.setDraft);
   const [address, setAddress] = useState<string | null>(null);
@@ -51,6 +146,7 @@ export default function CheckinPreviewScreen() {
   const capturedAtDate = new Date(draft.capturedAt);
   const overlayText = formatZonedDateTime12h(capturedAtDate, group.timezone);
   const coordsText = `${draft.latitude.toFixed(5)}, ${draft.longitude.toFixed(5)}`;
+  const otherActiveGroups = memberships.filter((m) => m.group_id !== group.id);
 
   const handleRetake = () => {
     setDraft(null);
@@ -98,6 +194,23 @@ export default function CheckinPreviewScreen() {
             .catch(() => {});
         }
 
+        // Fire-and-forget, same reasoning as the Apple Health sync above —
+        // must never block navigation or fail the checkout that already
+        // succeeded in this group.
+        if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0) {
+          fanOutCheckoutToOtherGroups({
+            otherGroups: otherActiveGroups,
+            userId: session.user.id,
+            flattenedUri,
+            capturedAtDate,
+            capturedAtIso: draft.capturedAt,
+            latitude: draft.latitude,
+            longitude: draft.longitude,
+            accuracyMeters: draft.accuracyMeters,
+            locationMocked: draft.locationMocked,
+          }).catch(() => {});
+        }
+
         setDraft(null);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
@@ -129,6 +242,22 @@ export default function CheckinPreviewScreen() {
         p_location_mocked: draft.locationMocked,
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
+
+      // Fire-and-forget — see fanOutCheckoutToOtherGroups's call site below
+      // for why this never blocks navigation or fails the primary check-in.
+      if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0) {
+        fanOutCheckinToOtherGroups({
+          otherGroups: otherActiveGroups,
+          userId: session.user.id,
+          flattenedUri,
+          capturedAtDate,
+          capturedAtIso: draft.capturedAt,
+          latitude: draft.latitude,
+          longitude: draft.longitude,
+          accuracyMeters: draft.accuracyMeters,
+          locationMocked: draft.locationMocked,
+        }).catch(() => {});
+      }
 
       if (group.require_checkout_photo) {
         await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude);

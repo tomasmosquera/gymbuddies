@@ -38,6 +38,8 @@ export type Profile = {
   apple_health_enabled: boolean;
   /** Set the first time the user sees the one-time "connect Apple Health?" nudge (accepted or dismissed) — null means it hasn't been shown yet. */
   apple_health_prompted_at: string | null;
+  /** When true (default), a check-in/checkout in one group also gets created in every other group the user actively belongs to — see set_auto_checkin_other_groups. */
+  auto_checkin_other_groups: boolean;
   created_at: string;
 };
 
@@ -162,6 +164,8 @@ export type Checkin = {
   workout_minutes: number | null;
   /** Active calories burned during the workout window, sourced from Apple Health — display-only, never used for penalties/ranking/badges. */
   active_energy_kcal: number | null;
+  /** True when this row was created by the auto-checkin-other-groups fan-out (see submit_checkin), not a direct submission in this group. Lets the fan-out tell its own rows apart from a genuinely separate manual check-in, which it must never touch. */
+  auto_created: boolean;
   created_at: string;
 };
 
@@ -459,6 +463,7 @@ export type Database = {
       react_to_checkin: { Args: { p_checkin_id: string; p_emoji: string }; Returns: CheckinReaction };
       remove_reaction: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_checkin: { Args: { p_checkin_id: string }; Returns: void };
+      admin_set_checkin_workout_minutes: { Args: { p_checkin_id: string; p_workout_minutes: number }; Returns: Checkin };
       delete_own_checkin: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_wallet_transaction: { Args: { p_transaction_id: string }; Returns: void };
       set_attendance_override: {
@@ -496,12 +501,16 @@ export type Database = {
           p_location_accuracy_m: number | null;
           p_photo_path: string;
           p_location_mocked?: boolean;
+          p_auto_created?: boolean;
         };
-        Returns: Checkin;
+        // null when p_auto_created is true and the target checkin turned out
+        // to be a genuinely separate manual one — fan-out skips it, on purpose.
+        Returns: Checkin | null;
       };
       set_apple_health_enabled: { Args: { p_enabled: boolean }; Returns: void };
       dismiss_apple_health_prompt: { Args: Record<string, never>; Returns: void };
       set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
+      set_auto_checkin_other_groups: { Args: { p_enabled: boolean }; Returns: void };
       submit_checkin: {
         Args: {
           p_group_id: string;
@@ -511,8 +520,11 @@ export type Database = {
           p_location_accuracy_m: number | null;
           p_photo_path: string;
           p_location_mocked?: boolean;
+          p_auto_created?: boolean;
         };
-        Returns: Checkin;
+        // null when p_auto_created is true and a genuinely separate manual
+        // check-in already existed that day in the target group.
+        Returns: Checkin | null;
       };
     };
   };

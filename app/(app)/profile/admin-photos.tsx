@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { TextField } from '@/components/ui/TextField';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
@@ -18,15 +19,18 @@ function CheckinModerationRow({
   minWorkoutMinutes,
   timezone,
   onPressPhoto,
-  onDeleted,
+  onChanged,
 }: {
   checkin: GroupCheckinWithProfile;
   minWorkoutMinutes: number;
   timezone: string;
   onPressPhoto: (path: string) => void;
-  onDeleted: () => void;
+  onChanged: () => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditingDuration, setIsEditingDuration] = useState(false);
+  const [durationInput, setDurationInput] = useState(String(checkin.workout_minutes ?? 0));
+  const [isSavingDuration, setIsSavingDuration] = useState(false);
   const hasCheckout = !!checkin.checkout_photo_path;
   const isShort = hasCheckout && checkin.workout_minutes !== null && checkin.workout_minutes < minWorkoutMinutes;
 
@@ -46,11 +50,38 @@ function CheckinModerationRow({
     try {
       const { error } = await supabase.rpc('admin_delete_checkin', { p_checkin_id: checkin.id });
       if (error) throw new Error(error.message);
-      onDeleted();
+      onChanged();
     } catch (err) {
       Alert.alert('No se pudo borrar', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const cancelEditDuration = () => {
+    setIsEditingDuration(false);
+    setDurationInput(String(checkin.workout_minutes ?? 0));
+  };
+
+  const handleSaveDuration = async () => {
+    const numeric = Number(durationInput);
+    if (!durationInput || !Number.isInteger(numeric) || numeric < 0 || numeric > 1440) {
+      Alert.alert('Duración inválida', 'Ingresa un número de minutos entre 0 y 1440.');
+      return;
+    }
+    setIsSavingDuration(true);
+    try {
+      const { error } = await supabase.rpc('admin_set_checkin_workout_minutes', {
+        p_checkin_id: checkin.id,
+        p_workout_minutes: numeric,
+      });
+      if (error) throw new Error(error.message);
+      setIsEditingDuration(false);
+      onChanged();
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingDuration(false);
     }
   };
 
@@ -80,13 +111,28 @@ function CheckinModerationRow({
         />
       </View>
       {hasCheckout ? (
-        <View style={styles.durationRow}>
-          <Text style={styles.duration}>Duración: {checkin.workout_minutes} min</Text>
-          {checkin.active_energy_kcal !== null ? (
-            <Text style={styles.calories}>🔥 {Math.round(checkin.active_energy_kcal)} kcal</Text>
-          ) : null}
-          {isShort ? <Badge label="Corto" tone="warning" /> : null}
-        </View>
+        isEditingDuration ? (
+          <View style={styles.durationEdit}>
+            <TextField
+              label="Duración (min)"
+              value={durationInput}
+              onChangeText={setDurationInput}
+              keyboardType="numeric"
+            />
+            <View style={styles.durationEditActions}>
+              <Button label="Guardar" onPress={handleSaveDuration} loading={isSavingDuration} />
+              <Button label="Cancelar" variant="secondary" onPress={cancelEditDuration} disabled={isSavingDuration} />
+            </View>
+          </View>
+        ) : (
+          <Pressable onPress={() => setIsEditingDuration(true)} style={styles.durationRow}>
+            <Text style={styles.duration}>Duración: {checkin.workout_minutes} min ✏️</Text>
+            {checkin.active_energy_kcal !== null ? (
+              <Text style={styles.calories}>🔥 {Math.round(checkin.active_energy_kcal)} kcal</Text>
+            ) : null}
+            {isShort ? <Badge label="Corto" tone="warning" /> : null}
+          </Pressable>
+        )
       ) : null}
       <Button label="Borrar check-in" variant="danger" onPress={confirmDelete} loading={isDeleting} />
     </Card>
@@ -139,7 +185,7 @@ export default function AdminPhotosScreen() {
             minWorkoutMinutes={group.min_workout_minutes}
             timezone={group.timezone}
             onPressPhoto={setViewingPhotoPath}
-            onDeleted={refresh}
+            onChanged={refresh}
           />
         )}
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -163,4 +209,6 @@ const styles = StyleSheet.create({
   durationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   duration: { color: colors.text, fontWeight: '600', fontSize: 13 },
   calories: { color: colors.warning, fontWeight: '600', fontSize: 13 },
+  durationEdit: { marginTop: spacing.xs, gap: spacing.sm },
+  durationEditActions: { flexDirection: 'row', gap: spacing.sm },
 });
