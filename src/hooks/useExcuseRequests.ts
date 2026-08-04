@@ -35,7 +35,7 @@ export function useExcuseRequests(groupId: string | null, userId: string | null)
       startDate: string,
       endDate: string,
       reason?: string,
-      proofPath?: string
+      proofPaths?: string[]
     ) => {
       if (!groupId) return;
       const { error } = await supabase.rpc('create_excuse_request', {
@@ -44,7 +44,7 @@ export function useExcuseRequests(groupId: string | null, userId: string | null)
         p_start_date: startDate,
         p_end_date: endDate,
         p_reason: reason ?? null,
-        p_proof_path: proofPath ?? null,
+        p_proof_paths: proofPaths ?? [],
       });
       if (error) throw new Error(error.message);
       await refresh();

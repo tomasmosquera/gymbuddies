@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -41,16 +41,18 @@ function datesInRange(start: string, end: string): string[] {
 }
 
 function PendingRequestRow({ request, onDecided }: { request: PendingRequest; onDecided: () => void }) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [signedUrls, setSignedUrls] = useState<string[]>([]);
   const allDates = datesInRange(request.requested_start_date, request.requested_end_date);
   const [selectedDates, setSelectedDates] = useState<string[]>(allDates);
   const [isDeciding, setIsDeciding] = useState(false);
 
   useEffect(() => {
-    if (request.proof_path) {
-      getSignedUrl('excuse-proofs', request.proof_path).then(setSignedUrl).catch(() => setSignedUrl(null));
+    if (request.proof_paths.length > 0) {
+      Promise.all(request.proof_paths.map((p) => getSignedUrl('excuse-proofs', p)))
+        .then(setSignedUrls)
+        .catch(() => setSignedUrls([]));
     }
-  }, [request.proof_path]);
+  }, [request.proof_paths]);
 
   const toggleDate = (date: string) => {
     setSelectedDates((prev) => (prev.includes(date) ? prev.filter((d) => d !== date) : [...prev, date]));
@@ -123,7 +125,13 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
         {request.requested_start_date} a {request.requested_end_date}
       </Text>
       {request.reason ? <Text style={styles.reason}>{request.reason}</Text> : null}
-      {signedUrl ? <Image source={{ uri: signedUrl }} style={styles.proof} /> : null}
+      {signedUrls.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.proofRow}>
+          {signedUrls.map((url, index) => (
+            <Image key={`${url}-${index}`} source={{ uri: url }} style={styles.proof} />
+          ))}
+        </ScrollView>
+      ) : null}
 
       <Text style={styles.datesLabel}>Días a excusar:</Text>
       <View style={styles.datesList}>
@@ -343,7 +351,8 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },
   rowSubtitle: { color: colors.textMuted },
   reason: { color: colors.text },
-  proof: { width: '100%', height: 220, borderRadius: radii.md },
+  proofRow: { gap: spacing.sm },
+  proof: { width: 220, height: 220, borderRadius: radii.md },
   datesLabel: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
   datesList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   dateChip: {

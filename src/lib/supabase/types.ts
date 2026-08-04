@@ -230,7 +230,7 @@ export type ExcuseRequest = {
   requested_start_date: string;
   requested_end_date: string;
   reason: string | null;
-  proof_path: string | null;
+  proof_paths: string[];
   status: ExcuseRequestStatus;
   decision_note: string | null;
   decided_by: string | null;
@@ -429,7 +429,7 @@ export type Database = {
           p_start_date: string;
           p_end_date: string;
           p_reason?: string | null;
-          p_proof_path?: string | null;
+          p_proof_paths?: string[];
         };
         Returns: ExcuseRequest;
       };

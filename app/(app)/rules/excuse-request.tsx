@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
@@ -19,6 +20,8 @@ const TYPE_OPTIONS: { key: ExcuseType; label: string }[] = [
   { key: 'other', label: 'Otra' },
 ];
 
+const MAX_PROOF_PHOTOS = 8;
+
 export default function ExcuseRequestScreen() {
   const { session } = useAuth();
   const { group, isLoading: groupLoading } = useActiveGroup();
@@ -28,7 +31,7 @@ export default function ExcuseRequestScreen() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
-  const [proofUri, setProofUri] = useState<string | null>(null);
+  const [proofUris, setProofUris] = useState<string[]>([]);
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -46,8 +49,24 @@ export default function ExcuseRequestScreen() {
       Alert.alert('Permiso necesario', 'Necesitamos acceso a tus fotos para adjuntar la prueba.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!result.canceled && result.assets[0]) setProofUri(result.assets[0].uri);
+    const remaining = MAX_PROOF_PHOTOS - proofUris.length;
+    if (remaining <= 0) {
+      Alert.alert('Máximo alcanzado', `Puedes adjuntar hasta ${MAX_PROOF_PHOTOS} fotos.`);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setProofUris((prev) => [...prev, ...result.assets.map((a) => a.uri)]);
+    }
+  };
+
+  const removeProofAt = (index: number) => {
+    setProofUris((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
@@ -56,7 +75,7 @@ export default function ExcuseRequestScreen() {
       startDate,
       endDate,
       reason,
-      proofImageUri: proofUri ?? undefined,
+      proofImageUris: proofUris,
     });
     if (!result.success) {
       setError(result.error.issues[0]?.message);
@@ -65,17 +84,19 @@ export default function ExcuseRequestScreen() {
     setError(undefined);
     setIsSubmitting(true);
     try {
-      let proofPath: string | undefined;
-      if (result.data.proofImageUri) {
-        proofPath = excuseProofPath(group.id, session.user.id, `excuse-${Date.now()}`);
-        await uploadImage('excuse-proofs', proofPath, result.data.proofImageUri);
+      const requestRef = `excuse-${Date.now()}`;
+      const proofPaths: string[] = [];
+      for (let i = 0; i < result.data.proofImageUris.length; i++) {
+        const path = excuseProofPath(group.id, session.user.id, `${requestRef}-${i}`);
+        await uploadImage('excuse-proofs', path, result.data.proofImageUris[i]);
+        proofPaths.push(path);
       }
       await createExcuseRequest(
         result.data.excuseType,
         result.data.startDate,
         result.data.endDate,
         result.data.reason || undefined,
-        proofPath
+        proofPaths
       );
       Alert.alert(
         'Excusa enviada',
@@ -92,8 +113,8 @@ export default function ExcuseRequestScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.subtitle}>
-        Viaje y médica requieren prueba. El admin revisa toda solicitud y puede aprobarla, rechazarla, o ponerla a
-        votación del grupo.
+        Viaje y médica requieren prueba (puedes adjuntar varias fotos, por ejemplo cada pasabordo de un viaje con
+        escalas). El admin revisa toda solicitud y puede aprobarla, rechazarla, o ponerla a votación del grupo.
       </Text>
 
       <SegmentedControl options={TYPE_OPTIONS} value={excuseType} onChange={setExcuseType} />
@@ -118,11 +139,34 @@ export default function ExcuseRequestScreen() {
           multiline
         />
         <Button
-          label={proofUri ? 'Cambiar prueba' : excuseType === 'other' ? 'Adjuntar prueba (opcional)' : 'Adjuntar prueba'}
+          label={
+            proofUris.length > 0
+              ? `Agregar otra foto (${proofUris.length}/${MAX_PROOF_PHOTOS})`
+              : excuseType === 'other'
+                ? 'Adjuntar prueba (opcional)'
+                : 'Adjuntar prueba'
+          }
           variant="secondary"
           onPress={pickProof}
+          disabled={proofUris.length >= MAX_PROOF_PHOTOS}
         />
-        {proofUri ? <Image source={{ uri: proofUri }} style={styles.preview} /> : null}
+        {proofUris.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.previewRow}>
+            {proofUris.map((uri, index) => (
+              <View key={`${uri}-${index}`} style={styles.previewWrap}>
+                <Image source={{ uri }} style={styles.preview} />
+                <Pressable
+                  onPress={() => removeProofAt(index)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  style={styles.removeButton}
+                >
+                  <Ionicons name="close-circle" size={22} color={colors.text} />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button label="Enviar excusa" onPress={handleSubmit} loading={isSubmitting} />
         <Button label="Cancelar" variant="secondary" onPress={() => router.replace('/rules')} disabled={isSubmitting} />
@@ -136,6 +180,15 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
   subtitle: { ...typography.body, color: colors.textMuted },
   form: { gap: spacing.md },
-  preview: { width: '100%', height: 200, borderRadius: radii.md },
+  previewRow: { gap: spacing.sm },
+  previewWrap: { position: 'relative' },
+  preview: { width: 140, height: 180, borderRadius: radii.md },
+  removeButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: colors.background,
+    borderRadius: radii.pill,
+  },
   error: { color: colors.danger },
 });

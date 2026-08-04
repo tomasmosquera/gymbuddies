@@ -1,5 +1,6 @@
 import {
   createGroupSchema,
+  excuseRequestSchema,
   joinGroupSchema,
   ruleProposalSchema,
   signUpSchema,
@@ -171,5 +172,43 @@ describe('ruleProposalSchema', () => {
   it('rejects a mixed share percent out of range', () => {
     const result = ruleProposalSchema.safeParse({ mixedLeagueSharePercent: 150 });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('excuseRequestSchema', () => {
+  const base = { startDate: '2026-08-01', endDate: '2026-08-03' };
+
+  it('accepts a travel excuse with multiple proof photos', () => {
+    const result = excuseRequestSchema.safeParse({
+      ...base,
+      excuseType: 'travel',
+      proofImageUris: ['a.jpg', 'b.jpg', 'c.jpg'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a travel excuse with no proof photos', () => {
+    const result = excuseRequestSchema.safeParse({ ...base, excuseType: 'travel', proofImageUris: [] });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts an "other" excuse with no proof photos', () => {
+    const result = excuseRequestSchema.safeParse({ ...base, excuseType: 'other', proofImageUris: [] });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects more than 8 proof photos', () => {
+    const result = excuseRequestSchema.safeParse({
+      ...base,
+      excuseType: 'travel',
+      proofImageUris: Array.from({ length: 9 }, (_, i) => `${i}.jpg`),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('defaults proofImageUris to an empty array when omitted', () => {
+    const result = excuseRequestSchema.safeParse({ ...base, excuseType: 'other' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.proofImageUris).toEqual([]);
   });
 });

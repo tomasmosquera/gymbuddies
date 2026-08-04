@@ -1,0 +1,12 @@
+-- ============================================================================
+-- Same class of bug as 0076: 0077 changed create_excuse_request's last
+-- parameter from `text` to `text[]` via create-or-replace, which doesn't
+-- replace a function when its argument TYPES change (not just count) —
+-- Postgres identifies overloads by name + full type signature, so this left
+-- the old text-typed 6-arg version on file alongside the new text[]-typed
+-- one. The app calls this function with a 6th argument that's sometimes an
+-- empty array literal ambiguous enough to resolve to the wrong (old)
+-- overload, which then fails inserting into a column that no longer exists.
+-- Drop the stale text-typed signature, leaving only the text[] version.
+-- ============================================================================
+drop function if exists create_excuse_request(uuid, text, date, date, text, text);

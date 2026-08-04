@@ -104,15 +104,15 @@ export const excuseRequestSchema = z
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'),
     reason: z.string().trim().max(280).optional().or(z.literal('')),
-    proofImageUri: z.string().min(1).optional(),
+    proofImageUris: z.array(z.string().min(1)).max(8, 'Máximo 8 fotos').default([]),
   })
   .refine((v) => v.endDate >= v.startDate, {
     message: 'La fecha final debe ser igual o posterior a la inicial',
     path: ['endDate'],
   })
-  .refine((v) => v.excuseType === 'other' || !!v.proofImageUri, {
-    message: 'Adjunta una prueba (tiquete, recibo de peaje o incapacidad médica)',
-    path: ['proofImageUri'],
+  .refine((v) => v.excuseType === 'other' || v.proofImageUris.length > 0, {
+    message: 'Adjunta al menos una prueba (tiquete, recibo de peaje o incapacidad médica)',
+    path: ['proofImageUris'],
   });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;

@@ -106,17 +106,18 @@ export default function RulesScreen() {
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [isStartingCycle, setIsStartingCycle] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
-  const [excuseProofUrl, setExcuseProofUrl] = useState<string | null>(null);
+  const [excuseProofUrls, setExcuseProofUrls] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!excuseVoteRequest?.proof_path) {
-      setExcuseProofUrl(null);
+    const paths = excuseVoteRequest?.proof_paths ?? [];
+    if (paths.length === 0) {
+      setExcuseProofUrls([]);
       return;
     }
-    getSignedUrl('excuse-proofs', excuseVoteRequest.proof_path)
-      .then(setExcuseProofUrl)
-      .catch(() => setExcuseProofUrl(null));
-  }, [excuseVoteRequest?.proof_path]);
+    Promise.all(paths.map((p) => getSignedUrl('excuse-proofs', p)))
+      .then(setExcuseProofUrls)
+      .catch(() => setExcuseProofUrls([]));
+  }, [excuseVoteRequest?.proof_paths]);
 
   // This tab stays mounted across switches — without refetching on focus,
   // a proposal/excuse/photo vote resolved or cast elsewhere would keep
@@ -414,7 +415,13 @@ export default function RulesScreen() {
             {excuseVoteRequest.requested_start_date} a {excuseVoteRequest.requested_end_date}
           </Text>
           {excuseVoteRequest.reason ? <Text style={styles.changeText}>{excuseVoteRequest.reason}</Text> : null}
-          {excuseProofUrl ? <Image source={{ uri: excuseProofUrl }} style={styles.excuseProof} /> : null}
+          {excuseProofUrls.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.excuseProofRow}>
+              {excuseProofUrls.map((url, index) => (
+                <Image key={`${url}-${index}`} source={{ uri: url }} style={styles.excuseProof} />
+              ))}
+            </ScrollView>
+          ) : null}
           <Text style={styles.tally}>
             {excuseYesCount} a favor · {excuseNoCount} en contra · se necesitan {excuseVoteRequest.required_votes} votos
             a favor
@@ -507,7 +514,8 @@ const styles = StyleSheet.create({
   leaveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
   proposalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   changeText: { color: colors.text },
-  excuseProof: { width: '100%', height: 220, borderRadius: radii.md },
+  excuseProofRow: { gap: spacing.sm },
+  excuseProof: { width: 220, height: 220, borderRadius: radii.md },
   timingText: { color: colors.warning, fontSize: 13, fontWeight: '600' },
   tally: { color: colors.textMuted, fontSize: 13 },
   myVote: { color: colors.primary, fontWeight: '600' },
