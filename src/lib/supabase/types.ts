@@ -289,6 +289,14 @@ export type CheckinReaction = {
   created_at: string;
 };
 
+export type AppVersionInfo = {
+  platform: 'ios' | 'android';
+  latest_version: string;
+  store_url: string | null;
+  message: string | null;
+  updated_at: string;
+};
+
 export type AttendanceOverride = {
   id: string;
   group_id: string;
@@ -373,6 +381,7 @@ export type Database = {
       photo_challenges: { Row: PhotoChallenge; Insert: never; Update: never } & NoRelationships;
       photo_challenge_votes: { Row: PhotoChallengeVote; Insert: never; Update: never } & NoRelationships;
       checkin_reactions: { Row: CheckinReaction; Insert: never; Update: never } & NoRelationships;
+      app_version_info: { Row: AppVersionInfo; Insert: never; Update: never } & NoRelationships;
     };
     Views: Record<string, never>;
     Functions: {

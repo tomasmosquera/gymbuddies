@@ -96,7 +96,9 @@
       "Bash(awk 'NR==270,/^\\\\];/' src/lib/domain/badges.ts)",
       "WebFetch(domain:docs.expo.dev)",
       "Bash(git worktree *)",
-      "Bash(git branch *)"
+      "Bash(git branch *)",
+      "Bash(git mv *)",
+      "Bash(node -e \"const j=require\\('./app.json'\\); console.log\\(JSON.stringify\\({version: j.expo.version, runtimeVersion: j.expo.runtimeVersion}, null, 2\\)\\)\")"
     ],
     "additionalDirectories": [
       "\\tmp",
