@@ -27,6 +27,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="change-password" options={{ title: 'Cambiar contraseña' }} />
       <Stack.Screen name="delete-account" options={{ title: 'Eliminar cuenta' }} />
       <Stack.Screen name="admin-edit-group" options={{ title: 'Editar grupo' }} />
+      <Stack.Screen name="invite" options={{ title: 'Invitar' }} />
     </Stack>
   );
 }
