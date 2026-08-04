@@ -358,3 +358,37 @@ describe('representative monthly challenge evaluations', () => {
     ).toBe(true);
   });
 });
+
+describe('progress (partial-progress bar for monotonic challenges with a real threshold)', () => {
+  it('Por Buen Camino and Ya Casi mi Rey report check-ins so far against their thresholds', () => {
+    expect(challenge('por-buen-camino').progress!(baseContext({ completedCount: 2 }))).toEqual({ current: 2, target: 5 });
+    expect(challenge('ya-casi-mi-rey').progress!(baseContext({ completedCount: 2 }))).toEqual({ current: 2, target: 15 });
+  });
+
+  it('Doble MVP reports MVP weeks so far against its threshold of 2', () => {
+    expect(challenge('doble-mvp').progress!(baseContext({ mvpWeeksThisMonth: 1 }))).toEqual({ current: 1, target: 2 });
+  });
+
+  it('Motivando Ando and Motivador del Mes report reactions given so far', () => {
+    expect(challenge('motivando-ando').progress!(baseContext({ reactionsGivenCount: 3 }))).toEqual({ current: 3, target: 5 });
+    expect(challenge('motivador-del-mes').progress!(baseContext({ reactionsGivenCount: 3 }))).toEqual({ current: 3, target: 15 });
+  });
+
+  it('Mes de Cobre and Mes de Hierro report accumulated minutes so far', () => {
+    expect(challenge('mes-de-cobre').progress!(baseContext({ totalWorkoutMinutesInMonth: 85 }))).toEqual({ current: 85, target: 200 });
+    expect(challenge('mes-de-hierro').progress!(baseContext({ totalWorkoutMinutesInMonth: 85 }))).toEqual({ current: 85, target: 600 });
+  });
+
+  it('single-occurrence monotonic challenges have no progress function — a checkmark already says everything', () => {
+    expect(challenge('empezamos-bien').progress).toBeUndefined();
+    expect(challenge('festivo-cumplido').progress).toBeUndefined();
+    expect(challenge('cuarto-contacto').progress).toBeUndefined();
+    expect(challenge('mvp-al-menos-una-vez').progress).toBeUndefined();
+  });
+
+  it('non-monotonic challenges have no progress function — their live number can still move backwards before month close', () => {
+    expect(challenge('top-del-grupo').progress).toBeUndefined();
+    expect(challenge('racha-intacta-mensual').progress).toBeUndefined();
+    expect(challenge('noventa-consistencia-mensual').progress).toBeUndefined();
+  });
+});

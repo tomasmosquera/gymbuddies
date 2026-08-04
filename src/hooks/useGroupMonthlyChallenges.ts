@@ -276,7 +276,9 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
         }
         const currentCtx = contextsByMonthByUser.get(currentMonth)?.get(m.userId);
         const currentMonthEarned = currentCtx ? challengeDef.evaluate(currentCtx) : null;
-        statusesById[challengeDef.id] = { timesAchieved, monthsEvaluated, currentMonthEarned };
+        const currentMonthProgress =
+          currentCtx && currentMonthEarned !== null && challengeDef.progress ? challengeDef.progress(currentCtx) : null;
+        statusesById[challengeDef.id] = { timesAchieved, monthsEvaluated, currentMonthEarned, currentMonthProgress };
         totalXp += timesAchieved * challengeDef.xpPerOccurrence;
       }
       return { userId: m.userId, fullName: m.fullName, statusesById, totalXp };

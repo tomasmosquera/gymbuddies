@@ -58,6 +58,8 @@ export interface MonthlyChallengeStatus {
   monthsEvaluated: number;
   /** This challenge's live status for the current, still-open month — null if not applicable this month. */
   currentMonthEarned: boolean | null;
+  /** Live current/target for the still-open month, for a partial progress bar — only set for monotonic challenges with a meaningful in-between state (see MonthlyChallengeDefinition.progress); null for every other challenge. Still populated once earned (current >= target) — the UI clamps the ratio itself. */
+  currentMonthProgress: { current: number; target: number } | null;
 }
 
 export interface MonthlyChallengeDefinition {
@@ -77,6 +79,16 @@ export interface MonthlyChallengeDefinition {
   monotonic?: boolean;
   /** null = not applicable that month (doesn't count for or against). */
   evaluate: (ctx: MonthlyMemberContext) => boolean | null;
+  /**
+   * Only meaningful for a monotonic challenge whose threshold has a real
+   * in-between state (e.g. 2 of 5 check-ins) — omitted for monotonic
+   * challenges that are satisfied by a single occurrence (Empezamos Bien,
+   * Festivo Cumplido, Cuarto Contacto, MVP al Menos Una Vez), where "0/1"
+   * says nothing a plain checkmark doesn't, and for every non-monotonic
+   * challenge, whose live number can still move backwards before month
+   * close and so is deliberately not previewed as a progress bar at all.
+   */
+  progress?: (ctx: MonthlyMemberContext) => { current: number; target: number };
 }
 
 // ---- shared helpers -------------------------------------------------------
@@ -235,6 +247,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 20,
     monotonic: true,
     evaluate: (ctx) => ctx.completedCount >= 5,
+    progress: (ctx) => ({ current: ctx.completedCount, target: 5 }),
   },
   {
     id: 'ya-casi-mi-rey',
@@ -244,6 +257,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 45,
     monotonic: true,
     evaluate: (ctx) => ctx.completedCount >= 15,
+    progress: (ctx) => ({ current: ctx.completedCount, target: 15 }),
   },
   {
     id: 'mes-perfecto-mensual',
@@ -354,6 +368,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 80,
     monotonic: true,
     evaluate: (ctx) => ctx.mvpWeeksThisMonth >= 2,
+    progress: (ctx) => ({ current: ctx.mvpWeeksThisMonth, target: 2 }),
   },
   {
     id: 'motivando-ando',
@@ -363,6 +378,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 10,
     monotonic: true,
     evaluate: (ctx) => ctx.reactionsGivenCount >= 5,
+    progress: (ctx) => ({ current: ctx.reactionsGivenCount, target: 5 }),
   },
   {
     id: 'motivador-del-mes',
@@ -372,6 +388,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 20,
     monotonic: true,
     evaluate: (ctx) => ctx.reactionsGivenCount >= 15,
+    progress: (ctx) => ({ current: ctx.reactionsGivenCount, target: 15 }),
   },
   {
     id: 'mas-reaccionado',
@@ -397,6 +414,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 25,
     monotonic: true,
     evaluate: (ctx) => (ctx.groupRequiresCheckoutPhoto ? ctx.totalWorkoutMinutesInMonth >= 200 : null),
+    progress: (ctx) => ({ current: ctx.totalWorkoutMinutesInMonth, target: 200 }),
   },
   {
     id: 'mes-de-hierro',
@@ -406,6 +424,7 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     xpPerOccurrence: 60,
     monotonic: true,
     evaluate: (ctx) => (ctx.groupRequiresCheckoutPhoto ? ctx.totalWorkoutMinutesInMonth >= 600 : null),
+    progress: (ctx) => ({ current: ctx.totalWorkoutMinutesInMonth, target: 600 }),
   },
   {
     id: 'rey-de-la-duracion',

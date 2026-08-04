@@ -163,6 +163,13 @@ function MonthlyChallengeRow({ member, challengeId }: { member: MemberBadges; ch
   // affects the live preview shown here.
   const canShowLive = def.monotonic === true;
   const earnedThisMonth = canShowLive && status.currentMonthEarned === true;
+  // Challenges with a real numeric threshold (e.g. 2 of 5 check-ins) get a
+  // partial bar instead of only ever showing empty-or-full — see
+  // MonthlyChallengeDefinition.progress for which monotonic challenges
+  // qualify (a single-occurrence one like Empezamos Bien has no in-between
+  // state worth showing).
+  const progress = canShowLive ? status.currentMonthProgress : null;
+  const ratio = progress ? Math.min(progress.current / progress.target, 1) : earnedThisMonth ? 1 : 0;
   return (
     <BadgeRow
       emoji={def.emoji}
@@ -170,16 +177,18 @@ function MonthlyChallengeRow({ member, challengeId }: { member: MemberBadges; ch
       description={def.description}
       xpLabel={`+${def.xpPerOccurrence} XP c/u`}
       earned={earnedThisMonth}
-      ratio={earnedThisMonth ? 1 : 0}
+      ratio={ratio}
       statusText={`Conseguido ${status.timesAchieved} ${status.timesAchieved === 1 ? 'vez' : 'veces'}`}
       statusTextHighlighted={status.timesAchieved > 0}
       secondaryStatusText={
         status.currentMonthEarned === null
           ? 'No aplica este mes'
           : canShowLive
-            ? status.currentMonthEarned
+            ? earnedThisMonth
               ? '✓ Este mes'
-              : 'En curso este mes'
+              : progress
+                ? `${Math.min(progress.current, progress.target)}/${progress.target} este mes`
+                : 'En curso este mes'
             : status.currentMonthEarned
               ? 'Vas bien — se define al cerrar el mes'
               : 'En curso este mes'
