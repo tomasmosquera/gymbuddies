@@ -285,10 +285,14 @@ async function processGroup(
   });
 
   // --- Weekly MVP across the group's full history, exactly like useGroupMonthlyChallenges ---
+  // Only over CLOSED weeks (see that hook's comment) — excludes the
+  // still-open current week, whose "leader" is just whoever happened to
+  // check in first so far, not a real MVP yet.
   const firstWeekStart = getWeekBoundsForDateString(groupCreatedDate).weekStart;
-  const lastWeekStart = getWeekBounds(new Date(), group.timezone).weekStart;
+  const currentWeekStart = getWeekBounds(new Date(), group.timezone).weekStart;
+  const lastClosedWeekStart = addDaysToDateString(currentWeekStart, -7);
   const weekStarts: string[] = [];
-  for (let cursor = firstWeekStart; cursor <= lastWeekStart; cursor = addDaysToDateString(cursor, 7)) {
+  for (let cursor = firstWeekStart; cursor <= lastClosedWeekStart; cursor = addDaysToDateString(cursor, 7)) {
     weekStarts.push(cursor);
   }
   const allWeekAttendance: MemberWeekAttendance[] = weekStarts.flatMap((weekStart) => {

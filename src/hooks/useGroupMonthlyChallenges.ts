@@ -139,10 +139,18 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
     const closedMonths = months.filter((m) => m < currentMonth);
 
     // --- Weekly MVP, computed once across the group's full history ---
+    // Only over CLOSED weeks — the still-open current week is deliberately
+    // excluded. Otherwise whoever happens to be the only member with a
+    // decided day so far this week (e.g. the first to check in on Monday)
+    // would trivially "win" that week's MVP by default, since everyone else
+    // still has zero decided days and gets filtered out of the ranking pool
+    // entirely (see the `.filter` below). The MVP for a week can only be
+    // known once that week has actually finished.
     const firstWeekStart = getWeekBoundsForDateString(groupCreatedDate).weekStart;
-    const lastWeekStart = getWeekBounds(new Date(), timezone).weekStart;
+    const currentWeekStart = getWeekBounds(new Date(), timezone).weekStart;
+    const lastClosedWeekStart = addDaysToDateString(currentWeekStart, -7);
     const weekStarts: string[] = [];
-    for (let cursor = firstWeekStart; cursor <= lastWeekStart; cursor = addDaysToDateString(cursor, 7)) {
+    for (let cursor = firstWeekStart; cursor <= lastClosedWeekStart; cursor = addDaysToDateString(cursor, 7)) {
       weekStarts.push(cursor);
     }
     // A check-in/reaction/penalty from before this member's own activation
