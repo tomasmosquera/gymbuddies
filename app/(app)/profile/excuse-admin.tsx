@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { supabase } from '@/lib/supabase/client';
 import { getSignedUrl } from '@/lib/supabase/storage';
+import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
 import type { ExcuseRequest } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -42,6 +43,7 @@ function datesInRange(start: string, end: string): string[] {
 
 function PendingRequestRow({ request, onDecided }: { request: PendingRequest; onDecided: () => void }) {
   const [signedUrls, setSignedUrls] = useState<string[]>([]);
+  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
   const allDates = datesInRange(request.requested_start_date, request.requested_end_date);
   const [selectedDates, setSelectedDates] = useState<string[]>(allDates);
   const [isDeciding, setIsDeciding] = useState(false);
@@ -128,10 +130,13 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
       {signedUrls.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.proofRow}>
           {signedUrls.map((url, index) => (
-            <Image key={`${url}-${index}`} source={{ uri: url }} style={styles.proof} />
+            <Pressable key={`${url}-${index}`} onPress={() => setViewingUrl(url)}>
+              <Image source={{ uri: url }} style={styles.proof} />
+            </Pressable>
           ))}
         </ScrollView>
       ) : null}
+      <ZoomableImageModal visible={viewingUrl !== null} imageUrl={viewingUrl} onClose={() => setViewingUrl(null)} />
 
       <Text style={styles.datesLabel}>Días a excusar:</Text>
       <View style={styles.datesList}>

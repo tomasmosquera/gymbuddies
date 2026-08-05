@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { getSignedUrl } from '@/lib/supabase/storage';
+import { ZoomableImage } from '@/components/ui/ZoomableImage';
 import { colors, radii, spacing } from '@/constants/theme';
 
 interface CheckinPhotoModalProps {
@@ -38,7 +39,7 @@ export function CheckinPhotoModal({ visible, photoPath, onClose }: CheckinPhotoM
               Esta foto ya no está disponible — las fotos solo se guardan por 1 semana.
             </Text>
           ) : null}
-          {status === 'ready' && signedUrl ? <Image source={{ uri: signedUrl }} style={styles.photo} /> : null}
+          {status === 'ready' && signedUrl ? <ZoomableImage key={signedUrl} uri={signedUrl} style={styles.photo} /> : null}
         </View>
       </View>
     </Modal>

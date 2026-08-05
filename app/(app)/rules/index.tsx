@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +15,7 @@ import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
+import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -107,6 +108,7 @@ export default function RulesScreen() {
   const [isStartingCycle, setIsStartingCycle] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [excuseProofUrls, setExcuseProofUrls] = useState<string[]>([]);
+  const [viewingExcuseProofUrl, setViewingExcuseProofUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const paths = excuseVoteRequest?.proof_paths ?? [];
@@ -418,7 +420,9 @@ export default function RulesScreen() {
           {excuseProofUrls.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.excuseProofRow}>
               {excuseProofUrls.map((url, index) => (
-                <Image key={`${url}-${index}`} source={{ uri: url }} style={styles.excuseProof} />
+                <Pressable key={`${url}-${index}`} onPress={() => setViewingExcuseProofUrl(url)}>
+                  <Image source={{ uri: url }} style={styles.excuseProof} />
+                </Pressable>
               ))}
             </ScrollView>
           ) : null}
@@ -497,6 +501,11 @@ export default function RulesScreen() {
       visible={viewingPhotoPath !== null}
       photoPath={viewingPhotoPath}
       onClose={() => setViewingPhotoPath(null)}
+    />
+    <ZoomableImageModal
+      visible={viewingExcuseProofUrl !== null}
+      imageUrl={viewingExcuseProofUrl}
+      onClose={() => setViewingExcuseProofUrl(null)}
     />
     </>
   );
