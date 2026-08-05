@@ -1,29 +1,35 @@
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 const MAX_SCALE = 5;
 const DOUBLE_TAP_SCALE = 2.5;
+const DISMISS_DISTANCE_THRESHOLD = 120;
+const DISMISS_VELOCITY_THRESHOLD = 800;
 
 interface ZoomableImageProps {
   uri: string;
   style?: StyleProp<ViewStyle>;
+  /** Called when the user drags the (unzoomed) image down far/fast enough to dismiss — e.g. close the modal it's shown in. Dragging while zoomed in always pans instead, never dismisses. */
+  onDismiss?: () => void;
 }
 
 /**
- * Pinch-to-zoom + pan + double-tap-to-zoom, for viewing photo detail (check-in
- * photos, excuse proof photos) — not a gallery/swiper, just one image at a
- * time. Give it a `key={uri}` from the caller when swapping between photos
- * in the same mounted modal, so zoom/pan state resets per photo instead of
- * carrying over.
+ * Pinch-to-zoom + pan + double-tap-to-zoom + swipe-down-to-dismiss, for
+ * viewing photo detail (check-in photos, excuse proof photos) — not a
+ * gallery/swiper, just one image at a time. Give it a `key={uri}` from the
+ * caller when swapping between photos in the same mounted modal, so zoom/
+ * pan/dismiss state resets per photo instead of carrying over.
  */
-export function ZoomableImage({ uri, style }: ZoomableImageProps) {
+export function ZoomableImage({ uri, style, onDismiss }: ZoomableImageProps) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  const dismissTranslateY = useSharedValue(0);
+  const dismissOpacity = useSharedValue(1);
 
   const resetZoom = () => {
     'worklet';
@@ -46,13 +52,27 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
-      if (savedScale.value <= 1) return;
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
+      if (savedScale.value > 1) {
+        translateX.value = savedTranslateX.value + e.translationX;
+        translateY.value = savedTranslateY.value + e.translationY;
+      } else if (onDismiss) {
+        dismissTranslateY.value = e.translationY;
+        dismissOpacity.value = Math.max(1 - Math.abs(e.translationY) / 400, 0.4);
+      }
     })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+    .onEnd((e) => {
+      if (savedScale.value > 1) {
+        savedTranslateX.value = translateX.value;
+        savedTranslateY.value = translateY.value;
+        return;
+      }
+      if (!onDismiss) return;
+      if (Math.abs(e.translationY) > DISMISS_DISTANCE_THRESHOLD || Math.abs(e.velocityY) > DISMISS_VELOCITY_THRESHOLD) {
+        runOnJS(onDismiss)();
+      } else {
+        dismissTranslateY.value = withSpring(0);
+        dismissOpacity.value = withSpring(1);
+      }
     });
 
   const doubleTapGesture = Gesture.Tap()
@@ -69,7 +89,12 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
   const composedGesture = Gesture.Race(doubleTapGesture, Gesture.Simultaneous(pinchGesture, panGesture));
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
+    opacity: dismissOpacity.value,
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value + dismissTranslateY.value },
+      { scale: scale.value },
+    ],
   }));
 
   return (
@@ -82,6 +107,6 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { width: '100%', height: '100%', overflow: 'hidden' },
+  container: { width: '100%', height: '100%' },
   image: { width: '100%', height: '100%' },
 });
