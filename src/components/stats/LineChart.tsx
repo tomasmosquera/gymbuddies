@@ -81,7 +81,12 @@ export function LineChart({ xLabels, series, unit = '', height = CHART_HEIGHT_DE
   // The viewBox matches the real measured pixel size 1:1 on both axes, so a
   // Circle's radius renders as an actual circle — a 0-100 abstract x-axis
   // scaled independently from a pixel y-axis would stretch it into an oval.
-  const xFor = (index: number) => (pointCount > 1 ? (index / (pointCount - 1)) * plotWidth : plotWidth / 2);
+  // Matches where the x-label row below visually centers label `i`: that row
+  // splits plotWidth into `pointCount` equal flex:1 columns and centers each
+  // label within its own column, so a point must land on that same column's
+  // center — not spread edge-to-edge — to sit directly above its label.
+  const bandWidth = plotWidth / pointCount;
+  const xFor = (index: number) => bandWidth * (index + 0.5);
 
   return (
     <View>
