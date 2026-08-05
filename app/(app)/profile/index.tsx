@@ -31,6 +31,28 @@ function SectionLabel({ children }: { children: string }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
+/** Same section-header slot as SectionLabel, but for the two consequential
+ * sections at the tail of the screen — an icon + a tone color (amber for
+ * "significant but reversible", red for "permanent") instead of the plain
+ * white heading every neutral settings section uses. */
+function RiskSectionHeader({
+  icon,
+  tone,
+  children,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  tone: 'warning' | 'danger';
+  children: string;
+}) {
+  const color = tone === 'warning' ? colors.warning : colors.danger;
+  return (
+    <View style={styles.riskHeader}>
+      <Ionicons name={icon} size={18} color={color} />
+      <Text style={[styles.riskHeaderText, { color }]}>{children}</Text>
+    </View>
+  );
+}
+
 /** The avatar's green border becomes a ring that fills in with progress toward the next level. */
 function AvatarWithLevel({ initials, level }: { initials: string; level: LevelProgress | null }) {
   const radius = (AVATAR_SIZE - AVATAR_RING_WIDTH) / 2;
@@ -279,26 +301,33 @@ export default function ProfileScreen() {
       </View>
 
       {group && membership ? (
-        <View>
-          <SectionLabel>SALIR DEL GRUPO</SectionLabel>
-          <Card style={styles.stackCard}>
+        <View style={styles.riskSection}>
+          <RiskSectionHeader icon="log-out-outline" tone="warning">
+            Salir del Grupo
+          </RiskSectionHeader>
+          <Card style={styles.warningCard}>
             {hasPendingLeave ? (
               <>
-                <Text style={styles.hint}>
-                  Saliste con aviso. Tu salida se hace efectiva el{' '}
-                  {new Date(membership.leave_effective_at!).toLocaleDateString('es-CO')}.
-                </Text>
+                <View style={styles.pendingLeaveBox}>
+                  <Ionicons name="time-outline" size={18} color={colors.warning} />
+                  <Text style={styles.warningBody}>
+                    Saliste con aviso. Tu salida se hace efectiva el{' '}
+                    <Text style={styles.warningBodyStrong}>
+                      {new Date(membership.leave_effective_at!).toLocaleDateString('es-CO')}
+                    </Text>
+                    .
+                  </Text>
+                </View>
                 <Button label="Cancelar aviso" variant="secondary" onPress={handleCancelLeave} loading={isLeaving} />
               </>
             ) : (
               <>
-                <Text style={styles.hint}>
-                  Si avisas con {group.exit_notice_days} día(s) de anticipación, sigues participando con normalidad y
-                  luego sales sin costo. Si sales ahora mismo
+                <Text style={styles.warningBody}>
+                  Avisa con {group.exit_notice_days} día(s) de anticipación y sigues participando con normalidad hasta
+                  salir sin costo.
                   {group.exit_fee_amount > 0
-                    ? `, se te cobra una cuota de ${group.currency} ${group.exit_fee_amount.toLocaleString('es-CO')}`
-                    : ''}
-                  .
+                    ? ` Si sales ahora mismo, se te cobra una cuota de ${group.currency} ${group.exit_fee_amount.toLocaleString('es-CO')}.`
+                    : ' Salir ahora mismo no tiene costo.'}
                 </Text>
                 <Button
                   label={`Avisar salida (gratis en ${group.exit_notice_days} día(s))`}
@@ -313,10 +342,15 @@ export default function ProfileScreen() {
         </View>
       ) : null}
 
-      <View>
-        <SectionLabel>ZONA DE RIESGO</SectionLabel>
+      <View style={styles.riskSection}>
+        <RiskSectionHeader icon="warning" tone="danger">
+          Zona de Riesgo
+        </RiskSectionHeader>
         <Card style={styles.dangerCard}>
-          <Text style={styles.dangerHint}>Esto elimina tu cuenta y tu historial permanentemente. No se puede deshacer.</Text>
+          <Text style={styles.dangerBody}>
+            Esto elimina tu cuenta y tu historial <Text style={styles.dangerBodyStrong}>permanentemente</Text>. No se
+            puede deshacer.
+          </Text>
           <Button label="Eliminar cuenta" variant="danger" onPress={() => router.push('/profile/delete-account')} />
         </Card>
       </View>
@@ -421,7 +455,29 @@ const styles = StyleSheet.create({
   groupName: { ...typography.heading, fontSize: 17, color: colors.text },
   groupActions: { gap: spacing.sm },
   stackCard: { gap: spacing.sm },
-  hint: { color: colors.textMuted, fontSize: 13 },
-  dangerCard: { gap: spacing.sm, borderColor: colors.danger },
-  dangerHint: { color: colors.textMuted, fontSize: 12 },
+  riskSection: { marginTop: spacing.sm },
+  riskHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
+  riskHeaderText: { fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
+  warningCard: {
+    gap: spacing.md,
+    backgroundColor: 'rgba(255, 180, 84, 0.08)',
+    borderColor: 'rgba(255, 180, 84, 0.35)',
+  },
+  warningBody: { color: colors.text, fontSize: 13, lineHeight: 19 },
+  warningBodyStrong: { fontWeight: '700', color: colors.warning },
+  pendingLeaveBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(255, 180, 84, 0.12)',
+    borderRadius: radii.md,
+    padding: spacing.sm,
+  },
+  dangerCard: {
+    gap: spacing.md,
+    backgroundColor: 'rgba(255, 107, 107, 0.08)',
+    borderColor: 'rgba(255, 107, 107, 0.35)',
+  },
+  dangerBody: { color: colors.text, fontSize: 13, lineHeight: 19 },
+  dangerBodyStrong: { fontWeight: '700', color: colors.danger },
 });

@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   label: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   androidWrapper: { gap: spacing.xs },
   iosWrapper: {
-    alignSelf: 'flex-start',
+    alignItems: 'center',
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
     borderColor: colors.border,

@@ -44,7 +44,13 @@ export function CheckinPhotoModal({ visible, photoPath, onClose }: CheckinPhotoM
           </View>
         ) : null}
         {status === 'ready' && signedUrl ? (
-          <ZoomableImage key={signedUrl} uri={signedUrl} style={styles.imageArea} onDismiss={onClose} />
+          <ZoomableImage
+            key={signedUrl}
+            uri={signedUrl}
+            cacheKey={photoPath ?? undefined}
+            style={styles.imageArea}
+            onDismiss={onClose}
+          />
         ) : null}
         <Pressable
           accessibilityRole="button"

@@ -38,10 +38,12 @@ export function tallyOutcome(
 }
 
 /**
- * What close_expired_proposals() does to a proposal whose voting window
- * lapsed without an early resolution: ties/insufficient turnout default to
- * rejected (status quo wins) rather than staying open forever.
+ * What close_expired_proposals()/close_expired_excuse_votes() do to a
+ * request whose voting window lapsed without an early resolution: defaults
+ * to approved ("es un Sí") rather than staying open or rejecting — a group
+ * that doesn't vote isn't allowed to silently reject by inaction, that's on
+ * the members who didn't show up, not on the person waiting on them.
  */
-export function resolveOnTimeout(tally: VoteTally, requiredVotes: number): 'approved' | 'rejected' {
-  return tally.yes >= requiredVotes ? 'approved' : 'rejected';
+export function resolveOnTimeout(): 'approved' {
+  return 'approved';
 }

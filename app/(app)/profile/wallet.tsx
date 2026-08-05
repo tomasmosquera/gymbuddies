@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { TextField } from '@/components/ui/TextField';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useWallet, type WeeklyEvaluationResultWithRun } from '@/hooks/useWallet';
@@ -15,7 +15,7 @@ import { useLiquidationPreview } from '@/hooks/useLiquidationPreview';
 import { useGroupMembers } from '@/hooks/useGroupMembers';
 import { supabase } from '@/lib/supabase/client';
 import type { WalletTransaction, WalletTransactionStatus, WalletTransactionType } from '@/lib/supabase/types';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const TYPE_LABELS: Record<WalletTransactionType, string> = {
   initial_deposit: 'Depósito inicial',
@@ -149,27 +149,51 @@ function LiquidationCard({
                 </View>
                 {canEditWeights ? (
                   editingUserId === row.user_id ? (
-                    <View style={styles.editRow}>
-                      <TextField
-                        label=""
+                    <View style={styles.percentEditRow}>
+                      <TextInput
                         value={editValue}
                         onChangeText={setEditValue}
                         keyboardType="numeric"
-                        placeholder={`${(percentByUserId.get(row.user_id) ?? 0).toFixed(1)}%`}
-                        style={styles.editInput}
+                        placeholder={`${(percentByUserId.get(row.user_id) ?? 0).toFixed(1)}`}
+                        placeholderTextColor={colors.textMuted}
+                        style={styles.percentInput}
+                        autoFocus
                       />
-                      <Button label="Guardar" onPress={() => handleSaveEdit(row.user_id)} loading={isSavingEdit} />
-                      <Button label="Cancelar" variant="secondary" onPress={() => setEditingUserId(null)} />
+                      <Text style={styles.percentSign}>%</Text>
+                      {isSavingEdit ? (
+                        <ActivityIndicator size="small" color={colors.primary} style={styles.percentIconButton} />
+                      ) : (
+                        <Pressable
+                          onPress={() => handleSaveEdit(row.user_id)}
+                          hitSlop={8}
+                          style={styles.percentIconButton}
+                        >
+                          <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                        </Pressable>
+                      )}
+                      <Pressable
+                        onPress={() => setEditingUserId(null)}
+                        hitSlop={8}
+                        style={styles.percentIconButton}
+                        disabled={isSavingEdit}
+                      >
+                        <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+                      </Pressable>
                     </View>
                   ) : (
-                    <Button
-                      label={`Editar % (${(percentByUserId.get(row.user_id) ?? 0).toFixed(1)}%)`}
-                      variant="secondary"
+                    <Pressable
                       onPress={() => {
                         setEditingUserId(row.user_id);
                         setEditValue('');
                       }}
-                    />
+                      style={styles.percentPill}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.percentPillText}>
+                        Peso: {(percentByUserId.get(row.user_id) ?? 0).toFixed(1)}%
+                      </Text>
+                      <Ionicons name="pencil" size={12} color={colors.textMuted} />
+                    </Pressable>
                   )
                 ) : null}
               </View>
@@ -334,8 +358,34 @@ const styles = StyleSheet.create({
   liquidationRowMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   liquidationName: { color: colors.text, fontWeight: '600' },
   liquidationAmount: { color: colors.text, fontWeight: '700' },
-  editRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  editInput: { flex: 1, paddingVertical: spacing.xs },
+  percentPill: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  percentPillText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  percentEditRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  percentInput: {
+    width: 56,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 4,
+    color: colors.text,
+    fontSize: 14,
+    textAlign: 'right',
+  },
+  percentSign: { color: colors.textMuted, fontSize: 13 },
+  percentIconButton: { padding: 2 },
   row: { gap: spacing.xs },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowLeft: { gap: 2 },

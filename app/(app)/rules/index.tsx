@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
@@ -107,18 +108,18 @@ export default function RulesScreen() {
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [isStartingCycle, setIsStartingCycle] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
-  const [excuseProofUrls, setExcuseProofUrls] = useState<string[]>([]);
-  const [viewingExcuseProofUrl, setViewingExcuseProofUrl] = useState<string | null>(null);
+  const [excuseProofItems, setExcuseProofItems] = useState<{ url: string; path: string }[]>([]);
+  const [viewingExcuseProof, setViewingExcuseProof] = useState<{ url: string; path: string } | null>(null);
 
   useEffect(() => {
     const paths = excuseVoteRequest?.proof_paths ?? [];
     if (paths.length === 0) {
-      setExcuseProofUrls([]);
+      setExcuseProofItems([]);
       return;
     }
-    Promise.all(paths.map((p) => getSignedUrl('excuse-proofs', p)))
-      .then(setExcuseProofUrls)
-      .catch(() => setExcuseProofUrls([]));
+    Promise.all(paths.map((p) => getSignedUrl('excuse-proofs', p).then((url) => ({ url, path: p }))))
+      .then(setExcuseProofItems)
+      .catch(() => setExcuseProofItems([]));
   }, [excuseVoteRequest?.proof_paths]);
 
   // This tab stays mounted across switches — without refetching on focus,
@@ -417,11 +418,16 @@ export default function RulesScreen() {
             {excuseVoteRequest.requested_start_date} a {excuseVoteRequest.requested_end_date}
           </Text>
           {excuseVoteRequest.reason ? <Text style={styles.changeText}>{excuseVoteRequest.reason}</Text> : null}
-          {excuseProofUrls.length > 0 ? (
+          {excuseProofItems.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.excuseProofRow}>
-              {excuseProofUrls.map((url, index) => (
-                <Pressable key={`${url}-${index}`} onPress={() => setViewingExcuseProofUrl(url)}>
-                  <Image source={{ uri: url }} style={styles.excuseProof} />
+              {excuseProofItems.map((item) => (
+                <Pressable key={item.path} onPress={() => setViewingExcuseProof(item)}>
+                  <Image
+                    source={{ uri: item.url, cacheKey: item.path }}
+                    style={styles.excuseProof}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 </Pressable>
               ))}
             </ScrollView>
@@ -503,9 +509,10 @@ export default function RulesScreen() {
       onClose={() => setViewingPhotoPath(null)}
     />
     <ZoomableImageModal
-      visible={viewingExcuseProofUrl !== null}
-      imageUrl={viewingExcuseProofUrl}
-      onClose={() => setViewingExcuseProofUrl(null)}
+      visible={viewingExcuseProof !== null}
+      imageUrl={viewingExcuseProof?.url ?? null}
+      cacheKey={viewingExcuseProof?.path}
+      onClose={() => setViewingExcuseProof(null)}
     />
     </>
   );

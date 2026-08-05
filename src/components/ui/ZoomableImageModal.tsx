@@ -8,15 +8,19 @@ interface ZoomableImageModalProps {
   /** Already-resolved (e.g. a signed URL) — this component does no fetching of its own. Null while still loading. */
   imageUrl: string | null;
   onClose: () => void;
+  /** Stable identity for the underlying photo (e.g. its storage path) — see ZoomableImage's cacheKey prop for why this is needed alongside a signed URL. */
+  cacheKey?: string;
 }
 
 /** Full-screen zoomable viewer for an already-loaded image URL — the excuse-proof-photo counterpart to CheckinPhotoModal (which additionally resolves a storage path itself). */
-export function ZoomableImageModal({ visible, imageUrl, onClose }: ZoomableImageModalProps) {
+export function ZoomableImageModal({ visible, imageUrl, onClose, cacheKey }: ZoomableImageModalProps) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        {imageUrl ? <ZoomableImage key={imageUrl} uri={imageUrl} style={styles.imageArea} onDismiss={onClose} /> : null}
+        {imageUrl ? (
+          <ZoomableImage key={imageUrl} uri={imageUrl} cacheKey={cacheKey} style={styles.imageArea} onDismiss={onClose} />
+        ) : null}
         <Pressable
           accessibilityRole="button"
           onPress={onClose}

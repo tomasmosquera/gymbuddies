@@ -1,6 +1,9 @@
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Image } from 'expo-image';
+
+const AnimatedImage = Animated.createAnimatedComponent(Image);
 
 const MAX_SCALE = 5;
 const DOUBLE_TAP_SCALE = 2.5;
@@ -12,6 +15,8 @@ interface ZoomableImageProps {
   style?: StyleProp<ViewStyle>;
   /** Called when the user drags the (unzoomed) image down far/fast enough to dismiss — e.g. close the modal it's shown in. Dragging while zoomed in always pans instead, never dismisses. */
   onDismiss?: () => void;
+  /** Stable identity for the underlying photo (e.g. its storage path), independent of `uri` — signed URLs get a new token on every fetch, so without this expo-image's cache would miss every time even for a photo already downloaded. */
+  cacheKey?: string;
 }
 
 /**
@@ -21,7 +26,7 @@ interface ZoomableImageProps {
  * caller when swapping between photos in the same mounted modal, so zoom/
  * pan/dismiss state resets per photo instead of carrying over.
  */
-export function ZoomableImage({ uri, style, onDismiss }: ZoomableImageProps) {
+export function ZoomableImage({ uri, style, onDismiss, cacheKey }: ZoomableImageProps) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -100,7 +105,12 @@ export function ZoomableImage({ uri, style, onDismiss }: ZoomableImageProps) {
   return (
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={[styles.container, style]}>
-        <Animated.Image source={{ uri }} style={[styles.image, animatedStyle]} resizeMode="contain" />
+        <AnimatedImage
+          source={{ uri, cacheKey }}
+          style={[styles.image, animatedStyle]}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+        />
       </Animated.View>
     </GestureDetector>
   );

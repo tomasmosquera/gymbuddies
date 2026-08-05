@@ -22,9 +22,12 @@ function MemberPicker({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const sortedMembers = [...members].sort((a, b) =>
+    a.profile.full_name.localeCompare(b.profile.full_name, 'es', { sensitivity: 'base' })
+  );
   return (
     <View style={styles.memberList}>
-      {members.map((m) => {
+      {sortedMembers.map((m) => {
         const isSelected = m.user_id === selectedId;
         return (
           <Pressable
@@ -529,7 +532,7 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.heading, fontSize: 15, color: colors.text },
   sectionHint: { color: colors.textMuted, fontSize: 13 },
   dayStatusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  actionButtons: { flexDirection: 'row', gap: spacing.sm },
+  actionButtons: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm },
   balanceValue: { ...typography.title, color: colors.text },
   adjustmentsList: { gap: spacing.xs, marginTop: spacing.xs },
   adjustmentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

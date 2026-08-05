@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { formatZonedTime12h } from '@/lib/domain/dateUtils';
@@ -73,7 +74,12 @@ export function CheckinPhotoColumn({
     <View style={styles.column}>
       <Pressable onPress={onPress} disabled={status !== 'ready'}>
         {status === 'ready' && signedUrl ? (
-          <Image source={{ uri: signedUrl }} style={styles.photo} />
+          <Image
+            source={{ uri: signedUrl, cacheKey: photoPath ?? undefined }}
+            style={styles.photo}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View style={[styles.photo, styles.photoPlaceholder]}>
             {status === 'loading' ? <ActivityIndicator color={colors.primary} size="small" /> : null}

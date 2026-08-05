@@ -68,6 +68,10 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
         .eq('group_id', groupId)
         .eq('type', 'penalty')
         .eq('status', 'confirmed'),
+      // Counts both requests still awaiting a direct admin decision and any
+      // already sent to a group vote — excuse-admin.tsx surfaces both (the
+      // latter in its own "en votación" card, since the admin can still cast
+      // or change their own vote there), so both belong in this badge.
       supabase
         .from('excuse_requests')
         .select('*', { count: 'exact', head: true })

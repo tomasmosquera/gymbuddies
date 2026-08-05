@@ -42,12 +42,7 @@ describe('tallyOutcome', () => {
 });
 
 describe('resolveOnTimeout', () => {
-  it('approves if yes votes met the threshold by the deadline', () => {
-    expect(resolveOnTimeout({ yes: 4, no: 3 }, 4)).toBe('approved');
-  });
-
-  it('rejects ties and any shortfall — status quo wins by default', () => {
-    expect(resolveOnTimeout({ yes: 3, no: 3 }, 4)).toBe('rejected');
-    expect(resolveOnTimeout({ yes: 0, no: 0 }, 4)).toBe('rejected');
+  it('always approves — a no-show on the deadline defaults to yes, not rejection', () => {
+    expect(resolveOnTimeout()).toBe('approved');
   });
 });

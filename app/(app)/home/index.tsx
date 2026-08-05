@@ -279,8 +279,14 @@ export default function HomeScreen() {
                 onPress={() => checkinForDay && setViewingPhotoPath(checkinForDay.photo_path)}
               >
                 <View style={[styles.dayDot, dayToneStyle(tone)]}>
-                  <Text style={styles.dayDotText}>
-                    {isFailedOverride ? '✗' : isExcused ? '🌴' : isDone ? '✓' : ''}
+                  <Text
+                    style={[
+                      styles.dayDotText,
+                      tone === 'success' && styles.dayDotTextSuccess,
+                      tone === 'danger' && styles.dayDotTextDanger,
+                    ]}
+                  >
+                    {tone === 'danger' ? '✗' : isExcused ? '🌴' : isDone ? '✓' : ''}
                   </Text>
                 </View>
                 <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>{DAY_LABELS[index]}</Text>
@@ -415,6 +421,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayDotText: { fontSize: 14 },
+  dayDotTextSuccess: { color: colors.primary, fontWeight: '700' },
+  dayDotTextDanger: { color: colors.danger, fontWeight: '700' },
   dayLabel: { color: colors.textMuted, fontSize: 12 },
   dayLabelToday: { color: colors.primary, fontWeight: '700' },
   doneCard: { gap: spacing.sm },

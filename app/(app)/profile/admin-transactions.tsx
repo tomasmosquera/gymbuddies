@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -69,7 +70,14 @@ function PendingTransactionRow({
       <Text style={styles.rowSubtitle}>
         {transaction.type === 'initial_deposit' ? 'Depósito inicial' : 'Recarga'} · {transaction.amount.toLocaleString('es-CO')}
       </Text>
-      {signedUrl ? <Image source={{ uri: signedUrl }} style={styles.receipt} /> : null}
+      {signedUrl ? (
+        <Image
+          source={{ uri: signedUrl, cacheKey: transaction.receipt_path ?? undefined }}
+          style={styles.receipt}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+        />
+      ) : null}
       <View style={styles.actions}>
         <Button label="Confirmar" onPress={() => decide('confirmed')} loading={isDeciding} />
         <Button label="Rechazar" variant="danger" onPress={() => decide('rejected')} loading={isDeciding} />

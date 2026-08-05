@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useExcuseVote, type ExcuseVoteRequest } from '@/hooks/useExcuseVote';
 import { supabase } from '@/lib/supabase/client';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
@@ -42,17 +45,17 @@ function datesInRange(start: string, end: string): string[] {
 }
 
 function PendingRequestRow({ request, onDecided }: { request: PendingRequest; onDecided: () => void }) {
-  const [signedUrls, setSignedUrls] = useState<string[]>([]);
-  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
+  const [proofItems, setProofItems] = useState<{ url: string; path: string }[]>([]);
+  const [viewingProof, setViewingProof] = useState<{ url: string; path: string } | null>(null);
   const allDates = datesInRange(request.requested_start_date, request.requested_end_date);
   const [selectedDates, setSelectedDates] = useState<string[]>(allDates);
   const [isDeciding, setIsDeciding] = useState(false);
 
   useEffect(() => {
     if (request.proof_paths.length > 0) {
-      Promise.all(request.proof_paths.map((p) => getSignedUrl('excuse-proofs', p)))
-        .then(setSignedUrls)
-        .catch(() => setSignedUrls([]));
+      Promise.all(request.proof_paths.map((p) => getSignedUrl('excuse-proofs', p).then((url) => ({ url, path: p }))))
+        .then(setProofItems)
+        .catch(() => setProofItems([]));
     }
   }, [request.proof_paths]);
 
@@ -127,16 +130,26 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
         {request.requested_start_date} a {request.requested_end_date}
       </Text>
       {request.reason ? <Text style={styles.reason}>{request.reason}</Text> : null}
-      {signedUrls.length > 0 ? (
+      {proofItems.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.proofRow}>
-          {signedUrls.map((url, index) => (
-            <Pressable key={`${url}-${index}`} onPress={() => setViewingUrl(url)}>
-              <Image source={{ uri: url }} style={styles.proof} />
+          {proofItems.map((item) => (
+            <Pressable key={item.path} onPress={() => setViewingProof(item)}>
+              <Image
+                source={{ uri: item.url, cacheKey: item.path }}
+                style={styles.proof}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
             </Pressable>
           ))}
         </ScrollView>
       ) : null}
-      <ZoomableImageModal visible={viewingUrl !== null} imageUrl={viewingUrl} onClose={() => setViewingUrl(null)} />
+      <ZoomableImageModal
+        visible={viewingProof !== null}
+        imageUrl={viewingProof?.url ?? null}
+        cacheKey={viewingProof?.path}
+        onClose={() => setViewingProof(null)}
+      />
 
       <Text style={styles.datesLabel}>Días a excusar:</Text>
       <View style={styles.datesList}>
@@ -159,6 +172,97 @@ function PendingRequestRow({ request, onDecided }: { request: PendingRequest; on
         <Button label="Rechazar" variant="danger" onPress={reject} loading={isDeciding} />
       </View>
       <Button label="Enviar a votación del grupo" variant="secondary" onPress={confirmSendToVote} loading={isDeciding} />
+    </Card>
+  );
+}
+
+/**
+ * The group's single open excuse vote (at most one at a time — see
+ * one_open_excuse_vote_per_group). Distinct from PendingRequestRow: once a
+ * request is sent to a vote, approve/reject_excuse_request refuse to decide
+ * it directly anymore — the only admin action left is casting/changing their
+ * own vote here, same as any other member does from the Rules tab.
+ */
+function VotingRequestCard({
+  request,
+  yesCount,
+  noCount,
+  myVote,
+  isVoting,
+  onVote,
+}: {
+  request: ExcuseVoteRequest;
+  yesCount: number;
+  noCount: number;
+  myVote: 'yes' | 'no' | null;
+  isVoting: boolean;
+  onVote: (vote: 'yes' | 'no') => void;
+}) {
+  const [proofItems, setProofItems] = useState<{ url: string; path: string }[]>([]);
+  const [viewingProof, setViewingProof] = useState<{ url: string; path: string } | null>(null);
+
+  useEffect(() => {
+    if (request.proof_paths.length > 0) {
+      Promise.all(request.proof_paths.map((p) => getSignedUrl('excuse-proofs', p).then((url) => ({ url, path: p }))))
+        .then(setProofItems)
+        .catch(() => setProofItems([]));
+    } else {
+      setProofItems([]);
+    }
+  }, [request.proof_paths]);
+
+  return (
+    <Card style={styles.votingCard}>
+      <View style={styles.rowHeader}>
+        <Text style={styles.rowTitle}>{request.member_name}</Text>
+        <Badge label={TYPE_LABELS[request.excuse_type as 'travel' | 'medical' | 'other']} />
+      </View>
+      <Text style={styles.rowSubtitle}>
+        {request.requested_start_date} a {request.requested_end_date}
+      </Text>
+      {request.reason ? <Text style={styles.reason}>{request.reason}</Text> : null}
+      {proofItems.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.proofRow}>
+          {proofItems.map((item) => (
+            <Pressable key={item.path} onPress={() => setViewingProof(item)}>
+              <Image
+                source={{ uri: item.url, cacheKey: item.path }}
+                style={styles.proof}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
+      <ZoomableImageModal
+        visible={viewingProof !== null}
+        imageUrl={viewingProof?.url ?? null}
+        cacheKey={viewingProof?.path}
+        onClose={() => setViewingProof(null)}
+      />
+
+      <View style={styles.voteTallyRow}>
+        <Text style={styles.voteTally}>
+          {yesCount} a favor · {noCount} en contra · se necesitan {request.required_votes} votos a favor
+        </Text>
+        {request.voting_closes_at ? (
+          <Badge label={`Cierra ${new Date(request.voting_closes_at).toLocaleDateString('es-CO')}`} tone="warning" />
+        ) : null}
+      </View>
+      <Text style={styles.voteHint}>
+        {myVote ? `Tu voto actual: ${myVote === 'yes' ? 'a favor' : 'en contra'} — puedes cambiarlo.` : 'Todavía no has votado.'}
+      </Text>
+      <View style={styles.actions}>
+        <Button label="Votar a favor" onPress={() => onVote('yes')} loading={isVoting} disabled={myVote === 'yes'} />
+        <Button
+          label="Votar en contra"
+          variant="secondary"
+          onPress={() => onVote('no')}
+          loading={isVoting}
+          disabled={myVote === 'no'}
+        />
+      </View>
     </Card>
   );
 }
@@ -230,11 +334,33 @@ function ResolvedRequestRow({ request }: { request: ResolvedRequest }) {
 }
 
 export default function ExcuseAdminScreen() {
+  const { session } = useAuth();
   const { group, isLoading: groupLoading } = useActiveGroup();
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [resolvedRequests, setResolvedRequests] = useState<ResolvedRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const {
+    request: voteRequest,
+    yesCount: voteYesCount,
+    noCount: voteNoCount,
+    myVote,
+    isLoading: voteLoading,
+    refresh: refreshVote,
+    castVote,
+  } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
+  const [isVoting, setIsVoting] = useState(false);
+
+  const handleVote = async (vote: 'yes' | 'no') => {
+    setIsVoting(true);
+    try {
+      await castVote(vote);
+    } catch (err) {
+      Alert.alert('No se pudo registrar tu voto', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsVoting(false);
+    }
+  };
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -313,7 +439,8 @@ export default function ExcuseAdminScreen() {
   useFocusEffect(
     useCallback(() => {
       refresh({ silent: true });
-    }, [refresh])
+      refreshVote();
+    }, [refresh, refreshVote])
   );
 
   if (groupLoading || isLoading || !group) {
@@ -329,9 +456,30 @@ export default function ExcuseAdminScreen() {
       contentContainerStyle={styles.container}
       data={requests}
       keyExtractor={(item) => item.id}
-      onRefresh={() => refresh({ silent: true })}
+      onRefresh={() => {
+        refresh({ silent: true });
+        refreshVote();
+      }}
       refreshing={isRefreshing}
-      ListEmptyComponent={<EmptyState title="Sin pendientes" description="No hay excusas por revisar." />}
+      ListHeaderComponent={
+        voteRequest ? (
+          <View style={styles.votingSection}>
+            <Text style={styles.historyTitle}>Votación de excusa en curso</Text>
+            <VotingRequestCard
+              request={voteRequest}
+              yesCount={voteYesCount}
+              noCount={voteNoCount}
+              myVote={myVote?.vote ?? null}
+              isVoting={isVoting || voteLoading}
+              onVote={handleVote}
+            />
+            {requests.length > 0 ? <Text style={styles.historyTitle}>Pendientes por decidir</Text> : null}
+          </View>
+        ) : null
+      }
+      ListEmptyComponent={
+        voteRequest ? null : <EmptyState title="Sin pendientes" description="No hay excusas por revisar." />
+      }
       renderItem={({ item }) => <PendingRequestRow request={item} onDecided={() => refresh({ silent: true })} />}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       ListFooterComponent={
@@ -372,6 +520,11 @@ const styles = StyleSheet.create({
   dateChipText: { color: colors.textMuted, fontSize: 12 },
   dateChipTextSelected: { color: colors.primaryText, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: spacing.sm },
+  votingSection: { gap: spacing.sm, marginBottom: spacing.lg },
+  votingCard: { gap: spacing.sm },
+  voteTallyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  voteTally: { color: colors.textMuted, fontSize: 13, flexShrink: 1 },
+  voteHint: { color: colors.text, fontSize: 13, fontWeight: '600' },
   historySection: { marginTop: spacing.lg, gap: spacing.sm },
   historyTitle: { ...typography.heading, fontSize: 18, color: colors.text, marginBottom: spacing.xs },
   resolvedRow: { gap: spacing.xs },
