@@ -3,7 +3,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from './client';
 
-type Bucket = 'checkins' | 'receipts' | 'excuse-proofs';
+type Bucket = 'checkins' | 'receipts' | 'excuse-proofs' | 'koth-videos';
 
 // Long enough to keep the check-in date/location overlay legible, small
 // enough to upload/download quickly over a mobile connection.
@@ -25,6 +25,10 @@ export function receiptPath(groupId: string, userId: string, transactionRef: str
 
 export function excuseProofPath(groupId: string, userId: string, requestRef: string): string {
   return `${groupId}/${userId}/${requestRef}.jpg`;
+}
+
+export function kothVideoPath(groupId: string, userId: string, exerciseSlug: string): string {
+  return `${groupId}/${userId}/${exerciseSlug}-${Date.now()}.mp4`;
 }
 
 /** Photos live in private buckets — always read through a short-lived signed URL. */
@@ -50,6 +54,24 @@ export async function uploadImage(bucket: Bucket, path: string, fileUri: string)
   const arrayBuffer = decode(base64);
   const { error } = await supabase.storage.from(bucket).upload(path, arrayBuffer, {
     contentType: 'image/jpeg',
+    upsert: true,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+// Same base64-read-via-expo-file-system → decode → upload path as
+// uploadImage above (the only approach proven reliable for local file:// in
+// this RN/Hermes setup — see that function's comment). Unproven at video
+// scale (tens of MB vs KB for a photo) — if this turns out to be slow or
+// memory-heavy on lower-end devices, revisit uploading straight from the
+// file:// uri instead of round-tripping through a base64 string.
+export async function uploadVideo(bucket: Bucket, path: string, fileUri: string, contentType = 'video/mp4'): Promise<void> {
+  const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
+  const arrayBuffer = decode(base64);
+  const { error } = await supabase.storage.from(bucket).upload(path, arrayBuffer, {
+    contentType,
     upsert: true,
   });
   if (error) {

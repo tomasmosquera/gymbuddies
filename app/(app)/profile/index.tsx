@@ -287,8 +287,13 @@ export default function ProfileScreen() {
         <View>
           <SectionLabel>MI PROGRESO</SectionLabel>
           <Card style={styles.stackCard}>
-            <Button label="Ver mis estadísticas" variant="secondary" onPress={() => router.push('/profile/stats')} />
-            <Button label="Ver logros del grupo" variant="secondary" onPress={() => router.push('/profile/badges')} />
+            <Button label="Estadísticas" variant="secondary" onPress={() => router.push('/profile/stats')} />
+            <Button label="Logros" variant="secondary" onPress={() => router.push('/profile/badges')} />
+            <Button
+              label="King of the Hill"
+              variant="secondary"
+              onPress={() => router.push('/profile/king-of-the-hill')}
+            />
           </Card>
         </View>
       ) : null}

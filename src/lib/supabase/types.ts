@@ -284,6 +284,57 @@ export type PhotoChallengeVote = {
   voted_at: string;
 };
 
+export type KothMetricType = 'weight_kg' | 'reps';
+export type KothClaimStatus = 'pending_vote' | 'valid' | 'invalidated';
+
+export type KothExercise = {
+  id: string;
+  slug: string;
+  name: string;
+  metric_type: KothMetricType;
+  sort_order: number;
+  created_at: string;
+};
+
+/** Append-only log of every claim that beat the record at submission time — the source of truth koth_records points into. */
+export type KothClaim = {
+  id: string;
+  group_id: string;
+  exercise_id: string;
+  user_id: string;
+  metric_type: KothMetricType;
+  /** Always what gets compared — kg for weight_kg exercises (server-converted), raw rep count for reps exercises. */
+  value_canonical: number;
+  submitted_unit: 'kg' | 'lbs' | null;
+  submitted_value: number;
+  video_path: string;
+  status: KothClaimStatus;
+  required_votes: number;
+  member_count_snapshot: number;
+  voting_closes_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  reminder_sent_at: string | null;
+  created_at: string;
+};
+
+export type KothClaimVote = {
+  id: string;
+  claim_id: string;
+  user_id: string;
+  vote: VoteChoice;
+  voted_at: string;
+};
+
+/** Thin pointer to the current champion's claim per (group, exercise) — never a duplicated value. */
+export type KothRecord = {
+  id: string;
+  group_id: string;
+  exercise_id: string;
+  current_claim_id: string | null;
+  updated_at: string;
+};
+
 export type CheckinReaction = {
   id: string;
   group_id: string;
@@ -384,6 +435,10 @@ export type Database = {
       attendance_overrides: { Row: AttendanceOverride; Insert: never; Update: never } & NoRelationships;
       photo_challenges: { Row: PhotoChallenge; Insert: never; Update: never } & NoRelationships;
       photo_challenge_votes: { Row: PhotoChallengeVote; Insert: never; Update: never } & NoRelationships;
+      koth_exercises: { Row: KothExercise; Insert: never; Update: never } & NoRelationships;
+      koth_claims: { Row: KothClaim; Insert: never; Update: never } & NoRelationships;
+      koth_claim_votes: { Row: KothClaimVote; Insert: never; Update: never } & NoRelationships;
+      koth_records: { Row: KothRecord; Insert: never; Update: never } & NoRelationships;
       checkin_reactions: { Row: CheckinReaction; Insert: never; Update: never } & NoRelationships;
       app_version_info: { Row: AppVersionInfo; Insert: never; Update: never } & NoRelationships;
     };
@@ -479,6 +534,18 @@ export type Database = {
       cast_photo_challenge_vote: { Args: { p_challenge_id: string; p_vote: VoteChoice }; Returns: PhotoChallengeVote };
       admin_decide_photo_challenge: { Args: { p_challenge_id: string; p_valid: boolean }; Returns: PhotoChallenge };
       close_expired_photo_challenges: { Args: Record<string, never>; Returns: void };
+      submit_koth_claim: {
+        Args: {
+          p_group_id: string;
+          p_exercise_id: string;
+          p_value: number;
+          p_video_path: string;
+          p_unit?: 'kg' | 'lbs' | null;
+        };
+        Returns: KothClaim;
+      };
+      cast_koth_claim_vote: { Args: { p_claim_id: string; p_vote: VoteChoice }; Returns: KothClaimVote };
+      admin_decide_koth_claim: { Args: { p_claim_id: string; p_valid: boolean }; Returns: KothClaim };
       admin_adjust_balance: {
         Args: { p_group_id: string; p_user_id: string; p_amount: number; p_note?: string | null };
         Returns: WalletTransaction;

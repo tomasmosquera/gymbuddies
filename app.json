@@ -17,7 +17,9 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Gym Buddies puede avisarte que tomes tu foto de salida cuando detecta que te alejaste del gimnasio, incluso con la app cerrada.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "associatedDomains": ["applinks:gymbuddies-livid.vercel.app"]
+      "associatedDomains": [
+        "applinks:gymbuddies-livid.vercel.app"
+      ]
     },
     "android": {
       "package": "com.gymbuddies.app",
@@ -39,8 +41,17 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "https", "host": "gymbuddies-livid.vercel.app", "pathPrefix": "/join" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "scheme": "https",
+              "host": "gymbuddies-livid.vercel.app",
+              "pathPrefix": "/join"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -84,7 +95,8 @@
         {
           "NSHealthShareUsageDescription": "Gym Buddies puede leer las calorías activas quemadas durante tu entreno desde Apple Health, si lo conectas."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

@@ -42,6 +42,9 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="permissions" options={{ title: 'Permisos' }} />
       <Stack.Screen name="badges" options={{ title: 'Logros' }} />
       <Stack.Screen name="stats" options={{ title: 'Estadísticas' }} />
+      <Stack.Screen name="king-of-the-hill" options={{ title: 'King of the Hill' }} />
+      <Stack.Screen name="king-of-the-hill-exercise" options={{ title: 'King of the Hill' }} />
+      <Stack.Screen name="king-of-the-hill-claim" options={{ title: 'Reclamar récord' }} />
       <Stack.Screen name="edit-profile" options={{ title: 'Editar perfil' }} />
       <Stack.Screen name="change-password" options={{ title: 'Cambiar contraseña' }} />
       <Stack.Screen name="delete-account" options={{ title: 'Eliminar cuenta' }} />

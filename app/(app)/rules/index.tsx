@@ -11,12 +11,15 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
+import { usePendingKothClaims } from '@/hooks/usePendingKothClaims';
 import { useGroupMembers } from '@/hooks/useGroupMembers';
 import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
+import { KothVideoModal } from '@/components/koth/KothVideoModal';
+import { formatKothValue } from '@/lib/domain/koth';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
@@ -98,6 +101,13 @@ export default function RulesScreen() {
     castVote: castChallengeVote,
     adminDecide,
   } = usePhotoChallenges(group?.id ?? null);
+  const {
+    claims: kothClaims,
+    isLoading: kothClaimsLoading,
+    refresh: refreshKothClaims,
+    castVote: castKothVote,
+    adminDecide: adminDecideKoth,
+  } = usePendingKothClaims(group?.id ?? null);
   const { members, isLoading: membersLoading, refresh: refreshMembers } = useGroupMembers(group?.id ?? null);
   const {
     cycle: leagueCycle,
@@ -111,6 +121,7 @@ export default function RulesScreen() {
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [excuseProofItems, setExcuseProofItems] = useState<{ url: string; path: string }[]>([]);
   const [viewingExcuseProof, setViewingExcuseProof] = useState<{ url: string; path: string } | null>(null);
+  const [viewingKothVideoPath, setViewingKothVideoPath] = useState<string | null>(null);
 
   useEffect(() => {
     const paths = excuseVoteRequest?.proof_paths ?? [];
@@ -132,9 +143,18 @@ export default function RulesScreen() {
       refreshProposal();
       refreshExcuseVote();
       refreshChallenges();
+      refreshKothClaims();
       refreshMembers();
       refreshLeagueCycle();
-    }, [refreshGroup, refreshProposal, refreshExcuseVote, refreshChallenges, refreshMembers, refreshLeagueCycle])
+    }, [
+      refreshGroup,
+      refreshProposal,
+      refreshExcuseVote,
+      refreshChallenges,
+      refreshKothClaims,
+      refreshMembers,
+      refreshLeagueCycle,
+    ])
   );
 
   if (
@@ -142,6 +162,7 @@ export default function RulesScreen() {
     proposalLoading ||
     excuseVoteLoading ||
     challengesLoading ||
+    kothClaimsLoading ||
     membersLoading ||
     leagueCycleLoading ||
     !group ||
@@ -188,6 +209,22 @@ export default function RulesScreen() {
     }
   };
 
+  const handleKothVote = async (claimId: string, vote: 'yes' | 'no') => {
+    try {
+      await castKothVote(claimId, vote);
+    } catch (err) {
+      Alert.alert('No se pudo votar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
+  const handleKothAdminDecide = async (claimId: string, valid: boolean) => {
+    try {
+      await adminDecideKoth(claimId, valid);
+    } catch (err) {
+      Alert.alert('No se pudo decidir', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -196,6 +233,7 @@ export default function RulesScreen() {
         refreshProposal(),
         refreshExcuseVote(),
         refreshChallenges(),
+        refreshKothClaims(),
         refreshMembers(),
         refreshLeagueCycle(),
       ]);
@@ -502,6 +540,55 @@ export default function RulesScreen() {
         );
       })}
 
+      {kothClaims.map((claim) => {
+        const myVote = claim.votes.find((v) => v.user_id === session?.user.id) ?? null;
+        const isClaimant = claim.user_id === session?.user.id;
+        const yesCount = claim.votes.filter((v) => v.vote === 'yes').length;
+        const noCount = claim.votes.filter((v) => v.vote === 'no').length;
+        return (
+          <Card key={claim.id} style={styles.proposalCard}>
+            <View style={styles.proposalHeader}>
+              <Text style={styles.cardTitle}>Reclamación de King of the Hill en votación</Text>
+              <Badge label={`Cierra ${new Date(claim.voting_closes_at).toLocaleDateString('es-CO')}`} />
+            </View>
+            <Text style={styles.changeText}>
+              ¿Es válido el récord de {claim.claimantName ?? 'este miembro'} en {claim.exercise?.name ?? 'este ejercicio'}?
+            </Text>
+            <Text style={styles.tally}>
+              Marca reclamada: {formatKothValue(claim.metric_type, claim.value_canonical)}
+            </Text>
+            <Button label="Ver video" variant="secondary" onPress={() => setViewingKothVideoPath(claim.video_path)} />
+            <Text style={styles.tally}>
+              {yesCount} a favor de invalidar · {noCount} en contra · se necesitan {claim.required_votes} votos
+            </Text>
+            {isClaimant ? (
+              <Text style={styles.myVote}>Es tu reclamación — no puedes votar en esta votación.</Text>
+            ) : myVote ? (
+              <Text style={styles.myVote}>Ya votaste: {myVote.vote === 'yes' ? 'inválida' : 'válida'}</Text>
+            ) : (
+              <View style={styles.voteButtons}>
+                <Button label="Votar inválida" variant="secondary" onPress={() => handleKothVote(claim.id, 'yes')} />
+                <Button label="Votar válida" onPress={() => handleKothVote(claim.id, 'no')} />
+              </View>
+            )}
+            {isAdmin ? (
+              <View style={styles.voteButtons}>
+                <Button
+                  label="Admin: invalidar ahora"
+                  variant="secondary"
+                  onPress={() => handleKothAdminDecide(claim.id, false)}
+                />
+                <Button
+                  label="Admin: validar ahora"
+                  variant="secondary"
+                  onPress={() => handleKothAdminDecide(claim.id, true)}
+                />
+              </View>
+            ) : null}
+          </Card>
+        );
+      })}
+
       <View style={styles.actionButtons}>
         <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
       </View>
@@ -517,6 +604,11 @@ export default function RulesScreen() {
       cacheKey={viewingExcuseProof?.path}
       onClose={() => setViewingExcuseProof(null)}
     />
+    <KothVideoModal
+      visible={viewingKothVideoPath !== null}
+      videoPath={viewingKothVideoPath}
+      onClose={() => setViewingKothVideoPath(null)}
+    />
     </>
   );
 }
@@ -531,7 +623,13 @@ const styles = StyleSheet.create({
   modeDescription: { color: colors.textMuted, fontSize: 13, lineHeight: 18, marginBottom: spacing.xs },
   proposalCard: { gap: spacing.sm },
   leaveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
-  proposalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  proposalHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   changeText: { color: colors.text },
   excuseProofRow: { gap: spacing.sm },
   excuseProof: { width: 220, height: 220, borderRadius: radii.md },
