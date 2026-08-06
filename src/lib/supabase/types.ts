@@ -451,6 +451,7 @@ export type Database = {
         Args: { p_group_id: string; p_dry_run?: boolean };
         Returns: LiquidationRow[];
       };
+      close_group: { Args: { p_group_id: string }; Returns: void };
       get_group_invite_preview: {
         Args: { p_invite_code: string };
         Returns: GroupInvitePreviewRow[];

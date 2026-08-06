@@ -89,6 +89,7 @@ export default function AdminGroupScreen() {
   );
   const [isCancelling, setIsCancelling] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [isClosingGroup, setIsClosingGroup] = useState(false);
 
   // Refetches every time this screen gains focus — pending items, member
   // list, and stats submitted/changed elsewhere shouldn't need a pull-to-
@@ -134,6 +135,36 @@ export default function AdminGroupScreen() {
       Alert.alert('No se pudo cancelar', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const activeMemberCount = members.filter((m) => m.status === 'active' || m.status === 'needs_recharge').length;
+
+  const confirmCloseGroup = () => {
+    Alert.alert(
+      'Cerrar grupo',
+      `Esto es permanente: se borran el historial, los check-ins y las fotos de "${group.name}".${
+        activeMemberCount > 0
+          ? ` Antes de borrar, se liquida el saldo de ${activeMemberCount} miembro(s) activo(s) — a cada quien le llega su parte del fondo.`
+          : ''
+      }\n\n¿Cerrar el grupo de todas formas?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cerrar grupo', style: 'destructive', onPress: handleCloseGroup },
+      ]
+    );
+  };
+
+  const handleCloseGroup = async () => {
+    setIsClosingGroup(true);
+    try {
+      const { error } = await supabase.rpc('close_group', { p_group_id: group.id });
+      if (error) throw new Error(error.message);
+      router.replace('/group-select');
+    } catch (err) {
+      Alert.alert('No se pudo cerrar el grupo', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsClosingGroup(false);
     }
   };
 
@@ -248,6 +279,14 @@ export default function AdminGroupScreen() {
             <Button label="Ciclo de Liga" variant="secondary" onPress={() => router.push('/rules')} />
           ) : null}
 
+          <Text style={[styles.sectionTitle, styles.dangerSectionTitle]}>Zona de peligro</Text>
+          <Card style={styles.dangerCard}>
+            <Text style={styles.dangerText}>
+              Cerrar el grupo lo borra por completo — check-ins, historial y fotos incluidos. No se puede deshacer.
+            </Text>
+            <Button label="Cerrar grupo" variant="danger" onPress={confirmCloseGroup} loading={isClosingGroup} />
+          </Card>
+
           <Text style={styles.sectionTitle}>Miembros ({members.length})</Text>
         </View>
       }
@@ -274,6 +313,9 @@ const styles = StyleSheet.create({
   statLabel: { color: colors.textMuted, fontSize: 12, marginTop: 2, textAlign: 'center' },
   progressLabel: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
   sectionTitle: { ...typography.heading, color: colors.text, marginTop: spacing.sm },
+  dangerSectionTitle: { color: colors.danger },
+  dangerCard: { gap: spacing.sm, borderColor: colors.danger, borderWidth: 1 },
+  dangerText: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
   actionButtonWrapper: { position: 'relative' },
   actionBadge: {
     position: 'absolute',

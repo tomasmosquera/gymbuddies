@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase/client';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
 import type { ExcuseRequest } from '@/lib/supabase/types';
+import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 interface PendingRequest extends ExcuseRequest {
@@ -190,6 +191,7 @@ function VotingRequestCard({
   myVote,
   isVoting,
   onVote,
+  timezone,
 }: {
   request: ExcuseVoteRequest;
   yesCount: number;
@@ -197,6 +199,7 @@ function VotingRequestCard({
   myVote: 'yes' | 'no' | null;
   isVoting: boolean;
   onVote: (vote: 'yes' | 'no') => void;
+  timezone: string;
 }) {
   const [proofItems, setProofItems] = useState<{ url: string; path: string }[]>([]);
   const [viewingProof, setViewingProof] = useState<{ url: string; path: string } | null>(null);
@@ -247,7 +250,7 @@ function VotingRequestCard({
           {yesCount} a favor · {noCount} en contra · se necesitan {request.required_votes} votos a favor
         </Text>
         {request.voting_closes_at ? (
-          <Badge label={`Cierra ${new Date(request.voting_closes_at).toLocaleDateString('es-CO')}`} tone="warning" />
+          <Badge label={`Cierra ${formatZonedDateTime12h(new Date(request.voting_closes_at), timezone)}`} tone="warning" />
         ) : null}
       </View>
       <Text style={styles.voteHint}>
@@ -472,6 +475,7 @@ export default function ExcuseAdminScreen() {
               myVote={myVote?.vote ?? null}
               isVoting={isVoting || voteLoading}
               onVote={handleVote}
+              timezone={group.timezone}
             />
             {requests.length > 0 ? <Text style={styles.historyTitle}>Pendientes por decidir</Text> : null}
           </View>

@@ -18,6 +18,7 @@ import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
 import { getSignedUrl } from '@/lib/supabase/storage';
+import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -409,7 +410,9 @@ export default function RulesScreen() {
         <Card style={styles.proposalCard}>
           <View style={styles.proposalHeader}>
             <Text style={styles.cardTitle}>Votación de excusa en curso</Text>
-            <Badge label={`Cierra ${new Date(excuseVoteRequest.voting_closes_at!).toLocaleDateString('es-CO')}`} />
+            <Badge
+              label={`Cierra ${formatZonedDateTime12h(new Date(excuseVoteRequest.voting_closes_at!), group.timezone)}`}
+            />
           </View>
           <Text style={styles.changeText}>
             {excuseVoteRequest.member_name} · {EXCUSE_TYPE_LABELS[excuseVoteRequest.excuse_type] ?? excuseVoteRequest.excuse_type}
