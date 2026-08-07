@@ -11,10 +11,27 @@ import {
   totalWorkoutMinutes,
   longestSingleWorkoutMinutes,
   bestSustainedAverageWorkout,
+  kothDistinctExercisesEverChampioned,
+  kothHasCurrentWeightAndReps,
   type BadgeCheckinFact,
   type BadgeContext,
   type BadgeDayRecord,
 } from '@/lib/domain/badges';
+import type { KothClaimFact } from '@/lib/domain/koth';
+
+let nextKothClaimId = 1;
+function kothClaim(overrides: Partial<KothClaimFact> & Pick<KothClaimFact, 'exerciseId'>): KothClaimFact {
+  return {
+    id: `koth-claim-${nextKothClaimId++}`,
+    userId: 'a',
+    metricType: 'weight_kg',
+    status: 'valid',
+    createdAt: '2026-01-01T00:00:00Z',
+    decidedAt: null,
+    wasChallenged: false,
+    ...overrides,
+  };
+}
 
 function checkinsWithDurations(durations: (number | null)[]): BadgeCheckinFact[] {
   return durations.map((minutes, i) => ({
@@ -42,6 +59,10 @@ function baseContext(overrides: Partial<BadgeContext> = {}): BadgeContext {
     reactionsGivenByRecipient: {},
     reactionsReceivedCount: 0,
     ruleProposalsWonCount: 0,
+    kothClaims: [],
+    kothCurrentlyHeldExerciseIds: [],
+    kothIsGroupFounder: false,
+    kothReclaimedThroneCount: 0,
     ...overrides,
   };
 }
@@ -53,9 +74,9 @@ function badge(id: string) {
 }
 
 describe('badge catalog', () => {
-  it('has exactly 47 badges with unique ids', () => {
-    expect(BADGES.length).toBe(47);
-    expect(new Set(BADGES.map((b) => b.id)).size).toBe(47);
+  it('has exactly 57 badges with unique ids', () => {
+    expect(BADGES.length).toBe(57);
+    expect(new Set(BADGES.map((b) => b.id)).size).toBe(57);
   });
 });
 
@@ -313,5 +334,92 @@ describe('bestSustainedAverageWorkout', () => {
     const result = bestSustainedAverageWorkout(checkinsWithDurations([...strongWindow, ...laterShortWorkouts]), 50);
     expect(result.qualifies).toBe(true);
     expect(result.average).toBe(60);
+  });
+});
+
+describe('kothDistinctExercisesEverChampioned', () => {
+  it('counts distinct exercises regardless of how many times each was claimed or their current status', () => {
+    const claims = [
+      kothClaim({ exerciseId: 'bench' }),
+      kothClaim({ exerciseId: 'bench', status: 'invalidated' }),
+      kothClaim({ exerciseId: 'squat' }),
+    ];
+    expect(kothDistinctExercisesEverChampioned(claims)).toBe(2);
+  });
+});
+
+describe('kothHasCurrentWeightAndReps', () => {
+  it('is true only when the currently held exercises include both a weight one and a reps one', () => {
+    const claims = [
+      kothClaim({ exerciseId: 'bench', metricType: 'weight_kg' }),
+      kothClaim({ exerciseId: 'pullups', metricType: 'reps' }),
+    ];
+    expect(kothHasCurrentWeightAndReps(claims, ['bench', 'pullups'])).toBe(true);
+    expect(kothHasCurrentWeightAndReps(claims, ['bench'])).toBe(false);
+    expect(kothHasCurrentWeightAndReps(claims, ['pullups'])).toBe(false);
+  });
+});
+
+describe('King of the Hill badges', () => {
+  it('primer-trono earns on the first claim, ever', () => {
+    expect(badge('primer-trono').evaluate(baseContext({ kothClaims: [] })).earned).toBe(false);
+    expect(badge('primer-trono').evaluate(baseContext({ kothClaims: [kothClaim({ exerciseId: 'bench' })] })).earned).toBe(true);
+  });
+
+  it('fundador-del-trono reads the precomputed group-founder flag', () => {
+    expect(badge('fundador-del-trono').evaluate(baseContext({ kothIsGroupFounder: false })).earned).toBe(false);
+    expect(badge('fundador-del-trono').evaluate(baseContext({ kothIsGroupFounder: true })).earned).toBe(true);
+  });
+
+  it('multi-corona / rey-absoluto / dueno-del-gym threshold on simultaneously held exercises', () => {
+    const held = ['bench', 'squat', 'deadlift'];
+    expect(badge('multi-corona').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: held })).earned).toBe(true);
+    expect(badge('rey-absoluto').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: held })).earned).toBe(false);
+    expect(badge('dueno-del-gym').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: held })).earned).toEqual(false);
+    expect(badge('dueno-del-gym').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: Array.from({ length: 12 }, (_, i) => `ex-${i}`) })).earned).toBe(true);
+  });
+
+  it('todocampista needs all 12 exercises ever championed, not necessarily at once', () => {
+    const elevenDistinct = Array.from({ length: 11 }, (_, i) => kothClaim({ exerciseId: `ex-${i}` }));
+    expect(badge('todocampista').evaluate(baseContext({ kothClaims: elevenDistinct })).earned).toBe(false);
+    const twelveDistinct = Array.from({ length: 12 }, (_, i) => kothClaim({ exerciseId: `ex-${i}` }));
+    expect(badge('todocampista').evaluate(baseContext({ kothClaims: twelveDistinct })).earned).toBe(true);
+  });
+
+  it('doble-amenaza needs a currently-held weight exercise and a currently-held reps exercise at once', () => {
+    const claims = [
+      kothClaim({ exerciseId: 'bench', metricType: 'weight_kg' }),
+      kothClaim({ exerciseId: 'pullups', metricType: 'reps' }),
+    ];
+    expect(
+      badge('doble-amenaza').evaluate(baseContext({ kothClaims: claims, kothCurrentlyHeldExerciseIds: ['bench'] })).earned
+    ).toBe(false);
+    expect(
+      badge('doble-amenaza').evaluate(baseContext({ kothClaims: claims, kothCurrentlyHeldExerciseIds: ['bench', 'pullups'] })).earned
+    ).toBe(true);
+  });
+
+  it('el-resistente needs a claim that survived a real challenge (valid + wasChallenged)', () => {
+    expect(
+      badge('el-resistente').evaluate(baseContext({ kothClaims: [kothClaim({ exerciseId: 'bench', status: 'valid', wasChallenged: false })] })).earned
+    ).toBe(false);
+    expect(
+      badge('el-resistente').evaluate(baseContext({ kothClaims: [kothClaim({ exerciseId: 'bench', status: 'invalidated', wasChallenged: true })] })).earned
+    ).toBe(false);
+    expect(
+      badge('el-resistente').evaluate(baseContext({ kothClaims: [kothClaim({ exerciseId: 'bench', status: 'valid', wasChallenged: true })] })).earned
+    ).toBe(true);
+  });
+
+  it('retorno-del-rey reads the precomputed reclaim count', () => {
+    expect(badge('retorno-del-rey').evaluate(baseContext({ kothReclaimedThroneCount: 0 })).earned).toBe(false);
+    expect(badge('retorno-del-rey').evaluate(baseContext({ kothReclaimedThroneCount: 1 })).earned).toBe(true);
+  });
+
+  it('veinte-superaciones thresholds on total claims ever made', () => {
+    const nineteen = Array.from({ length: 19 }, (_, i) => kothClaim({ exerciseId: `ex-${i % 3}` }));
+    expect(badge('veinte-superaciones').evaluate(baseContext({ kothClaims: nineteen })).earned).toBe(false);
+    const twenty = Array.from({ length: 20 }, (_, i) => kothClaim({ exerciseId: `ex-${i % 3}` }));
+    expect(badge('veinte-superaciones').evaluate(baseContext({ kothClaims: twenty })).earned).toBe(true);
   });
 });

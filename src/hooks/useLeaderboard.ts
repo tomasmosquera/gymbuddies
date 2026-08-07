@@ -223,8 +223,13 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
       const raw = records.map((m) => {
         const statuses = m.days.filter((d) => d.date >= rangeStart && d.date <= rangeEnd).map((d) => d.status);
         const tally = tallyAttendance(statuses);
+        // A workout logged before this member's own activation date is
+        // practice, not real play — must not sway the duration tiebreak any
+        // more than it sways completedDays/failedDays above (m.days already
+        // excludes those dates; this map doesn't, since it's built from a
+        // separate raw checkins query keyed only by date range).
         const totalWorkoutMinutes = (workoutMinutesByUser.get(m.userId) ?? [])
-          .filter((r) => r.date >= rangeStart && r.date <= rangeEnd)
+          .filter((r) => r.date >= rangeStart && r.date <= rangeEnd && (!m.activatedDate || r.date >= m.activatedDate))
           .reduce((sum, r) => sum + r.minutes, 0);
         return {
           userId: m.userId,

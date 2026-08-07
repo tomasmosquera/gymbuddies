@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
-const CATEGORY_ORDER: BadgeCategory[] = ['racha', 'consistencia', 'fechas', 'checkins', 'financiero', 'social'];
+const CATEGORY_ORDER: BadgeCategory[] = ['racha', 'consistencia', 'fechas', 'checkins', 'financiero', 'social', 'koth'];
 
 const CATEGORY_LABELS: Record<BadgeCategory, string> = {
   racha: 'RACHAS',
@@ -20,6 +20,7 @@ const CATEGORY_LABELS: Record<BadgeCategory, string> = {
   checkins: 'CHECK-INS',
   financiero: 'FINANCIERO',
   social: 'SOCIAL',
+  koth: 'KING OF THE HILL',
 };
 
 type ViewMode = 'historic' | 'monthly';

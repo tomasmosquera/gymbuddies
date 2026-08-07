@@ -12,6 +12,7 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupWeekCheckins, type GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { supabase } from '@/lib/supabase/client';
 import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
+import { CHECKIN_LOCATION_MISMATCH_METERS, distanceMeters } from '@/lib/domain/geo';
 import { colors, spacing, typography } from '@/constants/theme';
 
 function CheckinModerationRow({
@@ -33,6 +34,12 @@ function CheckinModerationRow({
   const [isSavingDuration, setIsSavingDuration] = useState(false);
   const hasCheckout = !!checkin.checkout_photo_path;
   const isShort = hasCheckout && checkin.workout_minutes !== null && checkin.workout_minutes < minWorkoutMinutes;
+  const isLocationMismatch =
+    hasCheckout &&
+    checkin.checkout_latitude !== null &&
+    checkin.checkout_longitude !== null &&
+    distanceMeters(checkin.latitude, checkin.longitude, checkin.checkout_latitude, checkin.checkout_longitude) >
+      CHECKIN_LOCATION_MISMATCH_METERS;
 
   const confirmDelete = () => {
     Alert.alert(
@@ -131,6 +138,7 @@ function CheckinModerationRow({
               <Text style={styles.calories}>🔥 {Math.round(checkin.active_energy_kcal)} kcal</Text>
             ) : null}
             {isShort ? <Badge label="Corto" tone="warning" /> : null}
+            {isLocationMismatch ? <Badge label="Ubicación distinta" tone="warning" /> : null}
           </Pressable>
         )
       ) : null}

@@ -4,6 +4,7 @@ import { toZonedDateString, toZonedHour } from '@/lib/domain/dateUtils';
 import { useGroupAttendanceRecords } from '@/hooks/useGroupAttendanceRecords';
 import { BADGES, type BadgeContext, type BadgeStatus } from '@/lib/domain/badges';
 import { levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
+import { isKothGroupFounder, kothReclaimedThroneCount, type KothClaimFact } from '@/lib/domain/koth';
 import { useGroupMonthlyChallenges } from '@/hooks/useGroupMonthlyChallenges';
 import type { MonthlyChallengeStatus } from '@/lib/domain/monthlyChallenges';
 
@@ -47,6 +48,10 @@ export function useGroupBadges(groupId: string | null, timezone: string) {
   // membersBadges useMemo below, which does the actual give/receive counting.
   const [rawReactions, setRawReactions] = useState<{ giverId: string; recipientId: string; date: string }[]>([]);
   const [ruleProposalsWonByUser, setRuleProposalsWonByUser] = useState<Map<string, number>>(new Map());
+  const [kothClaims, setKothClaims] = useState<KothClaimFact[]>([]);
+  const [kothCurrentlyHeldExerciseIdsByUser, setKothCurrentlyHeldExerciseIdsByUser] = useState<Map<string, string[]>>(
+    new Map()
+  );
   const [extrasLoading, setExtrasLoading] = useState(true);
 
   const refreshExtras = useCallback(async () => {
@@ -56,13 +61,15 @@ export function useGroupBadges(groupId: string | null, timezone: string) {
       setFundedWalletUsers(new Set());
       setRawReactions([]);
       setRuleProposalsWonByUser(new Map());
+      setKothClaims([]);
+      setKothCurrentlyHeldExerciseIdsByUser(new Map());
       setExtrasLoading(false);
       return;
     }
     setExtrasLoading(true);
     const todayString = toZonedDateString(new Date(), timezone);
 
-    const [checkinsRes, resultsRes, depositsRes, reactionsRes, proposalsRes] = await Promise.all([
+    const [checkinsRes, resultsRes, depositsRes, reactionsRes, proposalsRes, kothClaimsRes, kothRecordsRes] = await Promise.all([
       supabase
         .from('checkins')
         .select('user_id, checkin_date, captured_at, workout_minutes')
@@ -87,7 +94,47 @@ export function useGroupBadges(groupId: string | null, timezone: string) {
         .select('proposed_by, status')
         .eq('group_id', groupId)
         .in('status', ['approved', 'applied']),
+      // counts_for_record excludes practice claims made during a member's
+      // protection period — see 0084_koth_respects_protection.sql. Those
+      // never crowned anyone, so they must not count as "ever champion" for
+      // badges either.
+      supabase
+        .from('koth_claims')
+        .select('id, exercise_id, user_id, metric_type, status, created_at, decided_at')
+        .eq('group_id', groupId)
+        .eq('counts_for_record', true),
+      supabase.from('koth_records').select('exercise_id, current_claim_id').eq('group_id', groupId),
     ]);
+
+    const claimIds = (kothClaimsRes.data ?? []).map((c) => c.id);
+    const votesRes =
+      claimIds.length > 0
+        ? await supabase.from('koth_claim_votes').select('claim_id, vote').in('claim_id', claimIds)
+        : { data: [] as { claim_id: string; vote: string }[] };
+    const challengedClaimIds = new Set((votesRes.data ?? []).filter((v) => v.vote === 'yes').map((v) => v.claim_id));
+
+    const nextKothClaims: KothClaimFact[] = (kothClaimsRes.data ?? []).map((c) => ({
+      id: c.id,
+      exerciseId: c.exercise_id,
+      userId: c.user_id,
+      metricType: c.metric_type,
+      status: c.status,
+      createdAt: c.created_at,
+      decidedAt: c.decided_at,
+      wasChallenged: challengedClaimIds.has(c.id),
+    }));
+    setKothClaims(nextKothClaims);
+
+    const claimById = new Map(nextKothClaims.map((c) => [c.id, c]));
+    const nextHeldByUser = new Map<string, string[]>();
+    for (const record of kothRecordsRes.data ?? []) {
+      if (!record.current_claim_id) continue;
+      const claim = claimById.get(record.current_claim_id);
+      if (!claim) continue;
+      if (!nextHeldByUser.has(claim.userId)) nextHeldByUser.set(claim.userId, []);
+      nextHeldByUser.get(claim.userId)!.push(record.exercise_id);
+    }
+    setKothCurrentlyHeldExerciseIdsByUser(nextHeldByUser);
 
     const nextCheckins = new Map<string, { date: string; hourBogota: number; workoutMinutes: number | null }[]>();
     for (const c of checkinsRes.data ?? []) {
@@ -184,6 +231,10 @@ export function useGroupBadges(groupId: string | null, timezone: string) {
         reactionsGivenByRecipient,
         reactionsReceivedCount,
         ruleProposalsWonCount: ruleProposalsWonByUser.get(m.userId) ?? 0,
+        kothClaims: kothClaims.filter((c) => c.userId === m.userId),
+        kothCurrentlyHeldExerciseIds: kothCurrentlyHeldExerciseIdsByUser.get(m.userId) ?? [],
+        kothIsGroupFounder: isKothGroupFounder(kothClaims, m.userId),
+        kothReclaimedThroneCount: kothReclaimedThroneCount(kothClaims, m.userId),
       };
       const statuses: Record<string, BadgeStatus> = {};
       const earnedBadgeIds: string[] = [];
@@ -211,6 +262,8 @@ export function useGroupBadges(groupId: string | null, timezone: string) {
     fundedWalletUsers,
     rawReactions,
     ruleProposalsWonByUser,
+    kothClaims,
+    kothCurrentlyHeldExerciseIdsByUser,
     monthlyByUserId,
     timezone,
   ]);

@@ -53,9 +53,11 @@ export default function KingOfTheHillExerciseScreen() {
   }
 
   // Every accepted claim beat the previous record, so the most recent
-  // non-invalidated one is by construction the current champion — same
-  // walk-back logic as refresh_koth_record() server-side.
-  const current = claims.find((c) => c.status !== 'invalidated') ?? null;
+  // non-invalidated, counting one is by construction the current champion —
+  // same walk-back logic as refresh_koth_record() server-side. A practice
+  // claim (counts_for_record false, submitted during its owner's protection
+  // period) never was champion of anything, so it's excluded here too.
+  const current = claims.find((c) => c.status !== 'invalidated' && c.counts_for_record) ?? null;
 
   return (
     <>
@@ -102,7 +104,11 @@ export default function KingOfTheHillExerciseScreen() {
                       </Text>
                       <Text style={styles.historyDate}>{new Date(claim.created_at).toLocaleDateString('es-CO')}</Text>
                     </View>
-                    <Badge label={statusInfo.label} tone={statusInfo.tone} />
+                    {claim.counts_for_record ? (
+                      <Badge label={statusInfo.label} tone={statusInfo.tone} />
+                    ) : (
+                      <Badge label="Práctica" tone="neutral" />
+                    )}
                   </View>
                 );
               })}

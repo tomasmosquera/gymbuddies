@@ -309,6 +309,8 @@ export type KothClaim = {
   submitted_value: number;
   video_path: string;
   status: KothClaimStatus;
+  /** False for a claim submitted while its owner was still in their protection period (activated_at in the future) — recorded for their own history, but never crowns them, dethrones anyone, or opens a vote. */
+  counts_for_record: boolean;
   required_votes: number;
   member_count_snapshot: number;
   voting_closes_at: string;

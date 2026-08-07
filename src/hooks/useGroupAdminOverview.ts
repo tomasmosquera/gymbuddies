@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { getWeekBounds } from '@/lib/domain/dateUtils';
+import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
+import { daysPresentInWeek } from '@/lib/domain/weeklyEvaluation';
 
 export interface GroupAdminOverview {
   activeMembers: number;
@@ -56,7 +57,7 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
       excusedRes,
       overridesRes,
     ] = await Promise.all([
-      supabase.from('group_members').select('user_id, status, balance').eq('group_id', groupId),
+      supabase.from('group_members').select('user_id, status, balance, activated_at, joined_at').eq('group_id', groupId),
       supabase
         .from('wallet_transactions')
         .select('*', { count: 'exact', head: true })
@@ -133,9 +134,16 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
     let weekRequiredDays = 0;
     for (const m of members) {
       if (m.status !== 'active' && m.status !== 'needs_recharge') continue;
-      const completed = checkinDatesByUser.get(m.user_id)?.size ?? 0;
+      // A member still inside their protection period (activated_date in the
+      // future, or later than this week) isn't playing for real yet — their
+      // practice check-ins must not inflate the group's compliance % any
+      // more than they inflate the leaderboard (see useLeaderboard.ts).
+      const activatedDate = toZonedDateString(new Date(m.activated_at ?? m.joined_at), timezone);
+      const daysPresent = daysPresentInWeek(activatedDate, weekStart, weekEnd);
+      const required = Math.min(minDaysPerWeek, daysPresent);
       const excused = excusedByUser.get(m.user_id) ?? 0;
-      const effectiveRequired = Math.max(minDaysPerWeek - excused, 0);
+      const effectiveRequired = Math.max(required - excused, 0);
+      const completed = [...(checkinDatesByUser.get(m.user_id) ?? [])].filter((date) => date >= activatedDate).length;
       weekCompletedDays += completed;
       weekRequiredDays += effectiveRequired;
     }

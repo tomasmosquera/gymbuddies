@@ -8,10 +8,12 @@ import { MoneyField } from '@/components/ui/MoneyField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PrizeSplitEditor } from '@/components/ui/PrizeSplitEditor';
 import { TimezonePicker } from '@/components/ui/TimezonePicker';
+import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase/client';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
 import { createGroupSchema } from '@/lib/validation/schemas';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { RULE_FIELD_HELP } from '@/constants/ruleFieldHelp';
 import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
@@ -66,7 +68,8 @@ export default function CreateGroupScreen() {
   const [leagueDurationMonths, setLeagueDurationMonths] = useState('');
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>(['60', '30', '10']);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
-  const [gameStartsAt, setGameStartsAt] = useState('');
+  const [hasGameStartDate, setHasGameStartDate] = useState<'yes' | 'no'>('no');
+  const [gameStartsAtDate, setGameStartsAtDate] = useState(new Date());
   const [timezone, setTimezone] = useState(DEFAULT_GROUP_TIMEZONE);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,7 +90,7 @@ export default function CreateGroupScreen() {
       leagueDurationMonths: leagueDurationMonths ? Number(leagueDurationMonths) : undefined,
       leaguePrizeSplits: leaguePrizeSplits.filter((v) => v.trim()).map(Number),
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
-      gameStartsAt,
+      gameStartsAt: hasGameStartDate === 'yes' ? toZonedDateString(gameStartsAtDate, timezone) : '',
       timezone,
     });
     if (!result.success) {
@@ -179,14 +182,15 @@ export default function CreateGroupScreen() {
           <Card style={styles.section}>
             <SegmentedControl options={PAYOUT_MODE_OPTIONS} value={payoutMode} onChange={setPayoutMode} size="lg" />
             <Text style={styles.modeDescription}>{PAYOUT_MODE_DESCRIPTIONS[payoutMode]}</Text>
-            <TextField
-              label="Fecha de inicio del juego (opcional)"
-              hint={RULE_FIELD_HELP.gameStartsAt}
-              value={gameStartsAt}
-              onChangeText={setGameStartsAt}
-              placeholder="AAAA-MM-DD — vacío = empieza ya"
-              error={errors.gameStartsAt}
-            />
+            <View style={styles.toggleField}>
+              <Text style={styles.toggleLabel}>¿El grupo empieza a jugar en una fecha futura?</Text>
+              <Text style={styles.toggleHint}>{RULE_FIELD_HELP.gameStartsAt}</Text>
+              <SegmentedControl options={YES_NO_OPTIONS} value={hasGameStartDate} onChange={setHasGameStartDate} />
+              {hasGameStartDate === 'yes' ? (
+                <InlineDatePicker value={gameStartsAtDate} onChange={setGameStartsAtDate} minimumDate={new Date()} />
+              ) : null}
+            </View>
+            {errors.gameStartsAt ? <Text style={styles.errorText}>{errors.gameStartsAt}</Text> : null}
             {isFieldRelevantForMode('leagueConfig', payoutMode) ? (
               <>
                 <TextField

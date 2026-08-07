@@ -272,22 +272,38 @@ export default function PersonalStatsScreen() {
 
       <View>
         <SectionLabel icon="chatbubbles-outline">SOCIAL</SectionLabel>
-        <Card style={[styles.card, styles.tileRow]}>
-          <StatTile label="Reacciones dadas" value={`${stats.reactionsGivenTotal}`} />
-          <StatTile label="Reacciones recibidas" value={`${stats.reactionsReceivedTotal}`} />
+        <Card style={styles.card}>
+          <View style={styles.tileRow}>
+            <StatTile label="Reacciones dadas" value={`${stats.reactionsGivenTotal}`} />
+            <StatTile label="Reacciones recibidas" value={`${stats.reactionsReceivedTotal}`} />
+          </View>
+          <View style={[styles.tileRow, styles.socialDivider]}>
+            <StatTile
+              label="Emoji más enviado"
+              value={stats.mostSentEmoji ? `${stats.mostSentEmoji.emoji} ×${stats.mostSentEmoji.count}` : '—'}
+            />
+            <StatTile
+              label="Emoji más recibido"
+              value={stats.mostReceivedEmoji ? `${stats.mostReceivedEmoji.emoji} ×${stats.mostReceivedEmoji.count}` : '—'}
+            />
+          </View>
+          {stats.mostReactedToByMe || stats.mostReactedToMe ? (
+            <View style={styles.socialDivider}>
+              {stats.mostReactedToByMe ? (
+                <Text style={styles.socialLine}>
+                  Reaccionas más a <Text style={styles.socialLineName}>{stats.mostReactedToByMe.fullName}</Text> (
+                  {timesLabel(stats.mostReactedToByMe.count)})
+                </Text>
+              ) : null}
+              {stats.mostReactedToMe ? (
+                <Text style={styles.socialLine}>
+                  Quien más te reacciona: <Text style={styles.socialLineName}>{stats.mostReactedToMe.fullName}</Text> (
+                  {timesLabel(stats.mostReactedToMe.count)})
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </Card>
-        {stats.mostReactedToByMe ? (
-          <Text style={styles.socialLine}>
-            Reaccionas más a <Text style={styles.socialLineName}>{stats.mostReactedToByMe.fullName}</Text> (
-            {timesLabel(stats.mostReactedToByMe.count)})
-          </Text>
-        ) : null}
-        {stats.mostReactedToMe ? (
-          <Text style={styles.socialLine}>
-            Quien más te reacciona: <Text style={styles.socialLineName}>{stats.mostReactedToMe.fullName}</Text> (
-            {timesLabel(stats.mostReactedToMe.count)})
-          </Text>
-        ) : null}
       </View>
     </ScrollView>
   );
@@ -313,6 +329,7 @@ const styles = StyleSheet.create({
   comparisonValueText: { color: colors.primary, fontSize: 16, fontWeight: '700' },
   comparisonValueTextMuted: { color: colors.textMuted },
   comparisonValueCaption: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
-  socialLine: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
+  socialDivider: { paddingTop: spacing.sm, marginTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, gap: 2 },
+  socialLine: { color: colors.textMuted, fontSize: 13 },
   socialLineName: { color: colors.text, fontWeight: '700' },
 });

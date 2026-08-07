@@ -1,4 +1,5 @@
 import type { DayAttendanceStatus } from '@/lib/domain/attendance';
+import type { KothClaimFact } from '@/lib/domain/koth';
 
 /**
  * Achievements are computed live from existing data every time — there is no
@@ -9,7 +10,7 @@ import type { DayAttendanceStatus } from '@/lib/domain/attendance';
  * "earned_at" timestamp yet.
  */
 
-export type BadgeCategory = 'racha' | 'consistencia' | 'fechas' | 'checkins' | 'financiero' | 'social';
+export type BadgeCategory = 'racha' | 'consistencia' | 'fechas' | 'checkins' | 'financiero' | 'social' | 'koth';
 
 export interface BadgeDayRecord {
   date: string;
@@ -50,6 +51,14 @@ export interface BadgeContext {
   reactionsReceivedCount: number;
   /** Rule proposals this member authored that ended up approved/applied. */
   ruleProposalsWonCount: number;
+  /** Every KOTH claim this member has ever made in this group, across every exercise, any status. */
+  kothClaims: readonly KothClaimFact[];
+  /** Exercise ids this member currently holds the record for, right now. */
+  kothCurrentlyHeldExerciseIds: readonly string[];
+  /** True if this member's earliest KOTH claim is the group's overall earliest — precomputed at the hook level (isKothGroupFounder needs the full group's claim log, not just this member's). */
+  kothIsGroupFounder: boolean;
+  /** How many times this member reclaimed an exercise's throne after losing it — precomputed at the hook level (kothReclaimedThroneCount needs the full group's claim log). */
+  kothReclaimedThroneCount: number;
 }
 
 export interface BadgeStatus {
@@ -334,6 +343,18 @@ function daysBetween(start: string, end: string): number {
   const [sy, sm, sd] = start.split('-').map(Number);
   const [ey, em, ed] = end.split('-').map(Number);
   return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / (24 * 60 * 60 * 1000));
+}
+
+/** Distinct exercises this member has been champion of at some point (even if since dethroned/invalidated) — every claim in the log represents a moment they held it. */
+export function kothDistinctExercisesEverChampioned(claims: readonly KothClaimFact[]): number {
+  return new Set(claims.map((c) => c.exerciseId)).size;
+}
+
+/** True if, right now, this member holds at least one weight-based (1RM) record and at least one reps-based record simultaneously. */
+export function kothHasCurrentWeightAndReps(claims: readonly KothClaimFact[], currentlyHeldExerciseIds: readonly string[]): boolean {
+  const held = new Set(currentlyHeldExerciseIds);
+  const heldClaims = claims.filter((c) => held.has(c.exerciseId));
+  return heldClaims.some((c) => c.metricType === 'weight_kg') && heldClaims.some((c) => c.metricType === 'reps');
 }
 
 function bool(earned: boolean): BadgeStatus {
@@ -797,5 +818,87 @@ export const BADGES: BadgeDefinition[] = [
     description: 'Proponer una regla que gane la votación.',
     category: 'social',
     evaluate: (ctx) => bool(ctx.ruleProposalsWonCount >= 1),
+  },
+
+  // King of the Hill
+  {
+    id: 'primer-trono',
+    name: 'Primer Trono',
+    emoji: '👑',
+    description: 'Reclamar tu primer récord de King of the Hill.',
+    category: 'koth',
+    evaluate: (ctx) => bool(ctx.kothClaims.length >= 1),
+  },
+  {
+    id: 'fundador-del-trono',
+    name: 'Fundador del Trono',
+    emoji: '🏛️',
+    description: 'Ser el primer miembro del grupo en reclamar un récord de King of the Hill.',
+    category: 'koth',
+    evaluate: (ctx) => bool(ctx.kothIsGroupFounder),
+  },
+  {
+    id: 'multi-corona',
+    name: 'Multi-Corona',
+    emoji: '🎖️',
+    description: 'Tener el récord vigente de 3 ejercicios al mismo tiempo.',
+    category: 'koth',
+    evaluate: (ctx) => threshold(ctx.kothCurrentlyHeldExerciseIds.length, 3),
+  },
+  {
+    id: 'rey-absoluto',
+    name: 'Rey/Reina Absoluto',
+    emoji: '🏆',
+    description: 'Tener el récord vigente de 6 ejercicios al mismo tiempo.',
+    category: 'koth',
+    evaluate: (ctx) => threshold(ctx.kothCurrentlyHeldExerciseIds.length, 6),
+  },
+  {
+    id: 'dueno-del-gym',
+    name: 'Dueño del Gym',
+    emoji: '💎',
+    description: 'Tener el récord vigente de los 12 ejercicios al mismo tiempo.',
+    category: 'koth',
+    evaluate: (ctx) => threshold(ctx.kothCurrentlyHeldExerciseIds.length, 12),
+  },
+  {
+    id: 'todocampista',
+    name: 'Todocampista',
+    emoji: '🌟',
+    description: 'Haber sido campeón alguna vez en los 12 ejercicios (no hace falta que sea al mismo tiempo).',
+    category: 'koth',
+    evaluate: (ctx) => threshold(kothDistinctExercisesEverChampioned(ctx.kothClaims), 12),
+  },
+  {
+    id: 'doble-amenaza',
+    name: 'Doble Amenaza',
+    emoji: '⚔️',
+    description: 'Tener vigente al menos un récord con peso y uno sin peso al mismo tiempo.',
+    category: 'koth',
+    evaluate: (ctx) => bool(kothHasCurrentWeightAndReps(ctx.kothClaims, ctx.kothCurrentlyHeldExerciseIds)),
+  },
+  {
+    id: 'el-resistente',
+    name: 'El Resistente',
+    emoji: '🛡️',
+    description: 'Defender un récord exitosamente en una votación de invalidación.',
+    category: 'koth',
+    evaluate: (ctx) => bool(ctx.kothClaims.some((c) => c.status === 'valid' && c.wasChallenged)),
+  },
+  {
+    id: 'retorno-del-rey',
+    name: 'El Retorno del Rey',
+    emoji: '🔄',
+    description: 'Recuperar el trono de un ejercicio después de haberlo perdido.',
+    category: 'koth',
+    evaluate: (ctx) => bool(ctx.kothReclaimedThroneCount >= 1),
+  },
+  {
+    id: 'veinte-superaciones',
+    name: '20 Superaciones',
+    emoji: '📈',
+    description: 'Enviar 20 reclamaciones de King of the Hill en total.',
+    category: 'koth',
+    evaluate: (ctx) => threshold(ctx.kothClaims.length, 20),
   },
 ];

@@ -67,6 +67,18 @@ export const XP_BY_BADGE_ID: Record<string, number> = {
   'fan-numero-uno': 50,
   'alma-del-grupo': 300,
   reformista: 50,
+
+  // King of the Hill
+  'primer-trono': 20,
+  'fundador-del-trono': 30,
+  'multi-corona': 100,
+  'rey-absoluto': 250,
+  'dueno-del-gym': 600,
+  todocampista: 400,
+  'doble-amenaza': 60,
+  'el-resistente': 50,
+  'retorno-del-rey': 80,
+  'veinte-superaciones': 150,
 };
 
 export function xpForBadge(badgeId: string): number {

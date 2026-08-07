@@ -20,6 +20,7 @@ import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import { formatElapsedClock, getWeekBounds, toZonedDateString, weekDates } from '@/lib/domain/dateUtils';
+import { CHECKIN_LOCATION_MISMATCH_METERS, distanceMeters } from '@/lib/domain/geo';
 import { failsRemaining } from '@/lib/domain/walletState';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -338,6 +339,16 @@ export default function HomeScreen() {
               <Text style={styles.workoutMinutes}>Entrenaste {todayCheckin.workout_minutes} minuto(s)</Text>
               {todayCheckin.workout_minutes !== null && todayCheckin.workout_minutes < group.min_workout_minutes ? (
                 <Badge label="Corto" tone="warning" />
+              ) : null}
+              {todayCheckin.checkout_latitude !== null &&
+              todayCheckin.checkout_longitude !== null &&
+              distanceMeters(
+                todayCheckin.latitude,
+                todayCheckin.longitude,
+                todayCheckin.checkout_latitude,
+                todayCheckin.checkout_longitude
+              ) > CHECKIN_LOCATION_MISMATCH_METERS ? (
+                <Badge label="Ubicación distinta" tone="warning" />
               ) : null}
             </View>
           ) : null}

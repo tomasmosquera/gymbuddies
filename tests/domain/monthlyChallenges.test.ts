@@ -17,9 +17,9 @@ function days(spec: [string, MonthlyDayRecord['status']][]): MonthlyDayRecord[] 
 }
 
 describe('monthly challenge catalog', () => {
-  it('has exactly 23 challenges with unique ids', () => {
-    expect(MONTHLY_CHALLENGES.length).toBe(23);
-    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(23);
+  it('has exactly 28 challenges with unique ids', () => {
+    expect(MONTHLY_CHALLENGES.length).toBe(28);
+    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(28);
   });
 });
 
@@ -206,6 +206,9 @@ function baseContext(overrides: Partial<MonthlyMemberContext> = {}): MonthlyMemb
     averageWorkoutMinutesInMonth: 0,
     workoutSessionsWithDurationInMonth: 0,
     isMostDurationThisMonth: false,
+    kothClaimedExerciseIdsThisMonth: [],
+    kothDefendedThisMonth: false,
+    isKothKingThisMonth: false,
     ...overrides,
   };
 }
@@ -390,5 +393,59 @@ describe('progress (partial-progress bar for monotonic challenges with a real th
     expect(challenge('top-del-grupo').progress).toBeUndefined();
     expect(challenge('racha-intacta-mensual').progress).toBeUndefined();
     expect(challenge('noventa-consistencia-mensual').progress).toBeUndefined();
+  });
+
+  it('Doble Corona and Cazador de Récords report distinct exercises claimed so far this month', () => {
+    expect(challenge('doble-corona-mensual').progress!(baseContext({ kothClaimedExerciseIdsThisMonth: ['bench'] }))).toEqual({
+      current: 1,
+      target: 2,
+    });
+    expect(
+      challenge('cazador-de-records').progress!(baseContext({ kothClaimedExerciseIdsThisMonth: ['bench', 'squat'] }))
+    ).toEqual({ current: 2, target: 3 });
+  });
+
+  it('corona-del-mes and defensor-del-mes are single-occurrence monotonic — no progress function', () => {
+    expect(challenge('corona-del-mes').progress).toBeUndefined();
+    expect(challenge('defensor-del-mes').progress).toBeUndefined();
+  });
+
+  it('rey-del-mes is comparative (non-monotonic) — no progress function', () => {
+    expect(challenge('rey-del-mes').progress).toBeUndefined();
+  });
+});
+
+describe('King of the Hill monthly challenges', () => {
+  it('corona-del-mes earns as soon as one exercise is claimed this month', () => {
+    expect(challenge('corona-del-mes').evaluate(baseContext({ kothClaimedExerciseIdsThisMonth: [] }))).toBe(false);
+    expect(challenge('corona-del-mes').evaluate(baseContext({ kothClaimedExerciseIdsThisMonth: ['bench'] }))).toBe(true);
+  });
+
+  it('doble-corona-mensual needs 2 distinct exercises claimed this month', () => {
+    expect(challenge('doble-corona-mensual').evaluate(baseContext({ kothClaimedExerciseIdsThisMonth: ['bench'] }))).toBe(false);
+    expect(
+      challenge('doble-corona-mensual').evaluate(baseContext({ kothClaimedExerciseIdsThisMonth: ['bench', 'squat'] }))
+    ).toBe(true);
+  });
+
+  it('cazador-de-records needs 3 distinct exercises claimed this month', () => {
+    expect(
+      challenge('cazador-de-records').evaluate(baseContext({ kothClaimedExerciseIdsThisMonth: ['bench', 'squat'] }))
+    ).toBe(false);
+    expect(
+      challenge('cazador-de-records').evaluate(
+        baseContext({ kothClaimedExerciseIdsThisMonth: ['bench', 'squat', 'deadlift'] })
+      )
+    ).toBe(true);
+  });
+
+  it('defensor-del-mes reads the precomputed defended-this-month flag', () => {
+    expect(challenge('defensor-del-mes').evaluate(baseContext({ kothDefendedThisMonth: false }))).toBe(false);
+    expect(challenge('defensor-del-mes').evaluate(baseContext({ kothDefendedThisMonth: true }))).toBe(true);
+  });
+
+  it('rey-del-mes reads the precomputed cross-member "most active KOTH exercises this month" flag', () => {
+    expect(challenge('rey-del-mes').evaluate(baseContext({ isKothKingThisMonth: false }))).toBe(false);
+    expect(challenge('rey-del-mes').evaluate(baseContext({ isKothKingThisMonth: true }))).toBe(true);
   });
 });

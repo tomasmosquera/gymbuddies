@@ -50,8 +50,10 @@ export default function KingOfTheHillClaimScreen() {
   }
 
   // Every accepted claim beat the previous record, so the most recent
-  // non-invalidated one is by construction the current champion.
-  const current = claims.find((c) => c.status !== 'invalidated') ?? null;
+  // non-invalidated one is by construction the current champion — a
+  // practice claim (counts_for_record false, from someone still in their
+  // protection period) never was champion of anything, so it's excluded.
+  const current = claims.find((c) => c.status !== 'invalidated' && c.counts_for_record) ?? null;
   const isWeightExercise = exercise.metric_type === 'weight_kg';
 
   const recordVideo = async () => {
@@ -107,7 +109,7 @@ export default function KingOfTheHillClaimScreen() {
 
     setError(undefined);
     try {
-      await submit({
+      const result = await submit({
         groupId: group.id,
         userId: session.user.id,
         exerciseId: exercise.id,
@@ -118,8 +120,10 @@ export default function KingOfTheHillClaimScreen() {
         videoMimeType: video.mimeType,
       });
       Alert.alert(
-        '¡Reclamación enviada!',
-        `Ahora eres el nuevo KOTH de ${exercise.name}. El grupo tiene 72 horas para verificar a través de votación. Si nadie invalida tu registro, el récord queda confirmado.`,
+        result.counts_for_record ? '¡Reclamación enviada!' : 'Marca de práctica guardada',
+        result.counts_for_record
+          ? `Ahora eres el nuevo KOTH de ${exercise.name}. El grupo tiene 72 horas para verificar a través de votación. Si nadie invalida tu registro, el récord queda confirmado.`
+          : `Superaste el récord actual, pero como todavía estás en tu período de prueba no cuenta como récord real. Vuelve a intentarlo cuando termine tu protección.`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (err) {

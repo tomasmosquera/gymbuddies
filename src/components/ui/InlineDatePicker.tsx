@@ -58,9 +58,13 @@ export function InlineDatePicker({ value, onChange, label, minimumDate, maximumD
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.xs },
+  // alignItems: 'center' keeps this a compact, centered chip regardless of
+  // how wide the parent form is — without it, a plain column layout
+  // stretches this to the full row width, leaving the small date control
+  // (or the Android button) sitting left-aligned inside an oversized box.
+  container: { gap: spacing.xs, alignItems: 'center' },
   label: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-  androidWrapper: { gap: spacing.xs },
+  androidWrapper: { gap: spacing.xs, alignItems: 'center' },
   iosWrapper: {
     alignItems: 'center',
     backgroundColor: colors.surfaceAlt,

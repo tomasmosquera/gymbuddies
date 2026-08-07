@@ -17,6 +17,7 @@ import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
+import { CHECKIN_LOCATION_MISMATCH_METERS, distanceMeters } from '@/lib/domain/geo';
 import { REACTION_EMOJIS, aggregateReactionCounts } from '@/lib/domain/reactions';
 import type { CheckinReaction } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -222,6 +223,14 @@ function DayCheckinRow({
 }) {
   const hasCheckout = !!checkin.checkout_photo_path;
   const isShort = hasCheckout && checkin.workout_minutes !== null && checkin.workout_minutes < minWorkoutMinutes;
+  // Purely informational — members still vote if they want to invalidate a
+  // checkout taken away from where the check-in photo was captured.
+  const isLocationMismatch =
+    hasCheckout &&
+    checkin.checkout_latitude !== null &&
+    checkin.checkout_longitude !== null &&
+    distanceMeters(checkin.latitude, checkin.longitude, checkin.checkout_latitude, checkin.checkout_longitude) >
+      CHECKIN_LOCATION_MISMATCH_METERS;
 
   return (
     <View style={styles.checkinRow}>
@@ -261,6 +270,7 @@ function DayCheckinRow({
             <Text style={styles.calories}>🔥 {Math.round(checkin.active_energy_kcal)} kcal</Text>
           ) : null}
           {isShort ? <Badge label="Corto" tone="warning" /> : null}
+          {isLocationMismatch ? <Badge label="Ubicación distinta" tone="warning" /> : null}
         </View>
       ) : null}
       <ReactionRow

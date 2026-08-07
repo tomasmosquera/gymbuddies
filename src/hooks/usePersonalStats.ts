@@ -33,6 +33,11 @@ export interface NamedCount {
   count: number;
 }
 
+export interface EmojiCount {
+  emoji: string;
+  count: number;
+}
+
 export interface PersonalStats {
   fullName: string;
   currency: string;
@@ -88,6 +93,8 @@ export interface PersonalStats {
   reactionsReceivedTotal: number;
   mostReactedToByMe: NamedCount | null;
   mostReactedToMe: NamedCount | null;
+  mostSentEmoji: EmojiCount | null;
+  mostReceivedEmoji: EmojiCount | null;
 }
 
 const MONTHS_TO_SHOW = 12;
@@ -113,9 +120,9 @@ export function usePersonalStats(groupId: string | null, userId: string | null, 
   );
   // Raw (not pre-aggregated) so each member's own activation date can filter
   // out practice/pre-membership reactions before tallying below.
-  const [rawReactions, setRawReactions] = useState<{ giverId: string; giverName: string; recipientId: string; date: string }[]>(
-    []
-  );
+  const [rawReactions, setRawReactions] = useState<
+    { giverId: string; giverName: string; recipientId: string; date: string; emoji: string }[]
+  >([]);
   const [groupInfo, setGroupInfo] = useState<{ currency: string; requireCheckoutPhoto: boolean } | null>(null);
   const [extrasLoading, setExtrasLoading] = useState(true);
 
@@ -143,7 +150,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null, 
         .eq('group_id', groupId),
       supabase
         .from('checkin_reactions')
-        .select('user_id, created_at, checkin:checkins(user_id), profile:profiles!user_id(full_name)')
+        .select('user_id, emoji, created_at, checkin:checkins(user_id), profile:profiles!user_id(full_name)')
         .eq('group_id', groupId),
       supabase.from('groups').select('currency, require_checkout_photo').eq('id', groupId).single(),
     ]);
@@ -179,6 +186,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null, 
 
     const reactions = (reactionsRes.data ?? []) as unknown as {
       user_id: string;
+      emoji: string;
       created_at: string;
       checkin: { user_id: string } | null;
       profile: { full_name: string } | null;
@@ -191,6 +199,7 @@ export function usePersonalStats(groupId: string | null, userId: string | null, 
           giverName: r.profile?.full_name ?? 'Miembro',
           recipientId: r.checkin!.user_id,
           date: toZonedDateString(new Date(r.created_at), timezone),
+          emoji: r.emoji,
         }))
     );
 
@@ -402,6 +411,17 @@ export function usePersonalStats(groupId: string | null, userId: string | null, 
     for (const [fullName, count] of receivedByGiver) {
       if (!mostReactedToMe || count > mostReactedToMe.count) mostReactedToMe = { fullName, count };
     }
+    const topEmoji = (reactions: typeof myGivenReactions): EmojiCount | null => {
+      const byEmoji = new Map<string, number>();
+      for (const r of reactions) byEmoji.set(r.emoji, (byEmoji.get(r.emoji) ?? 0) + 1);
+      let best: EmojiCount | null = null;
+      for (const [emoji, count] of byEmoji) {
+        if (!best || count > best.count) best = { emoji, count };
+      }
+      return best;
+    };
+    const mostSentEmoji = topEmoji(myGivenReactions);
+    const mostReceivedEmoji = topEmoji(myReceivedReactions);
 
     return {
       fullName: me.fullName,
@@ -440,6 +460,8 @@ export function usePersonalStats(groupId: string | null, userId: string | null, 
       reactionsReceivedTotal: myReceivedReactions.length,
       mostReactedToByMe,
       mostReactedToMe,
+      mostSentEmoji,
+      mostReceivedEmoji,
     };
   }, [records, membersChallenges, checkinsByUser, penaltiesByUser, rawReactions, groupInfo, userId, timezone]);
 

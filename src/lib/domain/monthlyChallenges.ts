@@ -49,6 +49,19 @@ export interface MonthlyMemberContext {
   averageWorkoutMinutesInMonth: number;
   workoutSessionsWithDurationInMonth: number;
   isMostDurationThisMonth: boolean;
+  /** Distinct exercise ids this member became KOTH champion of this month (fresh claims only). */
+  kothClaimedExerciseIdsThisMonth: readonly string[];
+  /** True if this member successfully defended at least one KOTH claim (survived a real invalidate vote) decided this month. */
+  kothDefendedThisMonth: boolean;
+  /**
+   * True if this member had more "active" KOTH exercises this month
+   * (claimed fresh or successfully defended, see kothActiveExerciseIdsInMonth
+   * in koth.ts) than anyone else in the group — a record held passively with
+   * no activity this month doesn't count toward this, on purpose: otherwise
+   * whoever set a few very-hard-to-beat records would win this every month
+   * forever without doing anything new.
+   */
+  isKothKingThisMonth: boolean;
 }
 
 export interface MonthlyChallengeStatus {
@@ -445,5 +458,53 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
       if (ctx.workoutSessionsWithDurationInMonth < 3) return null;
       return ctx.averageWorkoutMinutesInMonth >= 40;
     },
+  },
+
+  // King of the Hill
+  {
+    id: 'corona-del-mes',
+    name: 'Corona del Mes',
+    emoji: '👑',
+    description: 'Reclamar al menos un récord de King of the Hill en el mes.',
+    xpPerOccurrence: 20,
+    monotonic: true,
+    evaluate: (ctx) => ctx.kothClaimedExerciseIdsThisMonth.length >= 1,
+  },
+  {
+    id: 'doble-corona-mensual',
+    name: 'Doble Corona',
+    emoji: '⭐',
+    description: 'Reclamar récords en 2 ejercicios distintos en el mismo mes.',
+    xpPerOccurrence: 40,
+    monotonic: true,
+    evaluate: (ctx) => ctx.kothClaimedExerciseIdsThisMonth.length >= 2,
+    progress: (ctx) => ({ current: ctx.kothClaimedExerciseIdsThisMonth.length, target: 2 }),
+  },
+  {
+    id: 'cazador-de-records',
+    name: 'Cazador de Récords',
+    emoji: '🎯',
+    description: 'Reclamar récords en 3 ejercicios distintos en el mismo mes.',
+    xpPerOccurrence: 60,
+    monotonic: true,
+    evaluate: (ctx) => ctx.kothClaimedExerciseIdsThisMonth.length >= 3,
+    progress: (ctx) => ({ current: ctx.kothClaimedExerciseIdsThisMonth.length, target: 3 }),
+  },
+  {
+    id: 'defensor-del-mes',
+    name: 'Defensor del Mes',
+    emoji: '🛡️',
+    description: 'Sobrevivir al menos una votación de invalidación de un récord en el mes.',
+    xpPerOccurrence: 30,
+    monotonic: true,
+    evaluate: (ctx) => ctx.kothDefendedThisMonth,
+  },
+  {
+    id: 'rey-del-mes',
+    name: 'Rey del Mes',
+    emoji: '🏆',
+    description: 'Terminar el mes con más récords activos (reclamados o defendidos ese mismo mes) que cualquier otro del grupo.',
+    xpPerOccurrence: 80,
+    evaluate: (ctx) => ctx.isKothKingThisMonth,
   },
 ];

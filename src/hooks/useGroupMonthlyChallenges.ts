@@ -17,6 +17,7 @@ import {
   type MonthlyChallengeStatus,
   type MonthlyMemberContext,
 } from '@/lib/domain/monthlyChallenges';
+import { kothActiveExerciseIdsInMonth, kothClaimedExerciseIdsInMonth, kothDefendedInMonth, type KothClaimFact } from '@/lib/domain/koth';
 
 export interface MemberMonthlyChallenges {
   userId: string;
@@ -51,6 +52,7 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
   const [rawReactions, setRawReactions] = useState<{ giverId: string; recipientId: string; date: string }[]>([]);
   const [workoutMinutesByUser, setWorkoutMinutesByUser] = useState<Map<string, { date: string; minutes: number }[]>>(new Map());
   const [useDurationTiebreak, setUseDurationTiebreak] = useState(false);
+  const [kothClaims, setKothClaims] = useState<KothClaimFact[]>([]);
   const [extrasLoading, setExtrasLoading] = useState(true);
 
   const refreshExtras = useCallback(async () => {
@@ -59,13 +61,14 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
       setRawReactions([]);
       setWorkoutMinutesByUser(new Map());
       setUseDurationTiebreak(false);
+      setKothClaims([]);
       setExtrasLoading(false);
       return;
     }
     setExtrasLoading(true);
     const todayString = toZonedDateString(new Date(), timezone);
 
-    const [resultsRes, reactionsRes, checkinsRes, groupRes] = await Promise.all([
+    const [resultsRes, reactionsRes, checkinsRes, groupRes, kothClaimsRes] = await Promise.all([
       supabase
         .from('weekly_evaluation_results')
         .select('user_id, failed_days, penalty_charged, penalty_protected, run:weekly_evaluation_runs(week_start_date)')
@@ -78,8 +81,34 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
         .lte('checkin_date', todayString)
         .not('workout_minutes', 'is', null),
       supabase.from('groups').select('require_checkout_photo').eq('id', groupId).single(),
+      // counts_for_record excludes practice claims made during a member's
+      // protection period — see 0084_koth_respects_protection.sql.
+      supabase
+        .from('koth_claims')
+        .select('id, exercise_id, user_id, metric_type, status, created_at, decided_at')
+        .eq('group_id', groupId)
+        .eq('counts_for_record', true),
     ]);
     setUseDurationTiebreak(groupRes.data?.require_checkout_photo ?? false);
+
+    const kothClaimIds = (kothClaimsRes.data ?? []).map((c) => c.id);
+    const kothVotesRes =
+      kothClaimIds.length > 0
+        ? await supabase.from('koth_claim_votes').select('claim_id, vote').in('claim_id', kothClaimIds)
+        : { data: [] as { claim_id: string; vote: string }[] };
+    const challengedClaimIds = new Set((kothVotesRes.data ?? []).filter((v) => v.vote === 'yes').map((v) => v.claim_id));
+    setKothClaims(
+      (kothClaimsRes.data ?? []).map((c) => ({
+        id: c.id,
+        exerciseId: c.exercise_id,
+        userId: c.user_id,
+        metricType: c.metric_type,
+        status: c.status,
+        createdAt: c.created_at,
+        decidedAt: c.decided_at,
+        wasChallenged: challengedClaimIds.has(c.id),
+      }))
+    );
 
     const nextWorkoutMinutes = new Map<string, { date: string; minutes: number }[]>();
     for (const c of checkinsRes.data ?? []) {
@@ -218,6 +247,11 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
         determineTopByCount(records.map((m) => ({ userId: m.userId, count: totalDurationInMonthByUserId.get(m.userId) ?? 0 })))
       );
       const mvpTallyThisMonth = mvpTallyByMonth.get(month) ?? new Map<string, number>();
+      const kothKingThisMonth = new Set(
+        determineTopByCount(
+          records.map((m) => ({ userId: m.userId, count: kothActiveExerciseIdsInMonth(kothClaims, m.userId, month).length }))
+        )
+      );
 
       const byUser = new Map<string, MonthlyMemberContext>();
       for (const m of records) {
@@ -249,6 +283,9 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
           averageWorkoutMinutesInMonth: durations.length > 0 ? totalWorkoutMinutesInMonth / durations.length : 0,
           workoutSessionsWithDurationInMonth: durations.length,
           isMostDurationThisMonth: mostDuration.has(m.userId),
+          kothClaimedExerciseIdsThisMonth: kothClaimedExerciseIdsInMonth(kothClaims, m.userId, month),
+          kothDefendedThisMonth: kothDefendedInMonth(kothClaims, m.userId, month),
+          isKothKingThisMonth: kothKingThisMonth.has(m.userId),
         });
       }
       contextsByMonthByUser.set(month, byUser);
@@ -283,7 +320,7 @@ export function useGroupMonthlyChallenges(groupId: string | null, timezone: stri
       }
       return { userId: m.userId, fullName: m.fullName, statusesById, totalXp };
     });
-  }, [records, groupCreatedDate, closedWeeksByUser, rawReactions, workoutMinutesByUser, useDurationTiebreak, timezone]);
+  }, [records, groupCreatedDate, closedWeeksByUser, rawReactions, workoutMinutesByUser, useDurationTiebreak, kothClaims, timezone]);
 
   return { membersChallenges, isLoading: recordsLoading || extrasLoading, refresh };
 }

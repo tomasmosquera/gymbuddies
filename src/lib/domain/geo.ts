@@ -1,5 +1,8 @@
 const EARTH_RADIUS_METERS = 6371000;
 
+/** Informational threshold for flagging a checkout photo taken far from the checkin photo's location — see the "Ubicación distinta" badge on DayCheckinRow/home. Not a validity rule by itself; members still vote if they want to invalidate. */
+export const CHECKIN_LOCATION_MISMATCH_METERS = 300;
+
 function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }
