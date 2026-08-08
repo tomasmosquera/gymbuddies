@@ -11,8 +11,8 @@ export interface LockedLocation {
 
 export type LocationLockStatus = 'idle' | 'requesting' | 'locked' | 'denied' | 'error';
 
-const HIGH_ACCURACY_ATTEMPTS = 2;
 const BALANCED_ACCURACY_ATTEMPTS = 2;
+const HIGH_ACCURACY_ATTEMPTS = 1;
 const RETRY_DELAY_MS = 1000;
 
 function delay(ms: number): Promise<void> {
@@ -20,24 +20,21 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * iOS's CoreLocation frequently fails a single fix attempt indoors (gyms are
- * usually indoor/concrete, weakening GPS signal) with kCLErrorLocationUnknown
- * — Apple's own docs call this transient and say to just try again. Retries
- * a couple of times at high accuracy, then falls back to balanced accuracy
- * (which also leans on WiFi/cell triangulation, often available indoors even
- * when GPS satellites aren't) before finally giving up.
+ * Balanced accuracy first, not high — Balanced can be satisfied by WiFi/cell
+ * triangulation (fast, works indoors), while High demands a GPS-grade fix,
+ * which is exactly what's slow/unreliable indoors in the first place (gyms
+ * are usually indoor/concrete, weakening GPS signal; iOS's CoreLocation
+ * frequently fails a single high-accuracy attempt indoors with
+ * kCLErrorLocationUnknown — Apple's own docs call this transient). The old
+ * order paid for up to two slow, likely-to-fail GPS attempts on every indoor
+ * check-in before ever trying the method that actually works there. Nothing
+ * downstream (submit_checkin, the "Ubicación distinta" badge, the checkout
+ * geofence) needs GPS-grade precision — Balanced's tens-of-meters accuracy
+ * is already well inside the 100-300m thresholds those use. High accuracy is
+ * now only a single last-resort attempt if Balanced fails outright.
  */
 async function getCurrentPositionWithFallback(): Promise<Location.LocationObject> {
   let lastError: unknown;
-
-  for (let attempt = 0; attempt < HIGH_ACCURACY_ATTEMPTS; attempt++) {
-    try {
-      return await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    } catch (err) {
-      lastError = err;
-      if (attempt < HIGH_ACCURACY_ATTEMPTS - 1) await delay(RETRY_DELAY_MS);
-    }
-  }
 
   for (let attempt = 0; attempt < BALANCED_ACCURACY_ATTEMPTS; attempt++) {
     try {
@@ -45,6 +42,15 @@ async function getCurrentPositionWithFallback(): Promise<Location.LocationObject
     } catch (err) {
       lastError = err;
       if (attempt < BALANCED_ACCURACY_ATTEMPTS - 1) await delay(RETRY_DELAY_MS);
+    }
+  }
+
+  for (let attempt = 0; attempt < HIGH_ACCURACY_ATTEMPTS; attempt++) {
+    try {
+      return await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+    } catch (err) {
+      lastError = err;
+      if (attempt < HIGH_ACCURACY_ATTEMPTS - 1) await delay(RETRY_DELAY_MS);
     }
   }
 

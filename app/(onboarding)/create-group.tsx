@@ -25,6 +25,11 @@ const YES_NO_OPTIONS: { key: 'yes' | 'no'; label: string }[] = [
   { key: 'yes', label: 'Sí' },
 ];
 
+// UI-only gate — hides the toggle for everyone else. The real authority is
+// server-side (create_group checks profiles.is_platform_admin), so this
+// never needs to be kept in sync with anything beyond "who sees the option".
+const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
+
 const PAYOUT_MODE_OPTIONS: { key: PayoutMode; label: string }[] = (
   ['cooperative', 'league', 'mixed'] as const
 ).map((key) => ({ key, label: PAYOUT_MODE_LABELS[key] }));
@@ -71,8 +76,11 @@ export default function CreateGroupScreen() {
   const [hasGameStartDate, setHasGameStartDate] = useState<'yes' | 'no'>('no');
   const [gameStartsAtDate, setGameStartsAtDate] = useState(new Date());
   const [timezone, setTimezone] = useState(DEFAULT_GROUP_TIMEZONE);
+  const [isPublic, setIsPublic] = useState<'yes' | 'no'>('no');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const canMakePublic = session?.user.email === PLATFORM_ADMIN_EMAIL;
 
   const handleSubmit = async () => {
     const result = createGroupSchema.safeParse({
@@ -92,6 +100,7 @@ export default function CreateGroupScreen() {
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
       gameStartsAt: hasGameStartDate === 'yes' ? toZonedDateString(gameStartsAtDate, timezone) : '',
       timezone,
+      isPublic: canMakePublic && isPublic === 'yes',
     });
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
@@ -119,6 +128,7 @@ export default function CreateGroupScreen() {
         p_mixed_league_share_percent: result.data.mixedLeagueSharePercent,
         p_game_starts_at: result.data.gameStartsAt || null,
         p_timezone: result.data.timezone,
+        p_is_public: result.data.isPublic,
       });
       if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el grupo');
       setActiveGroupId(data.id);
@@ -162,6 +172,16 @@ export default function CreateGroupScreen() {
           <SectionLabel>INFORMACIÓN BÁSICA</SectionLabel>
           <Card style={styles.section}>
             <TextField label="Nombre del grupo" value={name} onChangeText={setName} error={errors.name} />
+            {canMakePublic ? (
+              <View style={styles.toggleField}>
+                <Text style={styles.toggleLabel}>¿Grupo público?</Text>
+                <Text style={styles.toggleHint}>
+                  Cualquiera podrá encontrarlo y unirse desde &ldquo;Mis grupos → Unirme a un grupo público&rdquo;, sin
+                  código de invitación.
+                </Text>
+                <SegmentedControl options={YES_NO_OPTIONS} value={isPublic} onChange={setIsPublic} />
+              </View>
+            ) : null}
           </Card>
         </View>
 

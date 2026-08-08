@@ -40,6 +40,8 @@ export type Profile = {
   apple_health_prompted_at: string | null;
   /** When true (default), a check-in/checkout in one group also gets created in every other group the user actively belongs to — see set_auto_checkin_other_groups. */
   auto_checkin_other_groups: boolean;
+  /** Grants the ability to create/mark groups public — set once via a one-off migration, not client-settable. See list_public_groups/create_group/admin_set_group_public. */
+  is_platform_admin: boolean;
   created_at: string;
 };
 
@@ -79,7 +81,22 @@ export type Group = {
   mixed_league_share_percent: number;
   /** Group-wide floor under every member's activated_at, set at creation — "we're creating the group today but really start playing on Aug 15". Null means no delay (existing behavior). */
   game_starts_at: string | null;
+  /** Discoverable via list_public_groups and joinable without an invite code (join_public_group) — only a platform admin can set this, at creation or later via admin_set_group_public. */
+  is_public: boolean;
   created_at: string;
+};
+
+/** Curated row shape returned by list_public_groups — a deliberately narrower view of Group (no invite_code/admin_payment_info/admin_id) plus a computed member_count. */
+export type PublicGroupListing = {
+  id: string;
+  name: string;
+  currency: string;
+  payout_mode: PayoutMode;
+  min_days_per_week: number;
+  penalty_amount: number;
+  initial_deposit_amount: number;
+  timezone: string;
+  member_count: number;
 };
 
 export type LeagueCycle = {
@@ -464,10 +481,24 @@ export type Database = {
           p_mixed_league_share_percent?: number;
           p_game_starts_at?: string | null;
           p_timezone?: string;
+          p_is_public?: boolean;
         };
         Returns: Group;
       };
       join_group: { Args: { p_invite_code: string }; Returns: GroupMember };
+      join_public_group: { Args: { p_group_id: string }; Returns: GroupMember };
+      list_public_groups: {
+        Args: {
+          p_search?: string | null;
+          p_payout_mode?: PayoutMode | null;
+          p_max_initial_deposit?: number | null;
+          p_max_penalty_amount?: number | null;
+          p_max_min_days_per_week?: number | null;
+          p_timezone?: string | null;
+        };
+        Returns: PublicGroupListing[];
+      };
+      admin_set_group_public: { Args: { p_group_id: string; p_is_public: boolean }; Returns: Group };
       leave_group: { Args: { p_group_id: string; p_immediate?: boolean }; Returns: GroupMember };
       cancel_leave_request: { Args: { p_group_id: string }; Returns: GroupMember };
       propose_rule_change: {

@@ -180,10 +180,12 @@ export function tallyMonth(daysInMonth: readonly MonthlyDayRecord[]): MonthTally
 
 /**
  * The (possibly joint) week MVP(s): ranked the same way as everything else
- * now — consistency percent first, workout duration only as a tiebreak, and
- * only when `useDurationTiebreak` is true (the group requires checkout
- * photos, the sole way duration is ever recorded). Money never factors in;
- * when duration isn't available (or still ties), the MVP is fully shared.
+ * now — GB Score first (see rankMembersByConsistency/gbScore — NOT the raw
+ * consistency percent, so e.g. 5-for-5 outranks 4-for-4 despite both being
+ * "100%"), workout duration only as a tiebreak, and only when
+ * `useDurationTiebreak` is true (the group requires checkout photos, the
+ * sole way duration is ever recorded). Money never factors in; when duration
+ * isn't available (or still ties), the MVP is fully shared.
  */
 export function determineWeekMvps(
   entries: readonly { userId: string; completedCount: number; failedCount: number; totalWorkoutMinutes: number }[],

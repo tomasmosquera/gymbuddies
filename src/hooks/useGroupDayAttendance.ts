@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { toZonedDateString } from '@/lib/domain/dateUtils';
-import { classifyMemberDay, rankMembersByConsistency } from '@/lib/domain/attendance';
+import { classifyMemberDay, gbScore, rankMembersByConsistency } from '@/lib/domain/attendance';
 import type { CheckinReaction } from '@/lib/supabase/types';
 import type { GroupCheckinWithProfile } from './useGroupWeekCheckins';
 
@@ -21,6 +21,8 @@ export interface MemberAttendance {
   failedCount: number;
   activeDaysCount: number;
   dailyStatus: Record<string, 'completed' | 'excused' | 'failed'>;
+  /** Wilson score lower bound (70% confidence) on completedCount/(completedCount+failedCount) — what members are actually ranked/sorted by here, not the raw ratio. See gbScore. */
+  gbScore: number | null;
 }
 
 function sumWorkoutMinutes(checkins: readonly GroupCheckinWithProfile[], userId: string): number {
@@ -228,6 +230,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         failedCount,
         activeDaysCount,
         dailyStatus,
+        gbScore: gbScore(completedCount, failedCount),
       };
     });
 

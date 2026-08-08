@@ -1,20 +1,69 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { TimezonePicker } from '@/components/ui/TimezonePicker';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { supabase } from '@/lib/supabase/client';
 import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
 import { colors, spacing, typography } from '@/constants/theme';
 
+const YES_NO_OPTIONS: { key: 'yes' | 'no'; label: string }[] = [
+  { key: 'no', label: 'No' },
+  { key: 'yes', label: 'Sí' },
+];
+
+// UI-only gate, same as create-group.tsx — the real authority is server-side
+// (admin_set_group_public checks profiles.is_platform_admin).
+const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
+
 export default function AdminEditGroupScreen() {
+  const { session } = useAuth();
   const { group, refresh } = useActiveGroup();
   const [name, setName] = useState(group?.name ?? '');
   const [adminPaymentInfo, setAdminPaymentInfo] = useState(group?.admin_payment_info ?? '');
   const [timezone, setTimezone] = useState(group?.timezone ?? DEFAULT_GROUP_TIMEZONE);
+  const [isPublic, setIsPublic] = useState(group?.is_public ?? false);
+  const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const canManagePublic = session?.user.email === PLATFORM_ADMIN_EMAIL;
+
+  const applyPublicToggle = async (nextValue: boolean) => {
+    if (!group) return;
+    setIsTogglingPublic(true);
+    try {
+      const { error } = await supabase.rpc('admin_set_group_public', {
+        p_group_id: group.id,
+        p_is_public: nextValue,
+      });
+      if (error) throw new Error(error.message);
+      setIsPublic(nextValue);
+      await refresh();
+    } catch (err) {
+      Alert.alert('No se pudo cambiar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsTogglingPublic(false);
+    }
+  };
+
+  const handleTogglePublic = (next: 'yes' | 'no') => {
+    if (next === 'no') {
+      applyPublicToggle(false);
+      return;
+    }
+    Alert.alert(
+      'Hacer público',
+      'Cualquier persona va a poder encontrar este grupo y unirse desde "Mis grupos → Unirme a un grupo público", sin código de invitación. ¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Hacer público', onPress: () => applyPublicToggle(true) },
+      ]
+    );
+  };
 
   const saveChanges = async () => {
     if (!group) return;
@@ -78,6 +127,21 @@ export default function AdminEditGroupScreen() {
             </Text>
             <TimezonePicker value={timezone} onChange={setTimezone} />
           </View>
+          {canManagePublic ? (
+            <View style={styles.timezoneSection}>
+              <Text style={styles.timezoneLabel}>Grupo público</Text>
+              <Text style={styles.timezoneHint}>
+                Se aplica de inmediato — visible y unible desde &ldquo;Mis grupos → Unirme a un grupo público&rdquo;, sin
+                código de invitación.
+              </Text>
+              <SegmentedControl
+                options={YES_NO_OPTIONS}
+                value={isPublic ? 'yes' : 'no'}
+                onChange={handleTogglePublic}
+              />
+              {isTogglingPublic ? <ActivityIndicator color={colors.primary} /> : null}
+            </View>
+          ) : null}
           <Button label="Guardar cambios" onPress={handleSubmit} loading={isSubmitting} />
           <Button
             label="Cancelar"

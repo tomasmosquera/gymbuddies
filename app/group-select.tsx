@@ -66,6 +66,11 @@ export default function GroupSelectScreen() {
             onPress={() => router.push('/create-group')}
           />
           <Button label="Unirme con un código" variant="secondary" onPress={() => router.push('/join-group')} />
+          <Button
+            label="Unirme a un grupo público"
+            variant="secondary"
+            onPress={() => router.push('/browse-public-groups')}
+          />
         </View>
       }
     />

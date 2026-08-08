@@ -59,6 +59,7 @@ export const createGroupSchema = z.object({
     .optional()
     .or(z.literal('')),
   timezone: z.string().min(1, 'Selecciona un timezone').default(DEFAULT_GROUP_TIMEZONE),
+  isPublic: z.boolean().default(false),
 });
 
 export const joinGroupSchema = z.object({

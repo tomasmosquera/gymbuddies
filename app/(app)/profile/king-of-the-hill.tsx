@@ -61,7 +61,7 @@ export default function KingOfTheHillScreen() {
           {entries.map(({ exercise, claim }) => (
             <Pressable
               key={exercise.id}
-              style={styles.exerciseRow}
+              style={[styles.exerciseRow, claim && styles.exerciseRowActive]}
               onPress={() =>
                 router.push({ pathname: '/profile/king-of-the-hill-exercise', params: { exerciseId: exercise.id } })
               }
@@ -107,8 +107,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surfaceAlt,
   },
+  exerciseRowActive: { borderColor: colors.primary, backgroundColor: 'rgba(61, 220, 151, 0.1)' },
   exerciseInfo: { flex: 1, gap: 2 },
   exerciseName: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  exerciseHolder: { color: colors.textMuted, fontSize: 13 },
+  exerciseHolder: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   exerciseVacant: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
 });

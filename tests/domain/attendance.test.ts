@@ -2,6 +2,7 @@ import {
   classifyMemberDay,
   consistencyPercent,
   determineTopRanked,
+  gbScore,
   rankMembersByConsistency,
   tallyAttendance,
 } from '@/lib/domain/attendance';
@@ -67,7 +68,47 @@ describe('consistencyPercent', () => {
   });
 });
 
+describe('gbScore', () => {
+  it('is null with no decided days', () => {
+    expect(gbScore(0, 0)).toBeNull();
+  });
+
+  it('scores a small perfect sample lower than a larger, slightly imperfect one — the whole point of using it over raw percent', () => {
+    const fewDaysPerfect = gbScore(4, 0);
+    const manyDaysMostlyPerfect = gbScore(22, 3);
+    expect(fewDaysPerfect).not.toBeNull();
+    expect(manyDaysMostlyPerfect).not.toBeNull();
+    expect(fewDaysPerfect!).toBeLessThan(manyDaysMostlyPerfect!);
+  });
+
+  it('is always <= the raw consistency percent (the lower-bound property)', () => {
+    expect(gbScore(4, 0)!).toBeLessThanOrEqual(consistencyPercent(4, 0)!);
+    expect(gbScore(22, 3)!).toBeLessThanOrEqual(consistencyPercent(22, 3)!);
+    expect(gbScore(9, 1)!).toBeLessThanOrEqual(consistencyPercent(9, 1)!);
+  });
+
+  it('converges toward the raw percent as the sample grows, for the same ratio', () => {
+    const small = gbScore(9, 1)!; // 90%, n=10
+    const large = gbScore(90, 10)!; // 90%, n=100
+    expect(large).toBeGreaterThan(small);
+    expect(consistencyPercent(90, 10)! - large).toBeLessThan(consistencyPercent(9, 1)! - small);
+  });
+});
+
 describe('rankMembersByConsistency', () => {
+  it('ranks a larger, slightly-imperfect track record above a tiny perfect one — GB Score, not raw percent, drives order', () => {
+    const rank = rankMembersByConsistency(
+      [
+        { userId: 'newcomer', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 0 },
+        { userId: 'veteran', completedCount: 22, failedCount: 3, totalWorkoutMinutes: 0 },
+      ],
+      false
+    );
+    expect(rank.get('veteran')).toBe(1);
+    expect(rank.get('newcomer')).toBe(2);
+  });
+
+
   it('ranks by percent alone when duration tiebreak is off, sharing ties', () => {
     const rank = rankMembersByConsistency(
       [

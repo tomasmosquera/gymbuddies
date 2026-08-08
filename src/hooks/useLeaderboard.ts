@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
-import { consistencyPercent, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
+import { consistencyPercent, gbScore, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
 import { daysPresentInWeek } from '@/lib/domain/weeklyEvaluation';
 import { useGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
 
@@ -12,13 +12,15 @@ export interface LeaderboardRow {
   fullName: string;
   completedDays: number;
   failedDays: number;
-  /** completedDays / (completedDays + failedDays) — null until this member has any decided day yet. */
+  /** completedDays / (completedDays + failedDays) — null until this member has any decided day yet. Purely informational; see gbScore for what actually drives rank. */
   consistencyPercent: number | null;
+  /** Wilson score lower bound (70% confidence) on the same ratio — what `rank` below is actually sorted by. Rewards a track record backed by more days, not just a high ratio over few of them. */
+  gbScore: number | null;
   /** Money charged this period (or, for the still-open current week, a live projection) — never negative. Never used for ranking. */
   chargedAmount: number;
   /** Sum of workout minutes in this period — always 0 if the group doesn't require checkout photos, since duration is never recorded then. */
   totalWorkoutMinutes: number;
-  /** 1-based rank by consistency percent, then (only if the group requires checkout photos) total workout duration. Ties share a rank; money never factors in. */
+  /** 1-based rank by GB Score, then (only if the group requires checkout photos) total workout duration. Ties share a rank; money never factors in. */
   rank: number;
   /** True right now if this member's penalty_start_date is still in the future — so a $0 charge reads as "protected", not "perfect". */
   penaltyProtectedUntil: string | null;
@@ -57,8 +59,8 @@ function daysRemainingInWeek(weekEnd: string, todayString: string): number {
  * view already applies (see src/lib/domain/attendance.ts), so the two screens
  * can never show different numbers for "how many days did you fail" again.
  *
- * Ranking itself is by consistency percent alone (never balance/money) —
- * see rankMembersByConsistency. chargedAmount is purely informational: how
+ * Ranking itself is by GB Score alone (never balance/money) — see
+ * rankMembersByConsistency. chargedAmount is purely informational: how
  * much money this member owes for this period (frozen weekly_evaluation_results
  * for closed weeks, a live guaranteed-misses-only projection for the still-open
  * current week, converted to money via the group's penalty_amount/weekly_penalty_cap).
@@ -237,6 +239,7 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
           completedDays: tally.completedCount,
           failedDays: tally.failedCount,
           consistencyPercent: consistencyPercent(tally.completedCount, tally.failedCount),
+          gbScore: gbScore(tally.completedCount, tally.failedCount),
           chargedAmount: chargedAmountFn(m),
           totalWorkoutMinutes,
           penaltyProtectedUntil: m.penaltyStartDate && m.penaltyStartDate > todayString ? m.penaltyStartDate : null,

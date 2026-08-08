@@ -108,12 +108,24 @@ describe('determineWeekMvps', () => {
     ).toEqual(['a']);
   });
 
-  it('shares the MVP on a percent tie when duration tiebreak is off (group has no checkout photos)', () => {
+  it('a raw-percent tie (both 100%) is NOT a GB Score tie — more decided days wins outright, duration or not', () => {
+    expect(
+      determineWeekMvps(
+        [
+          { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 999 },
+          { userId: 'b', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 10 },
+        ],
+        false
+      )
+    ).toEqual(['b']);
+  });
+
+  it('genuinely shares the MVP when GB Score, not just raw percent, ties (same completed/failed count)', () => {
     expect(
       determineWeekMvps(
         [
           { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 10 },
-          { userId: 'b', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 999 },
+          { userId: 'b', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 999 },
         ],
         false
       )

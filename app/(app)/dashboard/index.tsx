@@ -17,6 +17,7 @@ import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
+import { GB_SCORE_EXPLANATION_BODY, GB_SCORE_EXPLANATION_TITLE } from '@/lib/domain/attendance';
 import { CHECKIN_LOCATION_MISMATCH_METERS, distanceMeters } from '@/lib/domain/geo';
 import { REACTION_EMOJIS, aggregateReactionCounts } from '@/lib/domain/reactions';
 import type { CheckinReaction } from '@/lib/supabase/types';
@@ -416,6 +417,7 @@ function MemberRow({
           ) : null}
           {member.failedCount > 0 ? <Text style={[styles.dayStat, styles.dayStatBad]}>{member.failedCount} ✗</Text> : null}
           {compliancePercent !== null ? <Text style={styles.dayStatTotal}>{compliancePercent}%</Text> : null}
+          {member.gbScore !== null ? <Text style={styles.dayStatGbScore}>GB {member.gbScore}%</Text> : null}
         </View>
       </Pressable>
       {isExpanded ? (
@@ -628,9 +630,16 @@ export default function DashboardScreen() {
       </Card>
       <SegmentedControl options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
       {viewMode !== 'calendar' ? (
-        <Text style={styles.sectionTitle}>
-          {viewMode === 'days' ? 'Por día — toca uno para ver las fotos' : 'Por miembro'}
-        </Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>
+            {viewMode === 'days' ? 'Por día — toca uno para ver las fotos' : 'Por miembro (ordenado por GB Score)'}
+          </Text>
+          {viewMode === 'members' ? (
+            <Pressable onPress={() => Alert.alert(GB_SCORE_EXPLANATION_TITLE, GB_SCORE_EXPLANATION_BODY)} hitSlop={8}>
+              <Text style={styles.gbInfoLink}>ⓘ ¿Qué es el GB Score?</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : (
         <Text style={styles.sectionTitle}>Toca un día para ver quién entrenó</Text>
       )}
@@ -850,7 +859,9 @@ const styles = StyleSheet.create({
   summaryTitle: { ...typography.heading, fontSize: 15, color: colors.text },
   compliance: { ...typography.title, color: colors.primary },
   summaryHint: { color: colors.textMuted, fontSize: 13 },
+  sectionTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
   sectionTitle: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  gbInfoLink: { color: colors.textMuted, fontSize: 12, textDecorationLine: 'underline' },
   dayCard: { gap: spacing.sm },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dayLabel: { color: colors.text, fontWeight: '700', fontSize: 15, flexShrink: 1 },
@@ -860,6 +871,7 @@ const styles = StyleSheet.create({
   dayStatNeutral: { color: colors.warning },
   dayStatBad: { color: colors.danger },
   dayStatTotal: { color: colors.textMuted, fontSize: 13 },
+  dayStatGbScore: { color: colors.text, fontSize: 13, fontWeight: '700' },
   checkinsList: { gap: spacing.md, marginTop: spacing.xs },
   memberDayRow: {
     flexDirection: 'row',

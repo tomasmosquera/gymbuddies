@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
+import { GB_SCORE_EXPLANATION_BODY, GB_SCORE_EXPLANATION_TITLE } from '@/lib/domain/attendance';
 import type { LastClosedWeekSummary, LeaderboardPeriod, LeaderboardRow } from '@/hooks/useLeaderboard';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -42,6 +43,10 @@ function getInitials(fullName: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+function explainGbScore() {
+  Alert.alert(GB_SCORE_EXPLANATION_TITLE, GB_SCORE_EXPLANATION_BODY);
+}
+
 export function LeaderboardCard({
   rowsByPeriod,
   lastClosedWeek,
@@ -60,6 +65,9 @@ export function LeaderboardCard({
         <Text style={styles.title}>Ranking del grupo</Text>
         {isRefreshing ? <ActivityIndicator size="small" color={colors.primary} /> : null}
       </View>
+      <Pressable onPress={explainGbScore} hitSlop={8}>
+        <Text style={styles.gbInfoLink}>ⓘ ¿Qué es el GB Score?</Text>
+      </Pressable>
       {period === 'week' && viewedWeekLabel ? <Text style={styles.viewedWeekLabel}>Semana del {viewedWeekLabel}</Text> : null}
 
       {lastClosedWeek ? (
@@ -89,6 +97,7 @@ export function LeaderboardCard({
             <Text style={styles.headerLabel}>✓</Text>
             <Text style={styles.headerLabel}>✗</Text>
             <Text style={styles.headerLabel}>%</Text>
+            <Text style={styles.headerLabel}>GB</Text>
           </View>
           <View style={styles.list}>
             {(() => {
@@ -119,6 +128,7 @@ export function LeaderboardCard({
                     <Text style={[styles.stat, styles.statPercent]}>
                       {row.consistencyPercent !== null ? `${row.consistencyPercent}%` : '—'}
                     </Text>
+                    <Text style={[styles.stat, styles.statGbScore]}>{row.gbScore !== null ? `${row.gbScore}%` : '—'}</Text>
                   </View>
                 );
               });
@@ -134,6 +144,7 @@ const styles = StyleSheet.create({
   card: { gap: spacing.sm },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { ...typography.heading, color: colors.text },
+  gbInfoLink: { color: colors.textMuted, fontSize: 12, textDecorationLine: 'underline' },
   viewedWeekLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   lastWeekBanner: {
     backgroundColor: colors.surfaceAlt,
@@ -161,4 +172,5 @@ const styles = StyleSheet.create({
   statGood: { color: colors.success },
   statBad: { color: colors.danger },
   statPercent: { color: colors.primary },
+  statGbScore: { color: colors.text },
 });

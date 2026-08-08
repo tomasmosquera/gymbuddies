@@ -25,6 +25,7 @@ export function MoneyField({ label, hint, value, onChangeValue, defaultValue, er
       value={formatThousands(value)}
       onChangeText={(text) => onChangeValue(text.replace(/[^0-9]/g, ''))}
       keyboardType="numeric"
+      returnKeyType="done"
       placeholder={defaultValue !== undefined ? defaultValue.toLocaleString('es-CO') : undefined}
       error={error}
     />
