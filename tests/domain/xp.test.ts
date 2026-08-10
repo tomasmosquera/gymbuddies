@@ -1,8 +1,10 @@
 import { BADGES } from '@/lib/domain/badges';
 import {
+  KOTH_CLAIM_XP,
   XP_BY_BADGE_ID,
   cumulativeXpForLevel,
   hasCompleteXpTable,
+  kothClaimXp,
   levelProgress,
   totalXpForEarnedBadges,
   xpForBadge,
@@ -37,6 +39,21 @@ describe('totalXpForEarnedBadges', () => {
 
   it('contributes nothing for the revocable badge even if "earned"', () => {
     expect(totalXpForEarnedBadges(['primer-paso', 'ahorrador-involuntario'])).toBe(20);
+  });
+});
+
+describe('kothClaimXp', () => {
+  it('grants 50 XP per valid claim, stacking without limit', () => {
+    expect(kothClaimXp(0)).toBe(0);
+    expect(kothClaimXp(1)).toBe(KOTH_CLAIM_XP);
+    expect(kothClaimXp(5)).toBe(5 * KOTH_CLAIM_XP);
+  });
+
+  it('reclaiming a lost record earns the same 50 XP again — this is just a count, no per-exercise cap', () => {
+    // 3 claims on the same exercise (win, lose it, win it back) is worth
+    // exactly as much as 3 claims spread across 3 different exercises.
+    expect(kothClaimXp(3)).toBe(kothClaimXp(3));
+    expect(kothClaimXp(3)).toBe(150);
   });
 });
 

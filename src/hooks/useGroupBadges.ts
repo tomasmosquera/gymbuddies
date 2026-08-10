@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { toZonedDateString, toZonedHour } from '@/lib/domain/dateUtils';
 import { useGroupAttendanceRecords } from '@/hooks/useGroupAttendanceRecords';
 import { BADGES, type BadgeContext, type BadgeStatus } from '@/lib/domain/badges';
-import { levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
+import { kothClaimXp, levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
 import { isKothGroupFounder, kothReclaimedThroneCount, type KothClaimFact } from '@/lib/domain/koth';
 import { useGroupMonthlyChallenges } from '@/hooks/useGroupMonthlyChallenges';
 import type { MonthlyChallengeStatus } from '@/lib/domain/monthlyChallenges';
@@ -245,13 +245,14 @@ export function useGroupBadges(groupId: string | null, timezone: string) {
       }
       const monthly = monthlyByUserId.get(m.userId);
       const lifetimeXp = totalXpForEarnedBadges(earnedBadgeIds);
+      const kothValidClaimCount = ctx.kothClaims.filter((c) => c.status === 'valid').length;
       return {
         userId: m.userId,
         fullName: m.fullName,
         statuses,
         earnedCount: earnedBadgeIds.length,
         monthlyStatuses: monthly?.statusesById ?? {},
-        level: levelProgress(lifetimeXp + (monthly?.totalXp ?? 0)),
+        level: levelProgress(lifetimeXp + (monthly?.totalXp ?? 0) + kothClaimXp(kothValidClaimCount)),
       };
     });
   }, [

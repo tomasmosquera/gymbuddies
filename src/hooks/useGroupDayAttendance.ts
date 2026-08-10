@@ -49,6 +49,9 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
   const [days, setDays] = useState<DayAttendance[]>([]);
   const [members, setMembers] = useState<MemberAttendance[]>([]);
   const [checkinsByDate, setCheckinsByDate] = useState<Map<string, GroupCheckinWithProfile[]>>(new Map());
+  const [excusedMembersByDate, setExcusedMembersByDate] = useState<Map<string, { user_id: string; full_name: string }[]>>(
+    new Map()
+  );
   const [reactionsByCheckinId, setReactionsByCheckinId] = useState<Map<string, CheckinReaction[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   // Separate from isLoading: only a manual pull-to-refresh gesture should
@@ -64,6 +67,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         setDays([]);
         setMembers([]);
         setCheckinsByDate(new Map());
+        setExcusedMembersByDate(new Map());
         setReactionsByCheckinId(new Map());
         setIsLoading(false);
         setIsRefreshing(false);
@@ -72,7 +76,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       if (opts?.manual) setIsRefreshing(true);
       else setIsLoading(true);
 
-    const [membersRes, checkinsRes, excusedRes, overridesRes, reactionsRes, groupRes] = await Promise.all([
+    const [membersRes, checkinsRes, excusedRes, pendingVoteRes, overridesRes, reactionsRes, groupRes] = await Promise.all([
       supabase
         .from('group_members')
         .select('user_id, status, activated_at, joined_at, profile:profiles(full_name)')
@@ -89,6 +93,19 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         .eq('group_id', groupId)
         .gte('excused_date', rangeStart)
         .lte('excused_date', rangeEnd),
+      // Not yet approved, but already sent to the group's vote — the
+      // calendar shows these too (see excusedMembersByDate below), separate
+      // from excuse_dates/excusedByDate above, which stays approved-only
+      // since THAT'S what drives dailyStatus/consistency/penalties and must
+      // never count a request that could still be rejected.
+      supabase
+        .from('excuse_requests')
+        .select('user_id, requested_start_date, requested_end_date')
+        .eq('group_id', groupId)
+        .eq('status', 'pending')
+        .not('voting_closes_at', 'is', null)
+        .lte('requested_start_date', rangeEnd)
+        .gte('requested_end_date', rangeStart),
       supabase
         .from('attendance_overrides')
         .select('user_id, override_date, status')
@@ -139,6 +156,29 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     for (const e of excusedRes.data ?? []) {
       if (!excusedByDate.has(e.excused_date)) excusedByDate.set(e.excused_date, new Set());
       excusedByDate.get(e.excused_date)!.add(e.user_id);
+    }
+
+    // Calendar-only view: approved excused days plus days still covered by a
+    // request already in voting — unlike excusedByDate above, this never
+    // feeds classifyMemberDay/consistency, purely a visual "heads up" signal.
+    const fullNameByUserId = new Map(allMembersRaw.map((m) => [m.user_id, m.profile.full_name]));
+    const nextExcusedMembersByDate = new Map<string, { user_id: string; full_name: string }[]>();
+    const addExcusedMember = (date: string, userId: string) => {
+      const fullName = fullNameByUserId.get(userId);
+      if (!fullName) return;
+      const list = nextExcusedMembersByDate.get(date) ?? [];
+      if (!list.some((m) => m.user_id === userId)) list.push({ user_id: userId, full_name: fullName });
+      nextExcusedMembersByDate.set(date, list);
+    };
+    for (const e of excusedRes.data ?? []) {
+      addExcusedMember(e.excused_date, e.user_id);
+    }
+    for (const r of pendingVoteRes.data ?? []) {
+      const start = r.requested_start_date < rangeStart ? rangeStart : r.requested_start_date;
+      const end = r.requested_end_date > rangeEnd ? rangeEnd : r.requested_end_date;
+      for (let d = start; d <= end; d = addOneDay(d)) {
+        addExcusedMember(d, r.user_id);
+      }
     }
 
     const overridesByDate = new Map<string, { valid: Set<string>; failed: Set<string> }>();
@@ -268,6 +308,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     setDays(dayStats);
     setMembers(memberStats);
     setCheckinsByDate(visibleByDate);
+    setExcusedMembersByDate(nextExcusedMembersByDate);
     setIsLoading(false);
     setIsRefreshing(false);
     },
@@ -311,5 +352,16 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     [refreshReactions]
   );
 
-  return { days, members, checkinsByDate, reactionsByCheckinId, isLoading, isRefreshing, refresh, react, removeReaction };
+  return {
+    days,
+    members,
+    checkinsByDate,
+    excusedMembersByDate,
+    reactionsByCheckinId,
+    isLoading,
+    isRefreshing,
+    refresh,
+    react,
+    removeReaction,
+  };
 }

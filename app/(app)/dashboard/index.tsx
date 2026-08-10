@@ -80,11 +80,13 @@ function buildCalendarWeeks(year: number, month: number): (string | null)[][] {
 function CalendarGrid({
   weeks,
   checkinsByDate,
+  excusedMembersByDate,
   todayString,
   onPressDay,
 }: {
   weeks: (string | null)[][];
   checkinsByDate: Map<string, GroupCheckinWithProfile[]>;
+  excusedMembersByDate: Map<string, { user_id: string; full_name: string }[]>;
   todayString: string;
   onPressDay: (date: string) => void;
 }) {
@@ -103,6 +105,7 @@ function CalendarGrid({
             if (!date) return <View key={j} style={styles.calendarCellEmpty} />;
             const dayNum = Number(date.split('-')[2]);
             const checkins = checkinsByDate.get(date) ?? [];
+            const excused = excusedMembersByDate.get(date) ?? [];
             const isToday = date === todayString;
             const isFuture = date > todayString;
             return (
@@ -125,6 +128,20 @@ function CalendarGrid({
                     </View>
                   ) : null}
                 </View>
+                {excused.length > 0 ? (
+                  <View style={styles.calendarBadgeWrap}>
+                    {excused.slice(0, 4).map((m) => (
+                      <View key={m.user_id} style={styles.calendarExcusedBadge}>
+                        <Text style={styles.calendarInitialText}>{getInitials(m.full_name)}</Text>
+                      </View>
+                    ))}
+                    {excused.length > 4 ? (
+                      <View style={styles.calendarExcusedBadge}>
+                        <Text style={styles.calendarInitialText}>+{excused.length - 4}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}
@@ -518,7 +535,7 @@ export default function DashboardScreen() {
     return { rangeStart: start, rangeEnd: todayString };
   }, [viewMode, calendarMonth, period, group?.created_at, todayString, timezone]);
 
-  const { days, members, checkinsByDate, reactionsByCheckinId, isRefreshing, refresh, react, removeReaction } =
+  const { days, members, checkinsByDate, excusedMembersByDate, reactionsByCheckinId, isRefreshing, refresh, react, removeReaction } =
     useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd, timezone);
   const { membersBadges } = useGroupBadges(group?.id ?? null, timezone);
   const levelByUserId = useMemo(
@@ -720,6 +737,7 @@ export default function DashboardScreen() {
           <CalendarGrid
             weeks={calendarWeeks}
             checkinsByDate={checkinsByDate}
+            excusedMembersByDate={excusedMembersByDate}
             todayString={todayString}
             onPressDay={setExpandedCalendarDate}
           />
@@ -854,6 +872,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   calendarInitialText: { color: colors.primaryText, fontSize: 8, fontWeight: '700' },
+  calendarExcusedBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: radii.pill,
+    backgroundColor: colors.warning,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   header: { gap: spacing.md, marginBottom: spacing.md },
   summaryCard: { gap: spacing.xs },
   summaryTitle: { ...typography.heading, fontSize: 15, color: colors.text },

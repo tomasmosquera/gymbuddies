@@ -14,6 +14,7 @@ import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import { usePendingKothClaims } from '@/hooks/usePendingKothClaims';
 import { useGroupMembers } from '@/hooks/useGroupMembers';
 import { useLeagueCycle } from '@/hooks/useLeagueCycle';
+import { useMyActiveExcuses } from '@/hooks/useMyActiveExcuses';
 import { supabase } from '@/lib/supabase/client';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
@@ -21,7 +22,7 @@ import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
 import { KothVideoModal } from '@/components/koth/KothVideoModal';
 import { formatKothValue } from '@/lib/domain/koth';
 import { getSignedUrl } from '@/lib/supabase/storage';
-import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
+import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -49,6 +50,14 @@ const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'ex
 const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
 const PAYOUT_MODE_FIELDS = new Set(['payout_mode']);
 const PERCENT_ARRAY_FIELDS = new Set(['league_prize_splits']);
+
+/** "7 de agosto" for a single day, "7 al 9 de agosto" for a range. */
+function formatExcuseRange({ startDate, endDate }: { startDate: string; endDate: string }): string {
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' };
+  const start = new Date(`${startDate}T00:00:00Z`).toLocaleDateString('es-CO', opts);
+  if (startDate === endDate) return start;
+  return `${start} al ${new Date(`${endDate}T00:00:00Z`).toLocaleDateString('es-CO', opts)}`;
+}
 
 /** Whole days remaining until `dateString` (never negative — the day it becomes effective still reads as 0, not -1). */
 function daysUntil(dateString: string): number {
@@ -109,6 +118,11 @@ export default function RulesScreen() {
     adminDecide: adminDecideKoth,
   } = usePendingKothClaims(group?.id ?? null);
   const { members, isLoading: membersLoading, refresh: refreshMembers } = useGroupMembers(group?.id ?? null);
+  const { ranges: myActiveExcuses, refresh: refreshMyActiveExcuses } = useMyActiveExcuses(
+    group?.id ?? null,
+    session?.user.id ?? null,
+    toZonedDateString(new Date(), group?.timezone ?? 'America/Bogota')
+  );
   const {
     cycle: leagueCycle,
     isLoading: leagueCycleLoading,
@@ -146,6 +160,7 @@ export default function RulesScreen() {
       refreshKothClaims();
       refreshMembers();
       refreshLeagueCycle();
+      refreshMyActiveExcuses();
     }, [
       refreshGroup,
       refreshProposal,
@@ -154,6 +169,7 @@ export default function RulesScreen() {
       refreshKothClaims,
       refreshMembers,
       refreshLeagueCycle,
+      refreshMyActiveExcuses,
     ])
   );
 
@@ -236,6 +252,7 @@ export default function RulesScreen() {
         refreshKothClaims(),
         refreshMembers(),
         refreshLeagueCycle(),
+        refreshMyActiveExcuses(),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -592,6 +609,18 @@ export default function RulesScreen() {
       <View style={styles.actionButtons}>
         <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
       </View>
+
+      {myActiveExcuses.length > 0 ? (
+        <Card style={styles.proposalCard}>
+          <Text style={styles.cardTitle}>Tus excusas</Text>
+          {myActiveExcuses.map((range, i) => (
+            <Text key={i} style={styles.changeText}>
+              {EXCUSE_TYPE_LABELS[range.excuseType] ?? range.excuseType}: {formatExcuseRange(range)}
+              {range.reason ? ` — ${range.reason}` : ''}
+            </Text>
+          ))}
+        </Card>
+      ) : null}
     </ScrollView>
     <CheckinPhotoModal
       visible={viewingPhotoPath !== null}

@@ -89,6 +89,24 @@ export function totalXpForEarnedBadges(earnedBadgeIds: readonly string[]): numbe
   return earnedBadgeIds.reduce((sum, id) => sum + xpForBadge(id), 0);
 }
 
+/**
+ * Flat XP for every successful King of the Hill claim — stacks without
+ * limit and independently of the koth badge catalog above (e.g. "20
+ * Superaciones" still separately rewards volume). Someone else taking the
+ * record costs nothing already-earned; reclaiming it later earns this again,
+ * same as the first time. Only claims that actually held up (status
+ * 'valid') count — one still mid-vote, or one the group proved fake
+ * (status 'invalidated'), grants nothing, which keeps this monotonic like
+ * every other XP source here (xpRequiredForLevel assumes level can only go
+ * up) rather than needing to claw XP back later if a pending claim loses
+ * its vote.
+ */
+export const KOTH_CLAIM_XP = 50;
+
+export function kothClaimXp(validClaimCount: number): number {
+  return validClaimCount * KOTH_CLAIM_XP;
+}
+
 /** Every badge in the catalog has an assigned XP value (0 counts, e.g. the revocable one). */
 export function hasCompleteXpTable(): boolean {
   return BADGES.every((b) => Object.prototype.hasOwnProperty.call(XP_BY_BADGE_ID, b.id));
