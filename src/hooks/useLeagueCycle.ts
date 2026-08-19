@@ -34,5 +34,19 @@ export function useLeagueCycle(groupId: string | null) {
     await refresh();
   }, [groupId, refresh]);
 
-  return { cycle, isLoading, refresh, startCycle };
+  /** Moves the running cycle's start date (and recomputes its end date) — no vote needed, admin-only on the server. */
+  const setCycleStart = useCallback(
+    async (dateString: string) => {
+      if (!groupId) return;
+      const { error } = await supabase.rpc('admin_set_league_cycle_start', {
+        p_group_id: groupId,
+        p_started_at: dateString,
+      });
+      if (error) throw new Error(error.message);
+      await refresh();
+    },
+    [groupId, refresh]
+  );
+
+  return { cycle, isLoading, refresh, startCycle, setCycleStart };
 }

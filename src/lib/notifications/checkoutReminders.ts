@@ -5,7 +5,8 @@ import { distanceMeters } from '@/lib/domain/geo';
 import { CHECKOUT_GEOFENCE_TASK } from './checkoutGeofenceTask';
 import { getRemindersEnabledCache } from './reminderPreference';
 
-const REMINDER_DELAY_SECONDS = 20 * 60;
+/** Falls back to this if a caller doesn't have the member's profile loaded yet — matches profiles.checkout_reminder_minutes' own DB default. */
+const DEFAULT_REMINDER_MINUTES = 20;
 const GEOFENCE_RADIUS_METERS = 100;
 const FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS = 20;
 
@@ -79,17 +80,19 @@ function stopForegroundDistanceWatch(): void {
 
 /**
  * Starts every checkout reminder for a just-confirmed check-in: a local
- * notification ~20 min later, a foreground distance watch (only needs
- * "When In Use"), and — best-effort, only if "Always" location is granted —
- * a background geofence that also fires while the app is closed. Using the
- * checkin row's own id as the notification identifier means
- * cancelCheckoutReminders can cancel it later with no extra persisted
+ * notification `reminderMinutes` later (each member's own
+ * profiles.checkout_reminder_minutes, 20 by default), a foreground distance
+ * watch (only needs "When In Use"), and — best-effort, only if "Always"
+ * location is granted — a background geofence that also fires while the app
+ * is closed. Using the checkin row's own id as the notification identifier
+ * means cancelCheckoutReminders can cancel it later with no extra persisted
  * state, even across an app restart.
  */
 export async function scheduleCheckoutReminders(
   checkinId: string,
   latitude: number,
-  longitude: number
+  longitude: number,
+  reminderMinutes: number = DEFAULT_REMINDER_MINUTES
 ): Promise<void> {
   if (!(await getRemindersEnabledCache())) return;
 
@@ -102,7 +105,7 @@ export async function scheduleCheckoutReminders(
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: REMINDER_DELAY_SECONDS,
+        seconds: reminderMinutes * 60,
       },
     });
   } catch {

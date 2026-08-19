@@ -302,14 +302,11 @@ async function processGroup(
         const weekDays = m.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
         const completedCount = weekDays.filter((d) => d.status === 'completed').length;
         const failedCount = weekDays.filter((d) => d.status === 'failed').length;
-        const totalWorkoutMinutes = (workoutMinutesByUser.get(m.userId) ?? [])
-          .filter((r) => r.date >= weekStart && r.date <= weekEnd)
-          .reduce((sum, r) => sum + r.minutes, 0);
-        return { userId: m.userId, weekStartDate: weekStart, completedCount, failedCount, totalWorkoutMinutes };
+        return { userId: m.userId, weekStartDate: weekStart, completedCount, failedCount };
       })
       .filter((w) => w.completedCount + w.failedCount > 0);
   });
-  const mvpTallyByMonth = tallyMvpWeeksByMonth(computeWeeklyMvpsByWeek(allWeekAttendance, group.require_checkout_photo));
+  const mvpTallyByMonth = tallyMvpWeeksByMonth(computeWeeklyMvpsByWeek(allWeekAttendance));
 
   // --- Per-month, per-member facts + cross-member rank/mostReacted/mostDuration ---
   const months = enumerateMonths(groupCreatedDate.slice(0, 7), currentMonth);
@@ -338,9 +335,8 @@ async function processGroup(
         userId: m.userId,
         completedCount: tallies.get(m.userId)!.completed,
         failedCount: tallies.get(m.userId)!.failed,
-        totalWorkoutMinutes: totalDurationInMonthByUserId.get(m.userId) ?? 0,
       }));
-    const rankByUserId = rankMembersByConsistency(rankable, group.require_checkout_photo);
+    const rankByUserId = rankMembersByConsistency(rankable);
     const mostReacted = new Set(
       determineTopByCount(members.map((m) => ({ userId: m.userId, count: reactionsReceivedByUserMonth.get(m.userId)?.get(month) ?? 0 })))
     );

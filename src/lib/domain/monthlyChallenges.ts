@@ -180,19 +180,17 @@ export function tallyMonth(daysInMonth: readonly MonthlyDayRecord[]): MonthTally
 
 /**
  * The (possibly joint) week MVP(s): ranked the same way as everything else
- * now — GB Score first (see rankMembersByConsistency/gbScore — NOT the raw
+ * now — GB Score alone (see rankMembersByConsistency/gbScore — NOT the raw
  * consistency percent, so e.g. 5-for-5 outranks 4-for-4 despite both being
- * "100%"), workout duration only as a tiebreak, and only when
- * `useDurationTiebreak` is true (the group requires checkout photos, the
- * sole way duration is ever recorded). Money never factors in; when duration
- * isn't available (or still ties), the MVP is fully shared.
+ * "100%"), no tiebreak of any kind. Money never factors in; a genuine GB
+ * Score tie means the MVP is genuinely shared — everyone tied for 1st gets
+ * it, not just whoever happened to log more workout minutes.
  */
 export function determineWeekMvps(
-  entries: readonly { userId: string; completedCount: number; failedCount: number; totalWorkoutMinutes: number }[],
-  useDurationTiebreak: boolean
+  entries: readonly { userId: string; completedCount: number; failedCount: number }[]
 ): string[] {
   if (entries.length === 0) return [];
-  return determineTopRanked(rankMembersByConsistency(entries, useDurationTiebreak));
+  return determineTopRanked(rankMembersByConsistency(entries));
 }
 
 /** Whoever has the highest count this month (reactions received, or workout duration), ties shared; nobody qualifies if the max is 0. */
@@ -208,14 +206,10 @@ export interface MemberWeekAttendance {
   weekStartDate: string;
   completedCount: number;
   failedCount: number;
-  totalWorkoutMinutes: number;
 }
 
 /** For every week present, the (possibly joint) MVP userId(s) that week. */
-export function computeWeeklyMvpsByWeek(
-  allWeeks: readonly MemberWeekAttendance[],
-  useDurationTiebreak: boolean
-): Map<string, string[]> {
+export function computeWeeklyMvpsByWeek(allWeeks: readonly MemberWeekAttendance[]): Map<string, string[]> {
   const byWeek = new Map<string, MemberWeekAttendance[]>();
   for (const w of allWeeks) {
     if (!byWeek.has(w.weekStartDate)) byWeek.set(w.weekStartDate, []);
@@ -223,7 +217,7 @@ export function computeWeeklyMvpsByWeek(
   }
   const result = new Map<string, string[]>();
   for (const [weekStart, entries] of byWeek) {
-    result.set(weekStart, determineWeekMvps(entries, useDurationTiebreak));
+    result.set(weekStart, determineWeekMvps(entries));
   }
   return result;
 }

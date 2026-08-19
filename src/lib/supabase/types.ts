@@ -40,6 +40,8 @@ export type Profile = {
   apple_health_prompted_at: string | null;
   /** When true (default), a check-in/checkout in one group also gets created in every other group the user actively belongs to — see set_auto_checkin_other_groups. */
   auto_checkin_other_groups: boolean;
+  /** Minutes after check-in before the "no olvides tu foto de salida" reminder fires — see set_checkout_reminder_minutes. Global per user, unlike the reminders on/off toggle which is per group. */
+  checkout_reminder_minutes: number;
   /** Grants the ability to create/mark groups public — set once via a one-off migration, not client-settable. See list_public_groups/create_group/admin_set_group_public. */
   is_platform_admin: boolean;
   created_at: string;
@@ -125,7 +127,7 @@ export type LeagueCyclePayout = {
   created_at: string;
 };
 
-/** One row per active member returned by liquidate_group_now — what they'd get (or actually got) settling the group right now. place/share_percent are only set for league podium winners. */
+/** One row per active member returned by liquidate_group_now — what they'd get (or actually got) settling the group right now. In Liga/Mixto, place is set for every ranked member (ties share a place, standard competition ranking) — only share_percent (and the podium share of amount) is exclusive to league podium winners. Both are null in Cooperativo (no league ranking at all). */
 export type LiquidationRow = {
   user_id: string;
   full_name: string;
@@ -213,6 +215,7 @@ export type RuleProposalChanges = {
   league_duration_months?: number;
   league_prize_splits?: number[];
   mixed_league_share_percent?: number;
+  league_cycle_started_at?: string;
 };
 
 export type RuleProposal = {
@@ -460,6 +463,8 @@ export type Database = {
       koth_records: { Row: KothRecord; Insert: never; Update: never } & NoRelationships;
       checkin_reactions: { Row: CheckinReaction; Insert: never; Update: never } & NoRelationships;
       app_version_info: { Row: AppVersionInfo; Insert: never; Update: never } & NoRelationships;
+      league_cycles: { Row: LeagueCycle; Insert: never; Update: never } & NoRelationships;
+      league_cycle_payouts: { Row: LeagueCyclePayout; Insert: never; Update: never } & NoRelationships;
     };
     Views: Record<string, never>;
     Functions: {
@@ -531,6 +536,7 @@ export type Database = {
       close_expired_proposals: { Args: Record<string, never>; Returns: void };
       admin_remove_member: { Args: { p_member_id: string; p_pay_out?: boolean }; Returns: GroupMember };
       start_league_cycle: { Args: { p_group_id: string }; Returns: LeagueCycle };
+      admin_set_league_cycle_start: { Args: { p_group_id: string; p_started_at: string }; Returns: LeagueCycle };
       admin_set_cooperative_share_percent: {
         Args: { p_member_id: string; p_target_percent: number };
         Returns: GroupMember;
@@ -560,6 +566,32 @@ export type Database = {
         Returns: AttendanceOverride;
       };
       clear_attendance_override: { Args: { p_group_id: string; p_user_id: string; p_date: string }; Returns: void };
+      admin_create_checkin: {
+        Args: {
+          p_group_id: string;
+          p_user_id: string;
+          p_date: string;
+          p_photo_path: string;
+          p_checkout_photo_path: string;
+          p_latitude: number;
+          p_longitude: number;
+          p_location_accuracy_m?: number | null;
+          p_start_time?: string | null;
+          p_end_time?: string | null;
+          p_active_energy_kcal?: number | null;
+        };
+        Returns: Checkin;
+      };
+      admin_set_excused_day: {
+        Args: {
+          p_group_id: string;
+          p_user_id: string;
+          p_date: string;
+          p_excuse_type: 'travel' | 'medical';
+          p_note?: string | null;
+        };
+        Returns: ExcuseDate;
+      };
       create_photo_challenge: {
         Args: { p_checkin_id: string; p_reason?: string | null };
         Returns: PhotoChallenge;
@@ -612,6 +644,7 @@ export type Database = {
       dismiss_apple_health_prompt: { Args: Record<string, never>; Returns: void };
       set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
       set_auto_checkin_other_groups: { Args: { p_enabled: boolean }; Returns: void };
+      set_checkout_reminder_minutes: { Args: { p_minutes: number }; Returns: void };
       submit_checkin: {
         Args: {
           p_group_id: string;

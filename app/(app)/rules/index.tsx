@@ -44,12 +44,14 @@ const CHANGE_LABELS: Record<string, string> = {
   league_duration_months: 'Duración del ciclo de Liga (meses)',
   league_prize_splits: 'Premio por puesto',
   mixed_league_share_percent: '% del fondo para el premio de Liga',
+  league_cycle_started_at: 'Fecha de inicio del ciclo de Liga',
 };
 
 const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'exit_fee_amount']);
 const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
 const PAYOUT_MODE_FIELDS = new Set(['payout_mode']);
 const PERCENT_ARRAY_FIELDS = new Set(['league_prize_splits']);
+const DATE_CHANGE_FIELDS = new Set(['league_cycle_started_at']);
 
 /** "7 de agosto" for a single day, "7 al 9 de agosto" for a range. */
 function formatExcuseRange({ startDate, endDate }: { startDate: string; endDate: string }): string {
@@ -77,6 +79,9 @@ function formatChangeValue(key: string, value: unknown): string {
   }
   if (PERCENT_ARRAY_FIELDS.has(key) && Array.isArray(value)) {
     return value.map((v) => `${v}%`).join(' / ');
+  }
+  if (DATE_CHANGE_FIELDS.has(key) && typeof value === 'string') {
+    return new Date(`${value}T00:00:00Z`).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
   }
   return String(value);
 }

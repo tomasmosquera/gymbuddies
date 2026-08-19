@@ -94,6 +94,7 @@ export const ruleProposalSchema = z
         message: 'La suma de los porcentajes no puede superar 100%',
       }),
     mixedLeagueSharePercent: z.number().min(0).max(100).optional(),
+    leagueCycleStartedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida').optional(),
   })
   .refine((changes) => Object.values(changes).some((v) => v !== undefined), {
     message: 'Propón al menos un cambio',

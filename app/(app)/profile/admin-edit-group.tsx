@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { TimezonePicker } from '@/components/ui/TimezonePicker';
+import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -23,11 +26,14 @@ const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
 export default function AdminEditGroupScreen() {
   const { session } = useAuth();
   const { group, refresh } = useActiveGroup();
+  const { cycle, setCycleStart } = useLeagueCycle(group?.id ?? null);
   const [name, setName] = useState(group?.name ?? '');
   const [adminPaymentInfo, setAdminPaymentInfo] = useState(group?.admin_payment_info ?? '');
   const [timezone, setTimezone] = useState(group?.timezone ?? DEFAULT_GROUP_TIMEZONE);
   const [isPublic, setIsPublic] = useState(group?.is_public ?? false);
   const [isTogglingPublic, setIsTogglingPublic] = useState(false);
+  const [leagueCycleStartDate, setLeagueCycleStartDate] = useState(new Date());
+  const [isSavingCycleStart, setIsSavingCycleStart] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canManagePublic = session?.user.email === PLATFORM_ADMIN_EMAIL;
@@ -61,6 +67,33 @@ export default function AdminEditGroupScreen() {
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Hacer público', onPress: () => applyPublicToggle(true) },
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (cycle) setLeagueCycleStartDate(new Date(cycle.started_at));
+  }, [cycle]);
+
+  const applyCycleStart = async () => {
+    if (!group) return;
+    setIsSavingCycleStart(true);
+    try {
+      await setCycleStart(toZonedDateString(leagueCycleStartDate, group.timezone));
+    } catch (err) {
+      Alert.alert('No se pudo cambiar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingCycleStart(false);
+    }
+  };
+
+  const handleSaveCycleStart = () => {
+    Alert.alert(
+      'Cambiar fecha de inicio del ciclo',
+      'Se aplica de inmediato, sin votación — mueve también la fecha en que se reparte el premio de Liga. ¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cambiar', onPress: applyCycleStart },
       ]
     );
   };
@@ -140,6 +173,21 @@ export default function AdminEditGroupScreen() {
                 onChange={handleTogglePublic}
               />
               {isTogglingPublic ? <ActivityIndicator color={colors.primary} /> : null}
+            </View>
+          ) : null}
+          {group && group.payout_mode !== 'cooperative' && cycle ? (
+            <View style={styles.timezoneSection}>
+              <Text style={styles.timezoneLabel}>Fecha de inicio del ciclo de Liga</Text>
+              <Text style={styles.timezoneHint}>
+                Se aplica de inmediato, sin votación — mueve también la fecha en que se reparte el premio.
+              </Text>
+              <InlineDatePicker value={leagueCycleStartDate} onChange={setLeagueCycleStartDate} />
+              <Button
+                label="Guardar fecha de inicio"
+                variant="secondary"
+                onPress={handleSaveCycleStart}
+                loading={isSavingCycleStart}
+              />
             </View>
           ) : null}
           <Button label="Guardar cambios" onPress={handleSubmit} loading={isSubmitting} />

@@ -96,63 +96,30 @@ describe('tallyMonth', () => {
 });
 
 describe('determineWeekMvps', () => {
-  it('picks the highest consistency percent, no ties', () => {
+  it('picks the highest GB Score, no ties', () => {
     expect(
-      determineWeekMvps(
-        [
-          { userId: 'a', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 0 },
-          { userId: 'b', completedCount: 3, failedCount: 1, totalWorkoutMinutes: 0 },
-        ],
-        false
-      )
+      determineWeekMvps([
+        { userId: 'a', completedCount: 5, failedCount: 0 },
+        { userId: 'b', completedCount: 3, failedCount: 1 },
+      ])
     ).toEqual(['a']);
   });
 
-  it('a raw-percent tie (both 100%) is NOT a GB Score tie — more decided days wins outright, duration or not', () => {
+  it('a raw-percent tie (both 100%) is NOT a GB Score tie — more decided days wins outright', () => {
     expect(
-      determineWeekMvps(
-        [
-          { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 999 },
-          { userId: 'b', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 10 },
-        ],
-        false
-      )
+      determineWeekMvps([
+        { userId: 'a', completedCount: 4, failedCount: 0 },
+        { userId: 'b', completedCount: 5, failedCount: 0 },
+      ])
     ).toEqual(['b']);
   });
 
-  it('genuinely shares the MVP when GB Score, not just raw percent, ties (same completed/failed count)', () => {
+  it('genuinely shares the MVP when GB Score ties (same completed/failed count) — no tiebreak of any kind, including workout duration', () => {
     expect(
-      determineWeekMvps(
-        [
-          { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 10 },
-          { userId: 'b', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 999 },
-        ],
-        false
-      )
-    ).toEqual(['a', 'b']);
-  });
-
-  it('breaks a percent tie by total workout duration when the group requires checkout photos', () => {
-    expect(
-      determineWeekMvps(
-        [
-          { userId: 'a', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 40 },
-          { userId: 'b', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 90 },
-        ],
-        true
-      )
-    ).toEqual(['b']);
-  });
-
-  it('shares the MVP when still tied after the duration tiebreak', () => {
-    expect(
-      determineWeekMvps(
-        [
-          { userId: 'a', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 60 },
-          { userId: 'b', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 60 },
-        ],
-        true
-      )
+      determineWeekMvps([
+        { userId: 'a', completedCount: 4, failedCount: 0 },
+        { userId: 'b', completedCount: 4, failedCount: 0 },
+      ])
     ).toEqual(['a', 'b']);
   });
 });
@@ -180,17 +147,14 @@ describe('determineTopByCount', () => {
 
 describe('computeWeeklyMvpsByWeek / tallyMvpWeeksByMonth', () => {
   it('tallies how many weeks per month each user was MVP', () => {
-    const mvpsByWeek = computeWeeklyMvpsByWeek(
-      [
-        // Week 1: a has a clean 100%, b has a failed day (75%) — a wins.
-        { userId: 'a', weekStartDate: '2026-02-02', completedCount: 5, failedCount: 0, totalWorkoutMinutes: 0 },
-        { userId: 'b', weekStartDate: '2026-02-02', completedCount: 3, failedCount: 1, totalWorkoutMinutes: 0 },
-        // Week 2: both 100% (no duration tiebreak) — shared.
-        { userId: 'a', weekStartDate: '2026-02-09', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 0 },
-        { userId: 'b', weekStartDate: '2026-02-09', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 0 },
-      ],
-      false
-    );
+    const mvpsByWeek = computeWeeklyMvpsByWeek([
+      // Week 1: a has a clean 100%, b has a failed day (75%) — a wins.
+      { userId: 'a', weekStartDate: '2026-02-02', completedCount: 5, failedCount: 0 },
+      { userId: 'b', weekStartDate: '2026-02-02', completedCount: 3, failedCount: 1 },
+      // Week 2: both 100%, same completed count — genuinely shared.
+      { userId: 'a', weekStartDate: '2026-02-09', completedCount: 4, failedCount: 0 },
+      { userId: 'b', weekStartDate: '2026-02-09', completedCount: 4, failedCount: 0 },
+    ]);
     const tally = tallyMvpWeeksByMonth(mvpsByWeek);
     expect(tally.get('2026-02')?.get('a')).toBe(2);
     expect(tally.get('2026-02')?.get('b')).toBe(1);

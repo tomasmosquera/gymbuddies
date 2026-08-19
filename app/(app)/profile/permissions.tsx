@@ -1,11 +1,12 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { TextField } from '@/components/ui/TextField';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useAuth } from '@/hooks/useAuth';
 import { registerForPushNotificationsAsync } from '@/lib/notifications/pushToken';
@@ -52,6 +53,13 @@ export default function PermissionsScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingHealth, setIsSavingHealth] = useState(false);
   const [isSavingAutoCheckin, setIsSavingAutoCheckin] = useState(false);
+  const [reminderMinutesInput, setReminderMinutesInput] = useState('20');
+  const [isSavingReminderMinutes, setIsSavingReminderMinutes] = useState(false);
+
+  useEffect(() => {
+    if (profile) setReminderMinutesInput(String(profile.checkout_reminder_minutes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-sync when this specific field changes, not on every profile refresh (which would clobber an unsaved edit)
+  }, [profile?.checkout_reminder_minutes]);
 
   const refreshPermissionStatus = useCallback(async () => {
     const notif = await Notifications.getPermissionsAsync();
@@ -163,6 +171,24 @@ export default function PermissionsScreen() {
     }
   };
 
+  const handleSaveReminderMinutes = async () => {
+    const minutes = Number(reminderMinutesInput);
+    if (!reminderMinutesInput || !Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+      Alert.alert('Valor inválido', 'Ingresa un número de minutos entre 1 y 180.');
+      return;
+    }
+    setIsSavingReminderMinutes(true);
+    try {
+      const { error } = await supabase.rpc('set_checkout_reminder_minutes', { p_minutes: minutes });
+      if (error) throw error;
+      await refreshProfile();
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingReminderMinutes(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Card style={styles.section}>
@@ -216,6 +242,24 @@ export default function PermissionsScreen() {
                 />
               </View>
             ))}
+            {prefs.reminders ? (
+              <View style={styles.reminderMinutesField}>
+                <TextField
+                  label="Avisar de la foto final después de (minutos)"
+                  hint="Solo afecta el aviso de “no olvides tu foto de salida” — no el recordatorio diario de check-in."
+                  value={reminderMinutesInput}
+                  onChangeText={(v) => setReminderMinutesInput(v.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                />
+                <Button
+                  label="Guardar"
+                  variant="secondary"
+                  onPress={handleSaveReminderMinutes}
+                  loading={isSavingReminderMinutes}
+                />
+              </View>
+            ) : null}
             <Button label="Configuración del sistema" variant="secondary" onPress={() => Linking.openSettings()} />
           </>
         )}
@@ -341,4 +385,10 @@ const styles = StyleSheet.create({
   categoryLabel: { color: colors.text, fontWeight: '600' },
   categoryHint: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   locationRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reminderMinutesField: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
 });

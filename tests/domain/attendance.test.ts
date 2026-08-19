@@ -97,65 +97,31 @@ describe('gbScore', () => {
 
 describe('rankMembersByConsistency', () => {
   it('ranks a larger, slightly-imperfect track record above a tiny perfect one — GB Score, not raw percent, drives order', () => {
-    const rank = rankMembersByConsistency(
-      [
-        { userId: 'newcomer', completedCount: 4, failedCount: 0, totalWorkoutMinutes: 0 },
-        { userId: 'veteran', completedCount: 22, failedCount: 3, totalWorkoutMinutes: 0 },
-      ],
-      false
-    );
+    const rank = rankMembersByConsistency([
+      { userId: 'newcomer', completedCount: 4, failedCount: 0 },
+      { userId: 'veteran', completedCount: 22, failedCount: 3 },
+    ]);
     expect(rank.get('veteran')).toBe(1);
     expect(rank.get('newcomer')).toBe(2);
   });
 
-
-  it('ranks by percent alone when duration tiebreak is off, sharing ties', () => {
-    const rank = rankMembersByConsistency(
-      [
-        { userId: 'a', completedCount: 9, failedCount: 1, totalWorkoutMinutes: 500 },
-        { userId: 'b', completedCount: 9, failedCount: 1, totalWorkoutMinutes: 100 },
-        { userId: 'c', completedCount: 5, failedCount: 5, totalWorkoutMinutes: 900 },
-      ],
-      false
-    );
+  it('ranks by GB Score alone, sharing ties — no tiebreak of any kind (workout duration used to break this exact case; removed)', () => {
+    const rank = rankMembersByConsistency([
+      { userId: 'a', completedCount: 9, failedCount: 1 },
+      { userId: 'b', completedCount: 9, failedCount: 1 },
+      { userId: 'c', completedCount: 5, failedCount: 5 },
+    ]);
     expect(rank.get('a')).toBe(1);
     expect(rank.get('b')).toBe(1);
     expect(rank.get('c')).toBe(3);
   });
 
-  it('breaks a percent tie by total workout duration when enabled', () => {
-    const rank = rankMembersByConsistency(
-      [
-        { userId: 'a', completedCount: 9, failedCount: 1, totalWorkoutMinutes: 500 },
-        { userId: 'b', completedCount: 9, failedCount: 1, totalWorkoutMinutes: 900 },
-      ],
-      true
-    );
-    expect(rank.get('b')).toBe(1);
-    expect(rank.get('a')).toBe(2);
-  });
-
-  it('shares rank 1 when percent AND duration both tie', () => {
-    const rank = rankMembersByConsistency(
-      [
-        { userId: 'a', completedCount: 9, failedCount: 1, totalWorkoutMinutes: 500 },
-        { userId: 'b', completedCount: 9, failedCount: 1, totalWorkoutMinutes: 500 },
-      ],
-      true
-    );
-    expect(rank.get('a')).toBe(1);
-    expect(rank.get('b')).toBe(1);
-  });
-
   it('ranks members with no decided days last, tied with each other', () => {
-    const rank = rankMembersByConsistency(
-      [
-        { userId: 'a', completedCount: 1, failedCount: 0, totalWorkoutMinutes: 0 },
-        { userId: 'b', completedCount: 0, failedCount: 0, totalWorkoutMinutes: 0 },
-        { userId: 'c', completedCount: 0, failedCount: 0, totalWorkoutMinutes: 0 },
-      ],
-      false
-    );
+    const rank = rankMembersByConsistency([
+      { userId: 'a', completedCount: 1, failedCount: 0 },
+      { userId: 'b', completedCount: 0, failedCount: 0 },
+      { userId: 'c', completedCount: 0, failedCount: 0 },
+    ]);
     expect(rank.get('a')).toBe(1);
     expect(rank.get('b')).toBe(2);
     expect(rank.get('c')).toBe(2);

@@ -25,6 +25,8 @@ interface FanOutParams {
   longitude: number;
   accuracyMeters: number | null;
   locationMocked: boolean;
+  /** Only meaningful for the check-in side (fanOutCheckoutToOtherGroups never reads it) — omitted falls back to scheduleCheckoutReminders' own default. */
+  reminderMinutes?: number;
 }
 
 /**
@@ -39,8 +41,18 @@ interface FanOutParams {
  * has already succeeded by the time this runs.
  */
 async function fanOutCheckinToOtherGroups(params: FanOutParams) {
-  const { otherGroups, userId, flattenedUri, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
-    params;
+  const {
+    otherGroups,
+    userId,
+    flattenedUri,
+    capturedAtDate,
+    capturedAtIso,
+    latitude,
+    longitude,
+    accuracyMeters,
+    locationMocked,
+    reminderMinutes,
+  } = params;
   await Promise.all(
     otherGroups.map(async (m) => {
       try {
@@ -60,7 +72,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
         // data is null when a genuinely separate manual check-in already
         // existed that day in this group — respected as-is, nothing to do.
         if (data && m.group.require_checkout_photo) {
-          await scheduleCheckoutReminders(data.id, latitude, longitude);
+          await scheduleCheckoutReminders(data.id, latitude, longitude, reminderMinutes);
         }
       } catch {
         // Best-effort — see function doc.
@@ -194,11 +206,18 @@ export default function CheckinPreviewScreen() {
             .catch(() => {});
         }
 
-        // Fire-and-forget, same reasoning as the Apple Health sync above —
-        // must never block navigation or fail the checkout that already
-        // succeeded in this group.
+        // Awaited (unlike the Apple Health sync above) — a background upload
+        // that's merely fired-and-forgotten right before navigating away is
+        // vulnerable to the OS suspending the app the moment the user leaves
+        // this screen, silently killing the fan-out mid-flight (observed:
+        // some days it completes in time, some days it doesn't, with no
+        // error surfaced either way). Waiting here guarantees it actually
+        // runs to completion while the screen is still the active one — a
+        // failure per other group still never fails this checkout, which
+        // already succeeded in the primary group (see the function's own
+        // per-group try/catch).
         if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0) {
-          fanOutCheckoutToOtherGroups({
+          await fanOutCheckoutToOtherGroups({
             otherGroups: otherActiveGroups,
             userId: session.user.id,
             flattenedUri,
@@ -243,15 +262,19 @@ export default function CheckinPreviewScreen() {
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
 
-      // Fire-and-forget — see fanOutCheckoutToOtherGroups's call site below
-      // for why this never blocks navigation or fails the primary check-in.
+      // Awaited — see fanOutCheckoutToOtherGroups's call site above for why
+      // fire-and-forget here is unreliable (the app backgrounding right
+      // after this screen navigates away can silently kill it mid-flight).
+      // A failure per other group still never fails this check-in, which
+      // already succeeded in the primary group.
       if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0) {
-        fanOutCheckinToOtherGroups({
+        await fanOutCheckinToOtherGroups({
           otherGroups: otherActiveGroups,
           userId: session.user.id,
           flattenedUri,
           capturedAtDate,
           capturedAtIso: draft.capturedAt,
+          reminderMinutes: profile?.checkout_reminder_minutes,
           latitude: draft.latitude,
           longitude: draft.longitude,
           accuracyMeters: draft.accuracyMeters,
@@ -260,7 +283,7 @@ export default function CheckinPreviewScreen() {
       }
 
       if (group.require_checkout_photo) {
-        await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude);
+        await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude, profile?.checkout_reminder_minutes);
       }
       setDraft(null);
       Alert.alert(

@@ -4,6 +4,7 @@ import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
 import { consistencyPercent, gbScore, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
 import { daysPresentInWeek } from '@/lib/domain/weeklyEvaluation';
 import { useGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
+import type { PayoutMode } from '@/lib/supabase/types';
 
 export type LeaderboardPeriod = 'week' | 'month' | 'all';
 
@@ -18,9 +19,7 @@ export interface LeaderboardRow {
   gbScore: number | null;
   /** Money charged this period (or, for the still-open current week, a live projection) — never negative. Never used for ranking. */
   chargedAmount: number;
-  /** Sum of workout minutes in this period — always 0 if the group doesn't require checkout photos, since duration is never recorded then. */
-  totalWorkoutMinutes: number;
-  /** 1-based rank by GB Score, then (only if the group requires checkout photos) total workout duration. Ties share a rank; money never factors in. */
+  /** 1-based rank by GB Score alone — no tiebreak of any kind, so a genuine tie shares the rank. Money never factors in. */
   rank: number;
   /** True right now if this member's penalty_start_date is still in the future — so a $0 charge reads as "protected", not "perfect". */
   penaltyProtectedUntil: string | null;
@@ -35,7 +34,7 @@ export interface LastClosedWeekSummary {
 interface GroupRankingRules {
   penaltyAmount: number;
   weeklyPenaltyCap: number;
-  requireCheckoutPhoto: boolean;
+  payoutMode: PayoutMode;
 }
 
 function currentMonthBounds(timezone: string): { monthStart: string } {
@@ -74,7 +73,6 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
   const [weeklyChargedAmountByWeekStart, setWeeklyChargedAmountByWeekStart] = useState<Record<string, Record<string, number>>>(
     {}
   );
-  const [workoutMinutesByUser, setWorkoutMinutesByUser] = useState<Map<string, { date: string; minutes: number }[]>>(new Map());
   const [groupRules, setGroupRules] = useState<GroupRankingRules | null>(null);
   const [lastClosedWeek, setLastClosedWeek] = useState<LastClosedWeekSummary | null>(null);
   const [resultsLoading, setResultsLoading] = useState(true);
@@ -84,7 +82,6 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
       setMonthChargedAmountByUser({});
       setAllChargedAmountByUser({});
       setWeeklyChargedAmountByWeekStart({});
-      setWorkoutMinutesByUser(new Map());
       setGroupRules(null);
       setLastClosedWeek(null);
       setResultsLoading(false);
@@ -92,20 +89,13 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     }
     setResultsLoading(true);
     const { monthStart } = currentMonthBounds(timezone);
-    const todayString = toZonedDateString(new Date(), timezone);
 
-    const [resultsRes, checkinsRes, groupRes] = await Promise.all([
+    const [resultsRes, groupRes] = await Promise.all([
       supabase
         .from('weekly_evaluation_results')
         .select('user_id, failed_days, penalty_charged, run:weekly_evaluation_runs(week_start_date, week_end_date)')
         .eq('group_id', groupId),
-      supabase
-        .from('checkins')
-        .select('user_id, checkin_date, workout_minutes')
-        .eq('group_id', groupId)
-        .lte('checkin_date', todayString)
-        .not('workout_minutes', 'is', null),
-      supabase.from('groups').select('penalty_amount, weekly_penalty_cap, require_checkout_photo').eq('id', groupId).single(),
+      supabase.from('groups').select('penalty_amount, weekly_penalty_cap, payout_mode').eq('id', groupId).single(),
     ]);
 
     const results = (resultsRes.data ?? []) as unknown as {
@@ -149,20 +139,12 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
         : null
     );
 
-    const nextWorkoutMinutes = new Map<string, { date: string; minutes: number }[]>();
-    for (const c of checkinsRes.data ?? []) {
-      if (c.workout_minutes === null) continue;
-      if (!nextWorkoutMinutes.has(c.user_id)) nextWorkoutMinutes.set(c.user_id, []);
-      nextWorkoutMinutes.get(c.user_id)!.push({ date: c.checkin_date, minutes: c.workout_minutes });
-    }
-    setWorkoutMinutesByUser(nextWorkoutMinutes);
-
     setGroupRules(
       groupRes.data
         ? {
             penaltyAmount: groupRes.data.penalty_amount,
             weeklyPenaltyCap: groupRes.data.weekly_penalty_cap,
-            requireCheckoutPhoto: groupRes.data.require_checkout_photo,
+            payoutMode: groupRes.data.payout_mode,
           }
         : null
     );
@@ -195,7 +177,6 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     const isCurrentWeek = weekStart === getWeekBounds(new Date(), timezone).weekStart;
     const remainingDays = daysRemainingInWeek(weekEnd, todayString);
     const { monthStart } = currentMonthBounds(timezone);
-    const useDurationTiebreak = groupRules?.requireCheckoutPhoto ?? false;
 
     // Guaranteed-misses-only projection for the still-open current week —
     // see the doc comment above for why this can't just be "required - completed".
@@ -216,8 +197,12 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
       return Math.max(stillNeeded - remainingDays, 0);
     };
 
+    // League mode never charges a penalty (run_weekly_evaluation forces it to
+    // 0 there, only ranking/podium money moves) — this live projection must
+    // agree, or a league member sees a scary "-$X" that can never actually
+    // be charged.
     const liveChargedAmount = (m: MemberAttendanceRecord): number => {
-      if (!groupRules) return 0;
+      if (!groupRules || groupRules.payoutMode === 'league') return 0;
       return Math.min(liveChargedFailedDays(m) * groupRules.penaltyAmount, groupRules.weeklyPenaltyCap);
     };
 
@@ -225,14 +210,6 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
       const raw = records.map((m) => {
         const statuses = m.days.filter((d) => d.date >= rangeStart && d.date <= rangeEnd).map((d) => d.status);
         const tally = tallyAttendance(statuses);
-        // A workout logged before this member's own activation date is
-        // practice, not real play — must not sway the duration tiebreak any
-        // more than it sways completedDays/failedDays above (m.days already
-        // excludes those dates; this map doesn't, since it's built from a
-        // separate raw checkins query keyed only by date range).
-        const totalWorkoutMinutes = (workoutMinutesByUser.get(m.userId) ?? [])
-          .filter((r) => r.date >= rangeStart && r.date <= rangeEnd && (!m.activatedDate || r.date >= m.activatedDate))
-          .reduce((sum, r) => sum + r.minutes, 0);
         return {
           userId: m.userId,
           fullName: m.fullName,
@@ -241,18 +218,11 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
           consistencyPercent: consistencyPercent(tally.completedCount, tally.failedCount),
           gbScore: gbScore(tally.completedCount, tally.failedCount),
           chargedAmount: chargedAmountFn(m),
-          totalWorkoutMinutes,
           penaltyProtectedUntil: m.penaltyStartDate && m.penaltyStartDate > todayString ? m.penaltyStartDate : null,
         };
       });
       const rankByUserId = rankMembersByConsistency(
-        raw.map((r) => ({
-          userId: r.userId,
-          completedCount: r.completedDays,
-          failedCount: r.failedDays,
-          totalWorkoutMinutes: r.totalWorkoutMinutes,
-        })),
-        useDurationTiebreak
+        raw.map((r) => ({ userId: r.userId, completedCount: r.completedDays, failedCount: r.failedDays }))
       );
       return raw
         .map((r) => ({ ...r, rank: rankByUserId.get(r.userId)! }))
@@ -275,7 +245,6 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     monthChargedAmountByUser,
     allChargedAmountByUser,
     weeklyChargedAmountByWeekStart,
-    workoutMinutesByUser,
     groupRules,
     referenceDate,
     timezone,

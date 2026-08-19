@@ -1,15 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { PrizeSplitEditor } from '@/components/ui/PrizeSplitEditor';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { ruleProposalSchema } from '@/lib/validation/schemas';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { RULE_FIELD_HELP } from '@/constants/ruleFieldHelp';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 import type { PayoutMode } from '@/lib/supabase/types';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -21,6 +24,11 @@ const TIMING_OPTIONS: { key: 'immediate' | 'next_week'; label: string }[] = [
 const APPLY_MODE_OPTIONS: { key: 'vote' | 'direct'; label: string }[] = [
   { key: 'vote', label: 'Proponer y votar' },
   { key: 'direct', label: 'Aplicar directamente' },
+];
+
+const YES_NO_OPTIONS: { key: 'yes' | 'no'; label: string }[] = [
+  { key: 'no', label: 'No' },
+  { key: 'yes', label: 'Sí' },
 ];
 
 const CHECKOUT_TOGGLE_OPTIONS: { key: 'no_change' | 'yes' | 'no'; label: string }[] = [
@@ -39,6 +47,7 @@ const PAYOUT_MODE_OPTIONS: { key: 'no_change' | PayoutMode; label: string }[] = 
 export default function ProposeRuleChangeScreen() {
   const { group, membership } = useActiveGroup();
   const isAdmin = membership?.role === 'admin';
+  const { cycle } = useLeagueCycle(group?.id ?? null);
   const [minDaysPerWeek, setMinDaysPerWeek] = useState('');
   const [penaltyAmount, setPenaltyAmount] = useState('');
   const [weeklyPenaltyCap, setWeeklyPenaltyCap] = useState('');
@@ -50,12 +59,18 @@ export default function ProposeRuleChangeScreen() {
   const [leagueDurationMonths, setLeagueDurationMonths] = useState('');
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>([]);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
+  const [changeLeagueCycleStart, setChangeLeagueCycleStart] = useState<'yes' | 'no'>('no');
+  const [leagueCycleStartDate, setLeagueCycleStartDate] = useState(new Date());
   const [timing, setTiming] = useState<'immediate' | 'next_week'>('next_week');
   const [applyMode, setApplyMode] = useState<'vote' | 'direct'>('vote');
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const effectiveMode: PayoutMode = payoutMode === 'no_change' ? (group?.payout_mode ?? 'cooperative') : payoutMode;
+
+  useEffect(() => {
+    if (cycle) setLeagueCycleStartDate(new Date(cycle.started_at));
+  }, [cycle]);
 
   const handleSubmit = async () => {
     if (!group) return;
@@ -71,6 +86,8 @@ export default function ProposeRuleChangeScreen() {
       leagueDurationMonths: leagueDurationMonths ? Number(leagueDurationMonths) : undefined,
       leaguePrizeSplits: leaguePrizeSplits.length > 0 ? leaguePrizeSplits.map(Number) : undefined,
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
+      leagueCycleStartedAt:
+        changeLeagueCycleStart === 'yes' && group ? toZonedDateString(leagueCycleStartDate, group.timezone) : undefined,
     };
     const result = ruleProposalSchema.safeParse(changes);
     if (!result.success) {
@@ -97,6 +114,9 @@ export default function ProposeRuleChangeScreen() {
         ...(result.data.leaguePrizeSplits !== undefined && { league_prize_splits: result.data.leaguePrizeSplits }),
         ...(result.data.mixedLeagueSharePercent !== undefined && {
           mixed_league_share_percent: result.data.mixedLeagueSharePercent,
+        }),
+        ...(result.data.leagueCycleStartedAt !== undefined && {
+          league_cycle_started_at: result.data.leagueCycleStartedAt,
         }),
       };
 
@@ -230,6 +250,20 @@ export default function ProposeRuleChangeScreen() {
                 ) : null}
                 <PrizeSplitEditor values={leaguePrizeSplits} onChange={setLeaguePrizeSplits} />
               </View>
+              {cycle ? (
+                <View style={styles.timingField}>
+                  <Text style={styles.timingLabel}>¿Cambiar la fecha de inicio del ciclo actual?</Text>
+                  <Text style={styles.modeDescription}>{RULE_FIELD_HELP.leagueCycleStartedAt}</Text>
+                  <SegmentedControl
+                    options={YES_NO_OPTIONS}
+                    value={changeLeagueCycleStart}
+                    onChange={setChangeLeagueCycleStart}
+                  />
+                  {changeLeagueCycleStart === 'yes' ? (
+                    <InlineDatePicker label="Nueva fecha de inicio" value={leagueCycleStartDate} onChange={setLeagueCycleStartDate} />
+                  ) : null}
+                </View>
+              ) : null}
             </>
           ) : null}
           {isFieldRelevantForMode('mixedShare', effectiveMode) ? (

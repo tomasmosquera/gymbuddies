@@ -1,24 +1,20 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { AvatarLevelRing } from '@/components/ui/AvatarLevelRing';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupMoneyOverview } from '@/hooks/useGroupMoneyOverview';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useNotifications } from '@/hooks/useNotifications';
-import type { LevelProgress } from '@/lib/domain/xp';
 import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-
-const AVATAR_SIZE = 80;
-const AVATAR_RING_WIDTH = 4;
 
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -49,47 +45,6 @@ function RiskSectionHeader({
     <View style={styles.riskHeader}>
       <Ionicons name={icon} size={18} color={color} />
       <Text style={[styles.riskHeaderText, { color }]}>{children}</Text>
-    </View>
-  );
-}
-
-/** The avatar's green border becomes a ring that fills in with progress toward the next level. */
-function AvatarWithLevel({ initials, level }: { initials: string; level: LevelProgress | null }) {
-  const radius = (AVATAR_SIZE - AVATAR_RING_WIDTH) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = level?.progress ?? 0;
-  const strokeDashoffset = circumference * (1 - progress);
-  return (
-    <View style={styles.avatarWrap}>
-      <Svg width={AVATAR_SIZE} height={AVATAR_SIZE} style={StyleSheet.absoluteFill}>
-        <Circle
-          cx={AVATAR_SIZE / 2}
-          cy={AVATAR_SIZE / 2}
-          r={radius}
-          stroke={colors.border}
-          strokeWidth={AVATAR_RING_WIDTH}
-          fill="none"
-        />
-        <Circle
-          cx={AVATAR_SIZE / 2}
-          cy={AVATAR_SIZE / 2}
-          r={radius}
-          stroke={colors.primary}
-          strokeWidth={AVATAR_RING_WIDTH}
-          fill="none"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          rotation="-90"
-          origin={`${AVATAR_SIZE / 2}, ${AVATAR_SIZE / 2}`}
-        />
-      </Svg>
-      <View style={styles.avatarInner}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
-      <View style={styles.levelBadge}>
-        <Text style={styles.levelBadgeText}>{level?.level ?? 0}</Text>
-      </View>
     </View>
   );
 }
@@ -193,8 +148,8 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.hero}>
-        <Pressable onPress={() => router.push('/profile/badges')}>
-          <AvatarWithLevel initials={getInitials(profile.full_name)} level={myBadges?.level ?? null} />
+        <Pressable onPress={() => router.push('/profile/badges')} style={styles.avatarWrap}>
+          <AvatarLevelRing initials={getInitials(profile.full_name)} level={myBadges?.level ?? null} size={80} ringWidth={4} />
         </Pressable>
         <Pressable onPress={() => router.push('/profile/edit-profile')} style={styles.heroInfo}>
           <Text style={styles.name}>{profile.full_name}</Text>
@@ -382,38 +337,7 @@ const styles = StyleSheet.create({
     borderColor: colors.background,
   },
   hero: { alignItems: 'center', gap: 2, marginBottom: spacing.xs },
-  avatarWrap: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    marginBottom: spacing.sm,
-  },
-  avatarInner: {
-    position: 'absolute',
-    top: AVATAR_RING_WIDTH + 3,
-    left: AVATAR_RING_WIDTH + 3,
-    right: AVATAR_RING_WIDTH + 3,
-    bottom: AVATAR_RING_WIDTH + 3,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  levelBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    minWidth: 26,
-    height: 26,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  levelBadgeText: { color: colors.primaryText, fontSize: 12, fontWeight: '700' },
-  avatarText: { color: colors.text, fontSize: 24, fontWeight: '700' },
+  avatarWrap: { marginBottom: spacing.sm },
   heroInfo: { alignItems: 'center', gap: 2 },
   name: { ...typography.heading, color: colors.text },
   email: { color: colors.textMuted, marginTop: 2 },

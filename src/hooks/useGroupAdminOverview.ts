@@ -48,15 +48,18 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
     const { weekStart, weekEnd } = getWeekBounds(new Date(), timezone);
 
     const [
+      groupRes,
       membersRes,
       pendingTxRes,
       penaltiesRes,
+      payoutsRes,
       pendingExcusesRes,
       pendingProposalRes,
       checkinsRes,
       excusedRes,
       overridesRes,
     ] = await Promise.all([
+      supabase.from('groups').select('payout_mode').eq('id', groupId).single(),
       supabase.from('group_members').select('user_id, status, balance, activated_at, joined_at').eq('group_id', groupId),
       supabase
         .from('wallet_transactions')
@@ -65,9 +68,17 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
         .eq('status', 'pending'),
       supabase
         .from('wallet_transactions')
-        .select('amount')
+        .select('user_id, amount, confirmed_at')
         .eq('group_id', groupId)
         .eq('type', 'penalty')
+        .eq('status', 'confirmed'),
+      // Only needed to scope "Saldo total del grupo" to penalties charged
+      // since each member's last payout — see totalGroupBalance below.
+      supabase
+        .from('wallet_transactions')
+        .select('user_id, confirmed_at')
+        .eq('group_id', groupId)
+        .eq('type', 'payout')
         .eq('status', 'confirmed'),
       // Counts both requests still awaiting a direct admin decision and any
       // already sent to a group vote — excuse-admin.tsx surfaces both (the
@@ -108,11 +119,38 @@ export function useGroupAdminOverview(groupId: string | null, minDaysPerWeek: nu
     const activeMembers = members.filter((m) => m.status === 'active' || m.status === 'needs_recharge').length;
     const pendingDepositMembers = members.filter((m) => m.status === 'pending_deposit').length;
     const needsRechargeMembers = members.filter((m) => m.status === 'needs_recharge').length;
-    const totalGroupBalance = members
+    const netBalance = members
       .filter((m) => m.status === 'active' || m.status === 'needs_recharge')
       .reduce((sum, m) => sum + m.balance, 0);
 
-    const totalPenaltiesCharged = (penaltiesRes.data ?? []).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const penalties = penaltiesRes.data ?? [];
+    const totalPenaltiesCharged = penalties.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+    // A penalty never actually withdraws real money from the group — it only
+    // lowers what that member is owed back, so the money physically stays in
+    // the pool the whole time (liquidate_group_now's cooperative branch adds
+    // it right back in, split among everyone else). "Saldo total del grupo"
+    // should read as that real, undiminished pool — deposits/recharges never
+    // going down, only what's ultimately redistributed shifting — matching
+    // exactly what a Cooperativo liquidation actually pays out. Scoped to
+    // this Cooperativo-only formula (see 0098_cooperative_penalty_redistribution.sql);
+    // league/mixed still liquidate off the net balance sum, so their display
+    // must keep matching that until/unless they get the same redistribution.
+    let totalGroupBalance = netBalance;
+    if (groupRes.data?.payout_mode === 'cooperative') {
+      const lastPayoutByUser = new Map<string, string>();
+      for (const p of payoutsRes.data ?? []) {
+        if (!p.confirmed_at) continue;
+        const existing = lastPayoutByUser.get(p.user_id);
+        if (!existing || p.confirmed_at > existing) lastPayoutByUser.set(p.user_id, p.confirmed_at);
+      }
+      const penaltiesSinceLastPayout = penalties.reduce((sum, t) => {
+        const lastPayout = lastPayoutByUser.get(t.user_id);
+        if (lastPayout && t.confirmed_at && t.confirmed_at <= lastPayout) return sum;
+        return sum + Math.abs(t.amount);
+      }, 0);
+      totalGroupBalance = netBalance + penaltiesSinceLastPayout;
+    }
 
     const checkinDatesByUser = new Map<string, Set<string>>();
     for (const c of checkinsRes.data ?? []) {

@@ -4,8 +4,10 @@ import {
   longestCompletedStreak,
   currentCompletedStreak,
   weekendWarriorRun,
+  currentWeekendWarriorRun,
   monthlyConsistency,
   longestConsecutiveMonthRun,
+  currentConsecutiveMonthRun,
   monthlyPenalties,
   isFixedHoliday,
   totalWorkoutMinutes,
@@ -131,6 +133,23 @@ describe('weekendWarriorRun', () => {
   });
 });
 
+describe('currentWeekendWarriorRun', () => {
+  it('only counts the trailing run, unlike weekendWarriorRun which keeps the best-ever one', () => {
+    const d = days([
+      ['2026-01-03', 'completed'],
+      ['2026-01-04', 'completed'],
+      ['2026-01-10', 'completed'],
+      ['2026-01-11', 'completed'],
+      ['2026-01-17', 'completed'],
+      ['2026-01-18', 'failed'],
+      ['2026-01-24', 'completed'],
+      ['2026-01-25', 'completed'],
+    ]);
+    expect(weekendWarriorRun(d)).toBe(2);
+    expect(currentWeekendWarriorRun(d)).toBe(1);
+  });
+});
+
 describe('monthlyConsistency', () => {
   it('groups decided days by month, excluding excused', () => {
     const d = days([
@@ -150,6 +169,38 @@ describe('monthlyConsistency', () => {
 describe('longestConsecutiveMonthRun', () => {
   it('breaks on a gap month', () => {
     expect(longestConsecutiveMonthRun(['2026-01', '2026-02', '2026-04'])).toBe(2);
+  });
+});
+
+describe('currentConsecutiveMonthRun', () => {
+  it('walks backward from the most recent month and stops at the first non-qualifying one', () => {
+    const monthQualifies = new Map([
+      ['2026-01', true],
+      ['2026-02', true],
+      ['2026-03', false],
+      ['2026-04', true],
+      ['2026-05', true],
+      ['2026-06', true],
+    ]);
+    expect(currentConsecutiveMonthRun(monthQualifies)).toBe(3);
+  });
+
+  it('returns 0 once the most recent closed month breaks the run, even if an older run was longer', () => {
+    const monthQualifies = new Map([
+      ['2026-01', true],
+      ['2026-02', true],
+      ['2026-03', true],
+      ['2026-04', false],
+    ]);
+    expect(currentConsecutiveMonthRun(monthQualifies)).toBe(0);
+  });
+
+  it('treats a month absent from the map the same as one present but not qualifying', () => {
+    const monthQualifies = new Map([
+      ['2026-01', true],
+      ['2026-03', true],
+    ]);
+    expect(currentConsecutiveMonthRun(monthQualifies)).toBe(1);
   });
 });
 
@@ -216,6 +267,18 @@ describe('representative badge evaluations', () => {
     expect(badge('mes-perfecto').evaluate(fullStreak).earned).toBe(true);
   });
 
+  it('Mes Perfecto stays earned once the 30-day streak has ever been reached, but its progress shows the current trailing streak, not the historical best', () => {
+    const d = [
+      ...Array.from({ length: 30 }, (_, i) => ({ date: `2026-01-${String(i + 1).padStart(2, '0')}`, status: 'completed' as const })),
+      { date: '2026-02-01', status: 'failed' as const },
+      { date: '2026-02-02', status: 'completed' as const },
+      { date: '2026-02-03', status: 'completed' as const },
+    ];
+    const status = badge('mes-perfecto').evaluate(baseContext({ todayString: '2026-02-03', days: d }));
+    expect(status.earned).toBe(true);
+    expect(status.current).toBe(2);
+  });
+
   it('El Fundador only earns when joinedDate matches the group creation date', () => {
     expect(badge('el-fundador').evaluate(baseContext({ joinedDate: '2026-01-01', groupCreatedDate: '2026-01-01' })).earned).toBe(true);
     expect(badge('el-fundador').evaluate(baseContext({ joinedDate: '2026-03-01', groupCreatedDate: '2026-01-01' })).earned).toBe(false);
@@ -232,6 +295,24 @@ describe('representative badge evaluations', () => {
       ]),
     });
     expect(badge('impecable').evaluate(ctx).earned).toBe(false);
+  });
+
+  it('Constante de Verdad stays earned once 6 straight qualifying months was ever reached, but its progress reflects the run trailing up to the most recent closed month', () => {
+    function monthOfDays(month: string, dayCount: number, status: BadgeDayRecord['status']): BadgeDayRecord[] {
+      return Array.from({ length: dayCount }, (_, i) => ({
+        date: `${month}-${String(i + 1).padStart(2, '0')}`,
+        status,
+      }));
+    }
+    const qualifyingMonths = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'].flatMap((m) =>
+      monthOfDays(m, 28, 'completed')
+    );
+    const brokenJuly = monthOfDays('2026-07', 28, 'failed');
+    const status = badge('constante-de-verdad').evaluate(
+      baseContext({ todayString: '2026-08-01', days: [...qualifyingMonths, ...brokenJuly] })
+    );
+    expect(status.earned).toBe(true);
+    expect(status.current).toBe(0);
   });
 
   it('Piel en el Juego earns from either an initial deposit or a recharge', () => {
@@ -275,8 +356,26 @@ describe('representative badge evaluations', () => {
 
   it('Alma del Grupo needs 30 consecutive calendar days of reactions given', () => {
     const consecutive = Array.from({ length: 30 }, (_, i) => `2026-01-${String(i + 1).padStart(2, '0')}`);
-    expect(badge('alma-del-grupo').evaluate(baseContext({ reactionsGivenDates: consecutive })).earned).toBe(true);
-    expect(badge('alma-del-grupo').evaluate(baseContext({ reactionsGivenDates: consecutive.slice(0, 29) })).earned).toBe(false);
+    expect(
+      badge('alma-del-grupo').evaluate(baseContext({ todayString: '2026-01-30', reactionsGivenDates: consecutive })).earned
+    ).toBe(true);
+    expect(
+      badge('alma-del-grupo').evaluate(baseContext({ todayString: '2026-01-29', reactionsGivenDates: consecutive.slice(0, 29) }))
+        .earned
+    ).toBe(false);
+  });
+
+  it('Alma del Grupo stays earned once 30 in a row was ever reached, but its progress reflects the streak trailing up to today, not the historical best', () => {
+    const consecutive = Array.from({ length: 30 }, (_, i) => `2026-01-${String(i + 1).padStart(2, '0')}`);
+    // Gave reactions 30 days straight through Jan 30, then stopped for a
+    // while, then gave one more today (Feb 3) — the historic best (30) must
+    // still count as earned, but "current" should reflect only today's
+    // fresh 1-day run, not the old 30-day one.
+    const status = badge('alma-del-grupo').evaluate(
+      baseContext({ todayString: '2026-02-03', reactionsGivenDates: [...consecutive, '2026-02-03'] })
+    );
+    expect(status.earned).toBe(true);
+    expect(status.current).toBe(1);
   });
 
   it('Maratonista requires 1,000 accumulated workout minutes', () => {

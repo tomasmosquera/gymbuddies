@@ -5,6 +5,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
 import { GB_SCORE_EXPLANATION_BODY, GB_SCORE_EXPLANATION_TITLE } from '@/lib/domain/attendance';
 import type { LastClosedWeekSummary, LeaderboardPeriod, LeaderboardRow } from '@/hooks/useLeaderboard';
+import type { PayoutMode } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 interface LeaderboardCardProps {
@@ -23,6 +24,11 @@ interface LeaderboardCardProps {
    * doesn't silently look like it means "this week" when it doesn't.
    */
   viewedWeekLabel?: string | null;
+  /** Only in League mode: what each member would get right now if the league ended today (see useLeaguePayoutPreview) — replaces the owed/charged line, since League never charges a penalty. Same number in every period tab (Semana/Mes/Acumulado) — it reflects current standing, not a period-scoped total. */
+  payoutMode?: PayoutMode;
+  leaguePayoutByUserId?: Record<string, number>;
+  /** Only in League mode: tie-aware place from the same source as the money (liquidate_group_now) — drives the rank column and the MVP crown instead of GB Score's rank, so the number shown always matches who's actually winning what. */
+  leaguePlaceByUserId?: Record<string, number>;
 }
 
 const PERIOD_OPTIONS: { key: LeaderboardPeriod; label: string }[] = [
@@ -55,6 +61,9 @@ export function LeaderboardCard({
   levelByUserId,
   isRefreshing,
   viewedWeekLabel,
+  payoutMode,
+  leaguePayoutByUserId,
+  leaguePlaceByUserId,
 }: LeaderboardCardProps) {
   const [period, setPeriod] = useState<LeaderboardPeriod>('week');
   const rows = rowsByPeriod[period];
@@ -101,22 +110,40 @@ export function LeaderboardCard({
           </View>
           <View style={styles.list}>
             {(() => {
-              const rank1Count = rows.filter((r) => r.rank === 1).length;
+              // League mode's Acumulado tab ranks by the same tie-aware
+              // place the money itself comes from (liquidate_group_now) —
+              // falls back to GB Score's rank only while that data isn't
+              // available yet (e.g. the cycle just started, see
+              // useLeaguePayoutPreview). Semana/Mes keep GB Score's rank
+              // regardless of mode: they're about recent form over a
+              // period, not "who's actually winning the league right now"
+              // — that's what the money line (always cycle-wide) already
+              // answers on its own, independent of whichever tab is open.
+              const effectiveRank = (row: LeaderboardRow) =>
+                payoutMode === 'league' && period === 'all' ? (leaguePlaceByUserId?.[row.userId] ?? row.rank) : row.rank;
+              const rank1Count = rows.filter((r) => effectiveRank(r) === 1).length;
               return rows.map((row) => {
                 const isMe = row.userId === currentUserId;
-                const isSoleMvp = row.rank === 1 && rank1Count === 1;
+                const rank = effectiveRank(row);
+                const isSoleMvp = rank === 1 && rank1Count === 1;
                 return (
                   <View key={row.userId} style={styles.row}>
-                    <Text style={[styles.rank, isSoleMvp && styles.rankMvp]}>{isSoleMvp ? 'MVP' : row.rank}</Text>
+                    <Text style={[styles.rank, isSoleMvp && styles.rankMvp]}>{isSoleMvp ? 'MVP' : rank}</Text>
                     <AvatarWithLevel initials={getInitials(row.fullName)} level={levelByUserId?.[row.userId]} size={28} />
                     <View style={styles.rowBody}>
                       <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
                         {row.fullName}
                         {isMe ? ' (tú)' : ''}
                       </Text>
-                      <Text style={styles.owed} numberOfLines={1}>
-                        {row.chargedAmount > 0 ? `-${currency} ${row.chargedAmount.toLocaleString('es-CO')}` : `${currency} 0`}
-                      </Text>
+                      {payoutMode === 'league' ? (
+                        <Text style={styles.owed} numberOfLines={1}>
+                          {currency} {(leaguePayoutByUserId?.[row.userId] ?? 0).toLocaleString('es-CO')}
+                        </Text>
+                      ) : (
+                        <Text style={styles.owed} numberOfLines={1}>
+                          {row.chargedAmount > 0 ? `-${currency} ${row.chargedAmount.toLocaleString('es-CO')}` : `${currency} 0`}
+                        </Text>
+                      )}
                       {row.penaltyProtectedUntil ? (
                         <Text style={styles.protectedHint} numberOfLines={1}>
                           🛡️ Protegido hasta {formatShortDate(row.penaltyProtectedUntil)}

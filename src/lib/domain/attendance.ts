@@ -95,40 +95,35 @@ export interface MemberConsistencyInput {
   userId: string;
   completedCount: number;
   failedCount: number;
-  /** Sum of workout minutes in the period being ranked — only ever used as a tiebreak, and only when useDurationTiebreak is true. */
-  totalWorkoutMinutes: number;
 }
 
 /**
- * Ranks members by GB Score (never by balance/money) — standard competition
- * ranking, so tied members share a rank and the next distinct value skips
- * accordingly (1, 1, 3, ...). Workout duration only ever breaks a GB Score
- * tie, and only when `useDurationTiebreak` is true — i.e. the group requires
- * checkout photos, the only way duration is ever recorded. When false, ties
- * stay fully shared. Members with no decided days (score null) always rank
+ * Ranks members by GB Score alone (never by balance/money, and no longer by
+ * workout duration either — see below) — standard competition ranking, so
+ * tied members share a rank and the next distinct value skips accordingly
+ * (1, 1, 3, ...). Members with no decided days (score null) always rank
  * last, tied with each other.
+ *
+ * Used to break a GB Score tie with total workout minutes when the group
+ * required checkout photos. Removed: a member who trains a long session but
+ * simply forgets the checkout photo (or whose group doesn't require one at
+ * all) shouldn't lose a tie to someone who happened to log more minutes —
+ * a genuine GB Score tie is now always a genuine shared rank, in every mode.
  */
-export function rankMembersByConsistency(
-  members: readonly MemberConsistencyInput[],
-  useDurationTiebreak: boolean
-): Map<string, number> {
+export function rankMembersByConsistency(members: readonly MemberConsistencyInput[]): Map<string, number> {
   const withScore = members.map((m) => ({ ...m, score: gbScore(m.completedCount, m.failedCount) }));
-  const sorted = [...withScore].sort((a, b) => {
-    const aScore = a.score ?? -1;
-    const bScore = b.score ?? -1;
-    if (aScore !== bScore) return bScore - aScore;
-    return useDurationTiebreak ? b.totalWorkoutMinutes - a.totalWorkoutMinutes : 0;
-  });
+  const sorted = [...withScore].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const rankByUserId = new Map<string, number>();
   let rank = 0;
   let seen = 0;
-  let lastKey: string | null = null;
+  // undefined (not null — a real score can legitimately be null, for a
+  // member with no decided days) marks "haven't seen a first entry yet".
+  let lastScore: number | null | undefined = undefined;
   for (const m of sorted) {
     seen++;
-    const key = useDurationTiebreak ? `${m.score}|${m.totalWorkoutMinutes}` : `${m.score}`;
-    if (lastKey === null || key !== lastKey) {
+    if (lastScore === undefined || m.score !== lastScore) {
       rank = seen;
-      lastKey = key;
+      lastScore = m.score;
     }
     rankByUserId.set(m.userId, rank);
   }

@@ -346,7 +346,7 @@ function DayRow({
         <Text style={styles.dayLabel}>{formatDayLabel(day.date, todayString)}</Text>
         <View style={styles.dayStats}>
           <Text style={[styles.dayStat, styles.dayStatGood]}>{day.completedCount} ✓</Text>
-          {day.excusedCount > 0 ? <Text style={[styles.dayStat, styles.dayStatNeutral]}>{day.excusedCount} 🌴</Text> : null}
+          {day.excusedCount > 0 ? <Text style={[styles.dayStat, styles.dayStatNeutral]}>{day.excusedCount} –</Text> : null}
           {day.notTrainedCount > 0 ? <Text style={[styles.dayStat, styles.dayStatBad]}>{day.notTrainedCount} ✗</Text> : null}
           <Text style={styles.dayStatTotal}>de {day.activeMemberCount} integrante{day.activeMemberCount === 1 ? '' : 's'}</Text>
         </View>
@@ -430,7 +430,7 @@ function MemberRow({
         <View style={styles.dayStats}>
           <Text style={[styles.dayStat, styles.dayStatGood]}>{member.completedCount} ✓</Text>
           {member.excusedCount > 0 ? (
-            <Text style={[styles.dayStat, styles.dayStatNeutral]}>{member.excusedCount} 🌴</Text>
+            <Text style={[styles.dayStat, styles.dayStatNeutral]}>{member.excusedCount} –</Text>
           ) : null}
           {member.failedCount > 0 ? <Text style={[styles.dayStat, styles.dayStatBad]}>{member.failedCount} ✗</Text> : null}
           {compliancePercent !== null ? <Text style={styles.dayStatTotal}>{compliancePercent}%</Text> : null}
@@ -471,7 +471,7 @@ function MemberRow({
               <View key={day.date} style={styles.memberDayRow}>
                 <Text style={styles.memberDayLabel}>{formatDayLabel(day.date, todayString)}</Text>
                 <Badge
-                  label={status === 'excused' ? 'Excusado 🌴' : 'Fallado ✗'}
+                  label={status === 'excused' ? 'Excusado –' : 'Fallado ✗'}
                   tone={status === 'excused' ? 'neutral' : 'danger'}
                 />
               </View>

@@ -12,6 +12,7 @@ export default function HomeStackLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Gym Buddies' }} />
+      <Stack.Screen name="group-summary" options={{ title: 'Tus grupos' }} />
     </Stack>
   );
 }

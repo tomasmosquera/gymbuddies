@@ -149,6 +149,19 @@ export function weekendWarriorRun(days: readonly BadgeDayRecord[]): number {
   return best;
 }
 
+/** The weekend-warrior run currently in progress, trailing from the most recent tracked Saturday — mirrors currentCompletedStreak's "still going" semantics for weekendWarriorRun's longest-ever count. */
+export function currentWeekendWarriorRun(days: readonly BadgeDayRecord[]): number {
+  const statusByDate = new Map(days.map((d) => [d.date, d.status]));
+  const saturdays = days.map((d) => d.date).filter((date) => weekdayOf(date) === 6);
+  let current = 0;
+  for (const saturday of saturdays) {
+    const sunday = addDaysToDateString(saturday, 1);
+    const bothCompleted = statusByDate.get(saturday) === 'completed' && statusByDate.get(sunday) === 'completed';
+    current = bothCompleted ? current + 1 : 0;
+  }
+  return current;
+}
+
 export interface MonthlyConsistency {
   month: string;
   completed: number;
@@ -182,6 +195,11 @@ function nextMonthKey(month: string): string {
   return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
 }
 
+function prevMonthKey(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 /** Longest run of chronologically consecutive months among an already-filtered, ascending-sorted list. */
 export function longestConsecutiveMonthRun(sortedMonths: readonly string[]): number {
   let best = 0;
@@ -193,6 +211,28 @@ export function longestConsecutiveMonthRun(sortedMonths: readonly string[]): num
     prev = month;
   }
   return best;
+}
+
+/**
+ * How many chronologically-consecutive calendar months, walking backward
+ * from the most recent month present in `monthQualifies`, qualify without a
+ * break — the month-granularity counterpart of currentCompletedStreak's
+ * "still going" semantics for longestConsecutiveMonthRun's longest-ever
+ * count. Unlike longestConsecutiveMonthRun, this needs every closed month
+ * (qualifying or not), not just the pre-filtered qualifying ones — a month
+ * that's absent from the map (e.g. never closed, or genuinely had zero data)
+ * is treated the same as one present but not qualifying: both stop the walk.
+ */
+export function currentConsecutiveMonthRun(monthQualifies: ReadonlyMap<string, boolean>): number {
+  const months = [...monthQualifies.keys()].sort();
+  if (months.length === 0) return 0;
+  let month = months[months.length - 1];
+  let current = 0;
+  while (monthQualifies.get(month)) {
+    current++;
+    month = prevMonthKey(month);
+  }
+  return current;
 }
 
 export interface MonthlyPenalty {
@@ -365,6 +405,18 @@ function threshold(current: number, target: number): BadgeStatus {
   return { earned: current >= target, current, target };
 }
 
+/**
+ * For streak-style badges: `earned` is permanent once the longest-ever run
+ * ever reached the target (same monotonic, never-un-earn invariant as
+ * `threshold` — a badge doesn't un-earn just because the streak later
+ * broke), but the displayed `current` is the run still in progress right
+ * now, so the progress bar answers "how close am I today", not "how close
+ * did I ever get".
+ */
+function streakStatus(longest: number, current: number, target: number): BadgeStatus {
+  return { earned: longest >= target, current, target };
+}
+
 // ---- catalog ---------------------------------------------------------------
 
 export const BADGES: BadgeDefinition[] = [
@@ -383,7 +435,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '💪',
     description: '7 días de racha.',
     category: 'racha',
-    evaluate: (ctx) => threshold(longestCompletedStreak(ctx.days), 7),
+    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 7),
   },
   {
     id: 'mes-perfecto',
@@ -391,7 +443,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📅',
     description: 'Racha de 30 días sin fallar.',
     category: 'racha',
-    evaluate: (ctx) => threshold(longestCompletedStreak(ctx.days), 30),
+    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 30),
   },
   {
     id: 'inquebrantable',
@@ -399,7 +451,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🛡️',
     description: 'Racha de 100 días.',
     category: 'racha',
-    evaluate: (ctx) => threshold(longestCompletedStreak(ctx.days), 100),
+    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 100),
   },
   {
     id: 'leyenda',
@@ -407,7 +459,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '👑',
     description: 'Racha de 365 días.',
     category: 'racha',
-    evaluate: (ctx) => threshold(longestCompletedStreak(ctx.days), 365),
+    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 365),
   },
   {
     id: 'segunda-oportunidad',
@@ -431,7 +483,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '⚔️',
     description: 'Check-ins en sábado y domingo, 4 semanas seguidas.',
     category: 'racha',
-    evaluate: (ctx) => threshold(weekendWarriorRun(ctx.days), 4),
+    evaluate: (ctx) => streakStatus(weekendWarriorRun(ctx.days), currentWeekendWarriorRun(ctx.days), 4),
   },
   {
     id: 'sin-excusas',
@@ -479,10 +531,10 @@ export const BADGES: BadgeDefinition[] = [
     category: 'consistencia',
     evaluate: (ctx) => {
       const currentMonth = ctx.todayString.slice(0, 7);
-      const qualifying = monthlyConsistency(ctx.days)
-        .filter((m) => m.month < currentMonth && m.percent > 80)
-        .map((m) => m.month);
-      return threshold(longestConsecutiveMonthRun(qualifying), 6);
+      const closedMonths = monthlyConsistency(ctx.days).filter((m) => m.month < currentMonth);
+      const qualifying = closedMonths.filter((m) => m.percent > 80).map((m) => m.month);
+      const monthQualifies = new Map(closedMonths.map((m) => [m.month, m.percent > 80]));
+      return streakStatus(longestConsecutiveMonthRun(qualifying), currentConsecutiveMonthRun(monthQualifies), 6);
     },
   },
   {
@@ -524,10 +576,10 @@ export const BADGES: BadgeDefinition[] = [
     description: '3 meses seguidos sin ninguna penalización.',
     category: 'consistencia',
     evaluate: (ctx) => {
-      const qualifying = monthlyPenalties(ctx.weeklyPenalties)
-        .filter((m) => m.penaltyCharged === 0)
-        .map((m) => m.month);
-      return threshold(longestConsecutiveMonthRun(qualifying), 3);
+      const closedMonths = monthlyPenalties(ctx.weeklyPenalties);
+      const qualifying = closedMonths.filter((m) => m.penaltyCharged === 0).map((m) => m.month);
+      const monthQualifies = new Map(closedMonths.map((m) => [m.month, m.penaltyCharged === 0]));
+      return streakStatus(longestConsecutiveMonthRun(qualifying), currentConsecutiveMonthRun(monthQualifies), 3);
     },
   },
   {
@@ -537,10 +589,10 @@ export const BADGES: BadgeDefinition[] = [
     description: '12 meses seguidos sin ninguna penalización.',
     category: 'consistencia',
     evaluate: (ctx) => {
-      const qualifying = monthlyPenalties(ctx.weeklyPenalties)
-        .filter((m) => m.penaltyCharged === 0)
-        .map((m) => m.month);
-      return threshold(longestConsecutiveMonthRun(qualifying), 12);
+      const closedMonths = monthlyPenalties(ctx.weeklyPenalties);
+      const qualifying = closedMonths.filter((m) => m.penaltyCharged === 0).map((m) => m.month);
+      const monthQualifies = new Map(closedMonths.map((m) => [m.month, m.penaltyCharged === 0]));
+      return streakStatus(longestConsecutiveMonthRun(qualifying), currentConsecutiveMonthRun(monthQualifies), 12);
     },
   },
 
@@ -799,16 +851,26 @@ export const BADGES: BadgeDefinition[] = [
     description: 'Reaccionar a check-ins durante 30 días seguidos.',
     category: 'social',
     evaluate: (ctx) => {
-      const dates = [...new Set(ctx.reactionsGivenDates)].sort();
+      const dateSet = new Set(ctx.reactionsGivenDates);
       let best = 0;
-      let current = 0;
+      let run = 0;
       let prev: string | null = null;
-      for (const date of dates) {
-        current = prev && addDaysToDateString(prev, 1) === date ? current + 1 : 1;
-        best = Math.max(best, current);
+      for (const date of [...dateSet].sort()) {
+        run = prev && addDaysToDateString(prev, 1) === date ? run + 1 : 1;
+        best = Math.max(best, run);
         prev = date;
       }
-      return threshold(best, 30);
+      // Unlike the run above (any longest stretch, wherever it falls), the
+      // current streak must reach all the way to today — walking backward
+      // day by day and stopping at the first missing day, same "must
+      // include the last day" rigor as currentCompletedStreak.
+      let current = 0;
+      let day = ctx.todayString;
+      while (dateSet.has(day)) {
+        current++;
+        day = addDaysToDateString(day, -1);
+      }
+      return streakStatus(best, current, 30);
     },
   },
   {

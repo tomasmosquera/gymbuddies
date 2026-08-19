@@ -282,6 +282,11 @@ export default function BadgesScreen() {
                     {earnedInCategory}/{categoryBadges.length}
                   </Text>
                 </View>
+                {category === 'koth' ? (
+                  <Text style={styles.kothXpTotal}>
+                    🔥 XP acumulado por récords: {selected.kothClaimXpTotal}
+                  </Text>
+                ) : null}
                 <ProgressBar ratio={earnedInCategory / categoryBadges.length} thin />
                 {visibleBadges.length > 0 ? (
                   <View style={styles.list}>
@@ -388,6 +393,7 @@ const styles = StyleSheet.create({
   },
   categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
   categoryCount: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
+  kothXpTotal: { color: colors.primary, fontSize: 13, fontWeight: '700', marginBottom: spacing.xs },
   emptyFilterHint: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
   progressTrack: {
     alignSelf: 'stretch',

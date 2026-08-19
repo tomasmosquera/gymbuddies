@@ -40,6 +40,112 @@ function penaltyStartDateOf(
   return date ? toZonedDateString(new Date(date), timezone) : null;
 }
 
+export interface GroupAttendanceRecords {
+  records: MemberAttendanceRecord[];
+  groupCreatedDate: string;
+}
+
+/**
+ * The actual fetch + day-by-day classification, as a plain function — pulled
+ * out of the hook below so a caller that needs this for several groups at
+ * once (e.g. useMyGroupsSummary, one group per membership) can call it in a
+ * loop/Promise.all without breaking the rules of hooks. Same shape both the
+ * Ranking and the Dashboard already compute independently.
+ */
+export async function fetchGroupAttendanceRecords(groupId: string, timezone: string): Promise<GroupAttendanceRecords> {
+  const todayString = toZonedDateString(new Date(), timezone);
+
+  const [membersRes, checkinsRes, excusedRes, overridesRes] = await Promise.all([
+    supabase
+      .from('group_members')
+      .select(
+        'user_id, balance, activated_at, penalty_start_date, joined_at, profile:profiles(full_name), group:groups(min_days_per_week, created_at)'
+      )
+      .eq('group_id', groupId)
+      .in('status', ['active', 'needs_recharge']),
+    // No lower bound needed — a check-in can't predate the group itself.
+    supabase.from('checkins').select('user_id, checkin_date').eq('group_id', groupId).lte('checkin_date', todayString),
+    supabase.from('excuse_dates').select('user_id, excused_date').eq('group_id', groupId).lte('excused_date', todayString),
+    supabase
+      .from('attendance_overrides')
+      .select('user_id, override_date, status')
+      .eq('group_id', groupId)
+      .lte('override_date', todayString),
+  ]);
+
+  const members = (membersRes.data ?? []) as unknown as {
+    user_id: string;
+    balance: number;
+    activated_at: string | null;
+    penalty_start_date: string | null;
+    joined_at: string;
+    profile: { full_name: string } | null;
+    group: { min_days_per_week: number; created_at: string } | null;
+  }[];
+
+  const groupCreated = members[0]?.group?.created_at
+    ? toZonedDateString(new Date(members[0].group.created_at), timezone)
+    : todayString;
+
+  const checkinDatesByUser = new Map<string, Set<string>>();
+  for (const c of checkinsRes.data ?? []) {
+    if (!checkinDatesByUser.has(c.user_id)) checkinDatesByUser.set(c.user_id, new Set());
+    checkinDatesByUser.get(c.user_id)!.add(c.checkin_date);
+  }
+
+  const validOverridesByUser = new Map<string, Set<string>>();
+  const failedOverridesByUser = new Map<string, Set<string>>();
+  for (const o of overridesRes.data ?? []) {
+    const target = o.status === 'valid' ? validOverridesByUser : failedOverridesByUser;
+    if (!target.has(o.user_id)) target.set(o.user_id, new Set());
+    target.get(o.user_id)!.add(o.override_date);
+  }
+
+  const excusedDatesByUser = new Map<string, Set<string>>();
+  for (const e of excusedRes.data ?? []) {
+    if (!excusedDatesByUser.has(e.user_id)) excusedDatesByUser.set(e.user_id, new Set());
+    excusedDatesByUser.get(e.user_id)!.add(e.excused_date);
+  }
+
+  // Every day since the group existed, today included — a check-in
+  // already done today still counts right away, same as the dashboard.
+  const allDates = enumerateDates(groupCreated, todayString);
+
+  const nextRecords: MemberAttendanceRecord[] = members.map((m) => {
+    const activatedDate = activatedDateOf(m, timezone);
+    const checkinDates = checkinDatesByUser.get(m.user_id);
+    const validDates = validOverridesByUser.get(m.user_id);
+    const failedDates = failedOverridesByUser.get(m.user_id);
+    const excusedDates = excusedDatesByUser.get(m.user_id);
+    const days: DayRecord[] = [];
+    for (const date of allDates) {
+      if (activatedDate && activatedDate > date) continue;
+      const status = classifyMemberDay({
+        hasCheckin: checkinDates?.has(date) ?? false,
+        hasValidOverride: validDates?.has(date) ?? false,
+        hasFailedOverride: failedDates?.has(date) ?? false,
+        isExcused: excusedDates?.has(date) ?? false,
+      });
+      // Today isn't over yet — it can still show as completed/excused,
+      // but never as failed until the day has actually passed.
+      if (status === 'failed' && date === todayString) continue;
+      days.push({ date, status });
+    }
+    return {
+      userId: m.user_id,
+      fullName: m.profile?.full_name ?? 'Miembro',
+      balance: m.balance,
+      minDaysPerWeek: m.group?.min_days_per_week ?? 0,
+      joinedAt: m.joined_at,
+      activatedDate,
+      penaltyStartDate: penaltyStartDateOf(m, timezone),
+      days,
+    };
+  });
+
+  return { records: nextRecords, groupCreatedDate: groupCreated };
+}
+
 /**
  * Fetches every group member's full day-by-day attendance history — the same
  * shape both the Ranking and the Dashboard already compute independently.
@@ -59,98 +165,9 @@ export function useGroupAttendanceRecords(groupId: string | null, timezone: stri
       return;
     }
     setIsLoading(true);
-    const todayString = toZonedDateString(new Date(), timezone);
-
-    const [membersRes, checkinsRes, excusedRes, overridesRes] = await Promise.all([
-      supabase
-        .from('group_members')
-        .select(
-          'user_id, balance, activated_at, penalty_start_date, joined_at, profile:profiles(full_name), group:groups(min_days_per_week, created_at)'
-        )
-        .eq('group_id', groupId)
-        .in('status', ['active', 'needs_recharge']),
-      // No lower bound needed — a check-in can't predate the group itself.
-      supabase.from('checkins').select('user_id, checkin_date').eq('group_id', groupId).lte('checkin_date', todayString),
-      supabase.from('excuse_dates').select('user_id, excused_date').eq('group_id', groupId).lte('excused_date', todayString),
-      supabase
-        .from('attendance_overrides')
-        .select('user_id, override_date, status')
-        .eq('group_id', groupId)
-        .lte('override_date', todayString),
-    ]);
-
-    const members = (membersRes.data ?? []) as unknown as {
-      user_id: string;
-      balance: number;
-      activated_at: string | null;
-      penalty_start_date: string | null;
-      joined_at: string;
-      profile: { full_name: string } | null;
-      group: { min_days_per_week: number; created_at: string } | null;
-    }[];
-
-    const groupCreated = members[0]?.group?.created_at
-      ? toZonedDateString(new Date(members[0].group.created_at), timezone)
-      : todayString;
-    setGroupCreatedDate(groupCreated);
-
-    const checkinDatesByUser = new Map<string, Set<string>>();
-    for (const c of checkinsRes.data ?? []) {
-      if (!checkinDatesByUser.has(c.user_id)) checkinDatesByUser.set(c.user_id, new Set());
-      checkinDatesByUser.get(c.user_id)!.add(c.checkin_date);
-    }
-
-    const validOverridesByUser = new Map<string, Set<string>>();
-    const failedOverridesByUser = new Map<string, Set<string>>();
-    for (const o of overridesRes.data ?? []) {
-      const target = o.status === 'valid' ? validOverridesByUser : failedOverridesByUser;
-      if (!target.has(o.user_id)) target.set(o.user_id, new Set());
-      target.get(o.user_id)!.add(o.override_date);
-    }
-
-    const excusedDatesByUser = new Map<string, Set<string>>();
-    for (const e of excusedRes.data ?? []) {
-      if (!excusedDatesByUser.has(e.user_id)) excusedDatesByUser.set(e.user_id, new Set());
-      excusedDatesByUser.get(e.user_id)!.add(e.excused_date);
-    }
-
-    // Every day since the group existed, today included — a check-in
-    // already done today still counts right away, same as the dashboard.
-    const allDates = enumerateDates(groupCreated, todayString);
-
-    const nextRecords: MemberAttendanceRecord[] = members.map((m) => {
-      const activatedDate = activatedDateOf(m, timezone);
-      const checkinDates = checkinDatesByUser.get(m.user_id);
-      const validDates = validOverridesByUser.get(m.user_id);
-      const failedDates = failedOverridesByUser.get(m.user_id);
-      const excusedDates = excusedDatesByUser.get(m.user_id);
-      const days: DayRecord[] = [];
-      for (const date of allDates) {
-        if (activatedDate && activatedDate > date) continue;
-        const status = classifyMemberDay({
-          hasCheckin: checkinDates?.has(date) ?? false,
-          hasValidOverride: validDates?.has(date) ?? false,
-          hasFailedOverride: failedDates?.has(date) ?? false,
-          isExcused: excusedDates?.has(date) ?? false,
-        });
-        // Today isn't over yet — it can still show as completed/excused,
-        // but never as failed until the day has actually passed.
-        if (status === 'failed' && date === todayString) continue;
-        days.push({ date, status });
-      }
-      return {
-        userId: m.user_id,
-        fullName: m.profile?.full_name ?? 'Miembro',
-        balance: m.balance,
-        minDaysPerWeek: m.group?.min_days_per_week ?? 0,
-        joinedAt: m.joined_at,
-        activatedDate,
-        penaltyStartDate: penaltyStartDateOf(m, timezone),
-        days,
-      };
-    });
-    setRecords(nextRecords);
-
+    const result = await fetchGroupAttendanceRecords(groupId, timezone);
+    setRecords(result.records);
+    setGroupCreatedDate(result.groupCreatedDate);
     setIsLoading(false);
   }, [groupId, timezone]);
 

@@ -15,6 +15,7 @@ import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
 import { useElapsedSeconds } from '@/hooks/useElapsedSeconds';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { useLeaguePayoutPreview } from '@/hooks/useLeaguePayoutPreview';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
@@ -84,6 +85,11 @@ export default function HomeScreen() {
     isLoading: leaderboardLoading,
     refresh: refreshLeaderboard,
   } = useLeaderboard(group?.id ?? null, timezone, viewedDate);
+  const {
+    amountByUserId: leaguePayoutByUserId,
+    placeByUserId: leaguePlaceByUserId,
+    refresh: refreshLeaguePayout,
+  } = useLeaguePayoutPreview(group?.id ?? null, group?.payout_mode ?? null);
   const { membersBadges } = useGroupBadges(group?.id ?? null, timezone);
   const levelByUserId = useMemo(
     () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
@@ -113,6 +119,7 @@ export default function HomeScreen() {
       refreshCheckins();
       refreshOverrides();
       refreshLeaderboard();
+      refreshLeaguePayout();
       refreshProposal();
       refreshExcuseVote();
       refreshChallenges();
@@ -121,6 +128,7 @@ export default function HomeScreen() {
       refreshCheckins,
       refreshOverrides,
       refreshLeaderboard,
+      refreshLeaguePayout,
       refreshProposal,
       refreshExcuseVote,
       refreshChallenges,
@@ -180,7 +188,7 @@ export default function HomeScreen() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refreshGroup(), refreshCheckins(), refreshOverrides(), refreshLeaderboard()]);
+      await Promise.all([refreshGroup(), refreshCheckins(), refreshOverrides(), refreshLeaderboard(), refreshLeaguePayout()]);
     } finally {
       setIsRefreshing(false);
     }
@@ -191,10 +199,10 @@ export default function HomeScreen() {
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
     >
-      <View>
-        <Text style={styles.groupName}>{group.name}</Text>
+      <Pressable onPress={() => router.push('/home/group-summary')}>
+        <Text style={styles.groupName}>{group.name} ›</Text>
         <Text style={styles.inviteCode}>Código: {group.invite_code}</Text>
-      </View>
+      </Pressable>
 
       {pendingVoteCount > 0 ? (
         <Pressable onPress={() => router.push('/rules')}>
@@ -287,7 +295,7 @@ export default function HomeScreen() {
                       tone === 'danger' && styles.dayDotTextDanger,
                     ]}
                   >
-                    {tone === 'danger' ? '✗' : isExcused ? '🌴' : isDone ? '✓' : ''}
+                    {tone === 'danger' ? '✗' : isExcused ? '–' : isDone ? '✓' : ''}
                   </Text>
                 </View>
                 <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>{DAY_LABELS[index]}</Text>
@@ -372,6 +380,9 @@ export default function HomeScreen() {
         currency={group.currency}
         levelByUserId={levelByUserId}
         isRefreshing={leaderboardLoading}
+        payoutMode={group.payout_mode}
+        leaguePayoutByUserId={leaguePayoutByUserId}
+        leaguePlaceByUserId={leaguePlaceByUserId}
         viewedWeekLabel={
           isCurrentWeek
             ? null
