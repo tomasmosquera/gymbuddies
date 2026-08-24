@@ -409,7 +409,14 @@ function dayToneStyle(tone: 'neutral' | 'success' | 'warning' | 'danger') {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
+  container: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    paddingTop: spacing.xs,
+    gap: spacing.md,
+    backgroundColor: colors.background,
+  },
   groupName: { ...typography.title, color: colors.text },
   inviteCode: { color: colors.textMuted, marginTop: 2 },
   voteBanner: { backgroundColor: colors.primary },

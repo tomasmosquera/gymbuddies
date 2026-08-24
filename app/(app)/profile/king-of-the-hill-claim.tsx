@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { TextField } from '@/components/ui/TextField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,9 +15,26 @@ import { useKothCatalog } from '@/hooks/useKothCatalog';
 import { useKothClaimHistory } from '@/hooks/useKothClaimHistory';
 import { useSubmitKothClaim } from '@/hooks/useSubmitKothClaim';
 import { beatsCurrentRecord, formatKothValue } from '@/lib/domain/koth';
+import { MAX_VIDEO_BYTES } from '@/lib/supabase/storage';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const VIDEO_MAX_DURATION_SECONDS = 30;
+const MAX_VIDEO_MB = Math.round(MAX_VIDEO_BYTES / (1024 * 1024));
+
+/**
+ * Only the camera capture caps duration (videoMaxDuration, camera-only —
+ * ImagePicker has no equivalent for an already-recorded library video), so
+ * a library pick is the one path that can hand us something far bigger than
+ * the koth-videos bucket accepts. Checked here so that case fails fast with
+ * a clear message instead of a multi-minute upload ending in a timeout.
+ * asset.fileSize isn't always populated by every Android content provider,
+ * so this falls back to a filesystem stat when it's missing.
+ */
+async function getVideoSizeBytes(asset: ImagePicker.ImagePickerAsset): Promise<number | null> {
+  if (asset.fileSize) return asset.fileSize;
+  const info = await FileSystem.getInfoAsync(asset.uri);
+  return info.exists ? info.size : null;
+}
 
 export default function KingOfTheHillClaimScreen() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
@@ -23,7 +42,7 @@ export default function KingOfTheHillClaimScreen() {
   const { group, isLoading: groupLoading } = useActiveGroup();
   const { exercises, isLoading: catalogLoading } = useKothCatalog();
   const { claims, isLoading: claimsLoading } = useKothClaimHistory(group?.id ?? null, exerciseId ?? null);
-  const { submit, isSubmitting } = useSubmitKothClaim();
+  const { submit, isSubmitting, uploadProgress } = useSubmitKothClaim();
 
   const [value, setValue] = useState('');
   const [unit, setUnit] = useState<'kg' | 'lbs'>('kg');
@@ -65,9 +84,10 @@ export default function KingOfTheHillClaimScreen() {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['videos'],
       videoMaxDuration: VIDEO_MAX_DURATION_SECONDS,
+      videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
     });
     if (!result.canceled && result.assets[0]) {
-      setVideo({ uri: result.assets[0].uri, mimeType: result.assets[0].mimeType });
+      await acceptVideoIfWithinSizeLimit(result.assets[0]);
     }
   };
 
@@ -77,10 +97,35 @@ export default function KingOfTheHillClaimScreen() {
       Alert.alert('Permiso necesario', 'Necesitamos acceso a tus videos para adjuntar la prueba.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'] });
+    // videoExportPreset defaults to Passthrough (no re-encoding) — a video
+    // straight from the camera roll can be 4K/60fps/HDR and land well past
+    // the bucket's 150MB cap regardless of how short it is. Forcing a real
+    // transcode to 720p here is both the "compress on selection" the app
+    // needed and what makes the size check below trustworthy: an untouched
+    // passthrough asset's reported fileSize has been seen to undercount the
+    // real upload size (e.g. iCloud-optimized originals), while a freshly
+    // re-encoded local file reports its actual size correctly. iOS only —
+    // Android's picker has no equivalent compress-on-pick option, so the
+    // size check is the only backstop there.
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+    });
     if (!result.canceled && result.assets[0]) {
-      setVideo({ uri: result.assets[0].uri, mimeType: result.assets[0].mimeType });
+      await acceptVideoIfWithinSizeLimit(result.assets[0]);
     }
+  };
+
+  const acceptVideoIfWithinSizeLimit = async (asset: ImagePicker.ImagePickerAsset) => {
+    const sizeBytes = await getVideoSizeBytes(asset);
+    if (sizeBytes !== null && sizeBytes > MAX_VIDEO_BYTES) {
+      Alert.alert(
+        'Video muy pesado',
+        `Este video pesa ${(sizeBytes / (1024 * 1024)).toFixed(0)}MB. El máximo permitido es ${MAX_VIDEO_MB}MB — intenta con un video más corto o de menor calidad.`
+      );
+      return;
+    }
+    setVideo({ uri: asset.uri, mimeType: asset.mimeType });
   };
 
   const handleSubmit = async () => {
@@ -166,7 +211,7 @@ export default function KingOfTheHillClaimScreen() {
           ) : (
             <Text style={styles.videoHint}>
               Sube un video donde se vea claramente que lograste esta marca — máx. {VIDEO_MAX_DURATION_SECONDS}s si lo
-              grabas ahora, o elige uno ya grabado desde tu galería.
+              grabas ahora, o elige uno ya grabado desde tu galería (máx. {MAX_VIDEO_MB}MB).
             </Text>
           )}
           <View style={styles.videoButtons}>
@@ -176,6 +221,16 @@ export default function KingOfTheHillClaimScreen() {
         </Card>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {isSubmitting && uploadProgress !== null ? (
+          <View style={styles.uploadProgress}>
+            <ProgressBar progress={uploadProgress} />
+            <Text style={styles.uploadProgressText}>
+              {uploadProgress < 1 ? `Subiendo video... ${Math.round(uploadProgress * 100)}%` : 'Procesando...'}
+            </Text>
+          </View>
+        ) : null}
+
         <Button label="Enviar reclamación" onPress={handleSubmit} loading={isSubmitting} />
       </View>
     </ScrollView>
@@ -194,4 +249,6 @@ const styles = StyleSheet.create({
   videoPreview: { width: '100%', height: 220, borderRadius: radii.md, backgroundColor: colors.background },
   videoButtons: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm },
   error: { color: colors.danger },
+  uploadProgress: { gap: spacing.xs },
+  uploadProgressText: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
 });

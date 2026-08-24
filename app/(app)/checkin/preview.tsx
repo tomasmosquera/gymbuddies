@@ -81,7 +81,21 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
   );
 }
 
-/** Same idea as fanOutCheckinToOtherGroups, for the checkout half — only ever attaches to a checkin THIS fan-out created (auto_created), never a manual one, and never overwrites an already-completed checkout. */
+/**
+ * Same idea as fanOutCheckinToOtherGroups, for the checkout half — attaches
+ * to whatever checkin already exists for that (group, user, date), manual
+ * or auto_created alike, as long as it doesn't already have its own
+ * checkout. Deliberately NOT gated on auto_created (unlike the check-in
+ * fan-out, which must not overwrite an independent manual checkin's own
+ * photo/location): a checkin's auto_created flag only records which group's
+ * screen happened to originate the day's check-in, not which group the
+ * person will happen to finish their workout from — the same real session
+ * can easily start in one group and finish from another (observed: check-in
+ * from Group A fans out fine, but finishing from Group B later left Group
+ * A's own manual checkin without a checkout, since it was never the one
+ * that "created" the fan-out). The one guard that still matters is not
+ * clobbering a checkout the person already completed there themselves.
+ */
 async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
   const { otherGroups, userId, flattenedUri, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
     params;
@@ -91,12 +105,12 @@ async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
         const otherDate = toZonedDateString(capturedAtDate, m.group.timezone);
         const { data: existing } = await supabase
           .from('checkins')
-          .select('id, auto_created, checkout_captured_at')
+          .select('id, checkout_captured_at')
           .eq('group_id', m.group_id)
           .eq('user_id', userId)
           .eq('checkin_date', otherDate)
           .maybeSingle();
-        if (!existing || !existing.auto_created || existing.checkout_captured_at) return;
+        if (!existing || existing.checkout_captured_at) return;
 
         const path = checkoutPhotoPath(m.group_id, userId, otherDate);
         await uploadImage('checkins', path, flattenedUri);
