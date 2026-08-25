@@ -15,6 +15,11 @@ export default function HomeStackLayout() {
       <Stack.Screen
         name="index"
         options={{
+          // headerTitle below replaces the visible header content with the
+          // logo, but the back button on whatever screen gets pushed from
+          // here (group-summary) still needs a plain string to show — with
+          // no `title`, native-stack falls back to the route name ("index").
+          title: 'Inicio',
           headerTitle: () => (
             <View style={styles.logoWrap}>
               <Image source={require('../../../assets/icon-header.png')} style={styles.logo} resizeMode="contain" />

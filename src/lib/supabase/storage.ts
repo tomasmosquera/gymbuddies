@@ -83,12 +83,17 @@ export async function uploadImage(bucket: Bucket, path: string, fileUri: string)
  * storage-js's uploadOrUpdate) since storage-js itself only accepts an
  * in-memory body, not a file uri.
  *
- * sessionType is forced to FOREGROUND: a background iOS upload session
- * only keeps running while suspended, it doesn't call back with progress
- * until the app is foregrounded again (same note the download side of this
- * API documents) — no use to a progress bar the person is actively
- * watching, and BACKGROUND sessions are the more exotic, less-tested path
- * on a shared container like Expo Go.
+ * sessionType is left at its BACKGROUND default (do not change this to
+ * FOREGROUND again — that was tried and it broke uploads outright: FOREGROUND
+ * sessions are killed by iOS the moment the app backgrounds, surfacing as
+ * "NSURLErrorDomain Code=-1005 The network connection was lost" if the
+ * person switches away mid-upload — completely normal phone behavior, not
+ * an edge case). BACKGROUND still delivers onProgress normally while the
+ * app is in the foreground (the "no callback until foregrounded again" case
+ * only applies to the stretch while actually backgrounded, which just means
+ * the bar stops animating instead of the upload dying) and additionally
+ * survives the person locking their phone or switching apps mid-upload —
+ * strictly better on both counts.
  */
 export async function uploadVideo(
   bucket: Bucket,
@@ -115,7 +120,6 @@ export async function uploadVideo(
     {
       httpMethod: 'POST',
       uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      sessionType: FileSystem.FileSystemSessionType.FOREGROUND,
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         apikey: SUPABASE_ANON_KEY,
@@ -141,9 +145,12 @@ export async function uploadVideo(
  * "error":"Payload too large","message":"The object exceeded the maximum
  * allowed size"} etc.) — fine for a log line, not something to put in front
  * of someone who just wants to know why their claim didn't go through. This
- * maps the couple of failure shapes actually seen (size limit, mime type)
- * to a plain Spanish sentence, falling back to a generic one rather than
- * ever showing the raw JSON.
+ * maps the couple of failure shapes already seen (size limit, mime type) to
+ * a plain Spanish sentence. Anything NOT recognized still gets the parsed
+ * message appended rather than fully hidden — an unrecognized failure is
+ * exactly the case where losing that detail hurts most (it's the one that
+ * still needs diagnosing), unlike the recognized ones where the friendly
+ * sentence already says everything actionable.
  */
 function describeUploadFailure(body: string | undefined): string {
   let message = '';
@@ -161,5 +168,5 @@ function describeUploadFailure(body: string | undefined): string {
   if (/mime type|not supported/i.test(message)) {
     return 'El formato de este video no es compatible — intenta con otro video.';
   }
-  return 'Intenta de nuevo en unos minutos.';
+  return `Intenta de nuevo en unos minutos.${message ? ` (${message})` : ''}`;
 }

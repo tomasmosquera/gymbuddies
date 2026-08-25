@@ -15,24 +15,16 @@ import { useKothCatalog } from '@/hooks/useKothCatalog';
 import { useKothClaimHistory } from '@/hooks/useKothClaimHistory';
 import { useSubmitKothClaim } from '@/hooks/useSubmitKothClaim';
 import { beatsCurrentRecord, formatKothValue } from '@/lib/domain/koth';
+import { compressVideo } from '@/lib/media/compressVideo';
 import { MAX_VIDEO_BYTES } from '@/lib/supabase/storage';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const VIDEO_MAX_DURATION_SECONDS = 30;
 const MAX_VIDEO_MB = Math.round(MAX_VIDEO_BYTES / (1024 * 1024));
 
-/**
- * Only the camera capture caps duration (videoMaxDuration, camera-only —
- * ImagePicker has no equivalent for an already-recorded library video), so
- * a library pick is the one path that can hand us something far bigger than
- * the koth-videos bucket accepts. Checked here so that case fails fast with
- * a clear message instead of a multi-minute upload ending in a timeout.
- * asset.fileSize isn't always populated by every Android content provider,
- * so this falls back to a filesystem stat when it's missing.
- */
-async function getVideoSizeBytes(asset: ImagePicker.ImagePickerAsset): Promise<number | null> {
-  if (asset.fileSize) return asset.fileSize;
-  const info = await FileSystem.getInfoAsync(asset.uri);
+/** Stats a local file directly — the one number worth trusting once compressVideo has already produced a real, freshly-written local file. */
+async function getFileSizeBytes(uri: string): Promise<number | null> {
+  const info = await FileSystem.getInfoAsync(uri);
   return info.exists ? info.size : null;
 }
 
@@ -48,6 +40,16 @@ export default function KingOfTheHillClaimScreen() {
   const [unit, setUnit] = useState<'kg' | 'lbs'>('kg');
   const [video, setVideo] = useState<{ uri: string; mimeType?: string | null } | null>(null);
   const [error, setError] = useState<string | undefined>();
+  // True from the moment the picker is launched until the video is either
+  // accepted or rejected — covers the native picker's own UI, the
+  // compressVideo() pass below, and our own size check after it. Without
+  // this the screen shows nothing at all during that stretch, which reads
+  // as "stuck" rather than "working".
+  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  // 0..1 while compressVideo is actively compressing, null otherwise —
+  // separate from isProcessingVideo so the hint text can say specifically
+  // "compressing" with a percentage instead of a generic "processing".
+  const [compressionProgress, setCompressionProgress] = useState<number | null>(null);
 
   const player = useVideoPlayer(video?.uri ?? null);
 
@@ -81,13 +83,18 @@ export default function KingOfTheHillClaimScreen() {
       Alert.alert('Permiso necesario', 'Necesitamos acceso a tu cámara para grabar el video.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['videos'],
-      videoMaxDuration: VIDEO_MAX_DURATION_SECONDS,
-      videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
-    });
-    if (!result.canceled && result.assets[0]) {
-      await acceptVideoIfWithinSizeLimit(result.assets[0]);
+    setIsProcessingVideo(true);
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['videos'],
+        videoMaxDuration: VIDEO_MAX_DURATION_SECONDS,
+        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+      });
+      if (!result.canceled && result.assets[0]) {
+        await acceptVideoIfWithinSizeLimit(result.assets[0]);
+      }
+    } finally {
+      setIsProcessingVideo(false);
     }
   };
 
@@ -97,35 +104,48 @@ export default function KingOfTheHillClaimScreen() {
       Alert.alert('Permiso necesario', 'Necesitamos acceso a tus videos para adjuntar la prueba.');
       return;
     }
-    // videoExportPreset defaults to Passthrough (no re-encoding) — a video
-    // straight from the camera roll can be 4K/60fps/HDR and land well past
-    // the bucket's 150MB cap regardless of how short it is. Forcing a real
-    // transcode to 720p here is both the "compress on selection" the app
-    // needed and what makes the size check below trustworthy: an untouched
-    // passthrough asset's reported fileSize has been seen to undercount the
-    // real upload size (e.g. iCloud-optimized originals), while a freshly
-    // re-encoded local file reports its actual size correctly. iOS only —
-    // Android's picker has no equivalent compress-on-pick option, so the
-    // size check is the only backstop there.
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['videos'],
-      videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
-    });
-    if (!result.canceled && result.assets[0]) {
-      await acceptVideoIfWithinSizeLimit(result.assets[0]);
+    // videoExportPreset is kept for consistency with recordVideo, but on
+    // iOS 14+ a library pick actually goes through PHPickerViewController,
+    // where this option is silently ignored (it only takes effect for the
+    // older UIImagePickerController flow the camera capture below still
+    // uses) — confirmed by a real upload that reached 100% and still got
+    // rejected as oversized. The real compression for this path now comes
+    // from compressVideo() in acceptVideoIfWithinSizeLimit below, which
+    // works regardless of which picker API handed us the file.
+    setIsProcessingVideo(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+      });
+      if (!result.canceled && result.assets[0]) {
+        await acceptVideoIfWithinSizeLimit(result.assets[0]);
+      }
+    } finally {
+      setIsProcessingVideo(false);
     }
   };
 
   const acceptVideoIfWithinSizeLimit = async (asset: ImagePicker.ImagePickerAsset) => {
-    const sizeBytes = await getVideoSizeBytes(asset);
-    if (sizeBytes !== null && sizeBytes > MAX_VIDEO_BYTES) {
-      Alert.alert(
-        'Video muy pesado',
-        `Este video pesa ${(sizeBytes / (1024 * 1024)).toFixed(0)}MB. El máximo permitido es ${MAX_VIDEO_MB}MB — intenta con un video más corto o de menor calidad.`
-      );
-      return;
+    setCompressionProgress(0);
+    try {
+      const { uri: processedUri, wasCompressed } = await compressVideo(asset.uri, setCompressionProgress);
+      const sizeBytes = await getFileSizeBytes(processedUri);
+      if (sizeBytes !== null && sizeBytes > MAX_VIDEO_BYTES) {
+        Alert.alert(
+          'Video muy pesado',
+          `Este video pesa ${(sizeBytes / (1024 * 1024)).toFixed(0)}MB incluso después de comprimirlo. El máximo permitido es ${MAX_VIDEO_MB}MB — intenta con un video más corto.`
+        );
+        return;
+      }
+      // A compressed output is always a fresh .mp4 regardless of the
+      // source's original container/codec — trusting the original
+      // asset.mimeType here (e.g. "video/quicktime" for a .mov source)
+      // would mismatch what we're actually about to upload.
+      setVideo({ uri: processedUri, mimeType: wasCompressed ? 'video/mp4' : asset.mimeType });
+    } finally {
+      setCompressionProgress(null);
     }
-    setVideo({ uri: asset.uri, mimeType: asset.mimeType });
   };
 
   const handleSubmit = async () => {
@@ -206,17 +226,31 @@ export default function KingOfTheHillClaimScreen() {
 
         <Card style={styles.videoCard}>
           <Text style={styles.videoLabel}>Video de tu marca</Text>
-          {video ? (
+          {isProcessingVideo ? (
+            <View style={styles.videoProcessing}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.videoHint}>
+                {compressionProgress !== null
+                  ? `Comprimiendo video... ${Math.round(compressionProgress * 100)}%`
+                  : 'Procesando video...'}
+              </Text>
+            </View>
+          ) : video ? (
             <VideoView player={player} style={styles.videoPreview} nativeControls />
           ) : (
             <Text style={styles.videoHint}>
               Sube un video donde se vea claramente que lograste esta marca — máx. {VIDEO_MAX_DURATION_SECONDS}s si lo
-              grabas ahora, o elige uno ya grabado desde tu galería (máx. {MAX_VIDEO_MB}MB).
+              grabas ahora, o elige uno ya grabado desde tu galería. Se comprime automáticamente antes de subirlo.
             </Text>
           )}
           <View style={styles.videoButtons}>
-            <Button label="Grabar video" variant="secondary" onPress={recordVideo} />
-            <Button label="Elegir de la galería" variant="secondary" onPress={pickVideo} />
+            <Button label="Grabar video" variant="secondary" onPress={recordVideo} disabled={isProcessingVideo || isSubmitting} />
+            <Button
+              label="Elegir de la galería"
+              variant="secondary"
+              onPress={pickVideo}
+              disabled={isProcessingVideo || isSubmitting}
+            />
           </View>
         </Card>
 
@@ -246,6 +280,7 @@ const styles = StyleSheet.create({
   videoCard: { gap: spacing.sm },
   videoLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   videoHint: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  videoProcessing: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   videoPreview: { width: '100%', height: 220, borderRadius: radii.md, backgroundColor: colors.background },
   videoButtons: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm },
   error: { color: colors.danger },

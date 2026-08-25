@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gym Buddies",
     "slug": "gymbuddies",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "scheme": "gymbuddies",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -96,7 +96,8 @@
           "NSHealthShareUsageDescription": "Gym Buddies puede leer las calorías activas quemadas durante tu entreno desde Apple Health, si lo conectas."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "react-native-compressor"
     ],
     "experiments": {
       "typedRoutes": true

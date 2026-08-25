@@ -79,7 +79,14 @@ export function LeaderboardCard({
       </Pressable>
       {period === 'week' && viewedWeekLabel ? <Text style={styles.viewedWeekLabel}>Semana del {viewedWeekLabel}</Text> : null}
 
-      {lastClosedWeek ? (
+      {/* League mode never charges a penalty for missed days
+          (0064_league_mode_no_penalty_and_game_start.sql — v_penalty is
+          forced to 0 there), so this banner has nothing real to warn
+          about in that mode — and the per-row ✗ column in the table right
+          below already shows the same failed-days info per member without
+          calling anyone out by name. Cooperative/mixed keep it: there, a
+          failed day is a real penalty, worth a standalone callout. */}
+      {lastClosedWeek && payoutMode !== 'league' ? (
         <View style={styles.lastWeekBanner}>
           {lastClosedWeek.losers.length > 0 ? (
             <Text style={styles.lastWeekText}>
@@ -121,8 +128,18 @@ export function LeaderboardCard({
               // answers on its own, independent of whichever tab is open.
               const effectiveRank = (row: LeaderboardRow) =>
                 payoutMode === 'league' && period === 'all' ? (leaguePlaceByUserId?.[row.userId] ?? row.rank) : row.rank;
-              const rank1Count = rows.filter((r) => effectiveRank(r) === 1).length;
-              return rows.map((row) => {
+              // Tied members (same rank, same MVP/podium spot) are ordered
+              // best-level-first — the rank number itself never changes,
+              // this only decides who's listed first among equals.
+              const sortedRows = [...rows].sort((a, b) => {
+                const rankDiff = effectiveRank(a) - effectiveRank(b);
+                if (rankDiff !== 0) return rankDiff;
+                const levelDiff = (levelByUserId?.[b.userId] ?? 0) - (levelByUserId?.[a.userId] ?? 0);
+                if (levelDiff !== 0) return levelDiff;
+                return a.fullName.localeCompare(b.fullName);
+              });
+              const rank1Count = sortedRows.filter((r) => effectiveRank(r) === 1).length;
+              return sortedRows.map((row) => {
                 const isMe = row.userId === currentUserId;
                 const rank = effectiveRank(row);
                 const isSoleMvp = rank === 1 && rank1Count === 1;
