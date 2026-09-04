@@ -15,5 +15,5 @@
  *   recently — a build OR an `eas update`. Update this on every single
  *   deploy of either kind, not just builds.
  */
-export const APP_BUILD_NUMBER = 21;
-export const APP_LAST_UPDATED_DDMMYY = '030926'; // no native build change today — OTA updates only
+export const APP_BUILD_NUMBER = 22;
+export const APP_LAST_UPDATED_DDMMYY = '030926';
