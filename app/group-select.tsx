@@ -1,5 +1,7 @@
+import { useLayoutEffect } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { Redirect, router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -12,12 +14,48 @@ const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
 
 export default function GroupSelectScreen() {
   const { memberships, isLoading } = useMyMemberships();
-  const { session, profile } = useAuth();
+  const { session, profile, isInitializing, isSignedIn, signOut } = useAuth();
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const navigation = useNavigation();
+
+  // group-select is reached two very different ways: Profile > "Cambiar de
+  // grupo" (pushed with ?from=switch — there's a real Home to pop back to)
+  // or a cold-start redirect chain ((auth) → "/" → group-select once signed
+  // in with zero memberships — nothing sensible behind it, and going "back"
+  // would just bounce off (auth)'s own already-signed-in redirect and land
+  // right back here). This used to be decided via router.canGoBack() from a
+  // headerLeft defined in the root layout, but that reported a false
+  // positive in the cold-start case (the redirect chain leaves a stale
+  // /sign-in entry underneath) — hence a back button that visibly did
+  // nothing. Deciding it here instead, from the screen that's actually
+  // mounted with its own real params, and pushing it into the header via
+  // setOptions — same fix shape as WalletBackButton in profile/_layout.tsx,
+  // just keyed off an explicit param instead of history depth.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft:
+        from === 'switch'
+          ? () => (
+              <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button">
+                <Ionicons name="chevron-back" size={26} color={colors.text} />
+              </Pressable>
+            )
+          : () => null,
+    });
+  }, [from, navigation]);
   const activeGroupId = useActiveGroupStore((s) => s.activeGroupId);
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
   const isPlatformAdmin = session?.user.email === PLATFORM_ADMIN_EMAIL;
   const credits = profile?.group_creation_credits ?? 0;
   const canCreateGroup = isPlatformAdmin || credits > 0;
+
+  // group-select is a root-level screen, outside the (app) stack — so unlike
+  // Profile's own "Cerrar sesión" (which lives inside (app)/_layout.tsx and
+  // gets redirected to /sign-in the moment isSignedIn flips false), nothing
+  // was watching for that here. signOut() itself worked fine, it just left
+  // this screen sitting there with a now-null profile (hence "credits" and
+  // the no-credits hint appearing to flicker) until the app was relaunched.
+  if (!isInitializing && !isSignedIn) return <Redirect href="/sign-in" />;
 
   const handleSelect = (membership: MembershipWithGroup) => {
     setActiveGroupId(membership.group_id);
@@ -88,6 +126,9 @@ export default function GroupSelectScreen() {
             variant="secondary"
             onPress={() => router.push('/browse-public-groups')}
           />
+          <View style={styles.signOutSection}>
+            <Button label="Cerrar sesión" variant="secondary" onPress={() => signOut()} />
+          </View>
         </View>
       }
     />
@@ -107,4 +148,10 @@ const styles = StyleSheet.create({
   welcome: { gap: spacing.sm, marginBottom: spacing.lg },
   welcomeTitle: { ...typography.title, fontSize: 22, color: colors.text },
   welcomeText: { color: colors.textMuted, fontSize: 15 },
+  signOutSection: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.surfaceAlt,
+  },
 });

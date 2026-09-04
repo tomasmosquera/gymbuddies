@@ -381,6 +381,7 @@ export default function HomeScreen() {
             checkinsByDate={teamCheckinsByDate}
             currentUserId={session?.user.id ?? null}
             onPressPhoto={setViewingPhotoPath}
+            isCurrentWeek={isCurrentWeek}
             canNudge={canNudge}
             onNudge={handleNudge}
           />
@@ -455,6 +456,7 @@ export default function HomeScreen() {
                   checkinsByDate={teamCheckinsByDate}
                   currentUserId={session?.user.id ?? null}
                   onPressPhoto={setViewingPhotoPath}
+                  isCurrentWeek={isCurrentWeek}
                   canNudge={canNudge}
                   onNudge={handleNudge}
                 />
@@ -585,6 +587,7 @@ function TeamWeekRows({
   checkinsByDate,
   currentUserId,
   onPressPhoto,
+  isCurrentWeek,
   canNudge,
   onNudge,
 }: {
@@ -595,6 +598,8 @@ function TeamWeekRows({
   checkinsByDate: Map<string, GroupCheckinWithProfile[]>;
   currentUserId: string | null;
   onPressPhoto: (photoPath: string) => void;
+  /** "Bud" only ever makes sense for today — nudging someone about a day already in the past is meaningless, so it's hidden entirely outside the current week's view (same value regardless of which week's dots happen to be on screen). */
+  isCurrentWeek: boolean;
   /** "Bud" — whether Bud would actually let me nudge this person right now (see useBuddyNudges). */
   canNudge: (recipientId: string) => boolean;
   onNudge: (recipientId: string, recipientName: string) => void;
@@ -655,13 +660,19 @@ function TeamWeekRows({
               );
             })}
             {(() => {
-              // "Bud" — only for a teammate who hasn't decided today yet (no
+              // "Bud" — only while viewing the current week (nudging someone
+              // about a day that's already over is meaningless — this whole
+              // card's dots can be for last week while todayString/dailyStatus
+              // underneath always refer to the real today, so this has to be
+              // checked explicitly, not inferred from which days are on
+              // screen), for a teammate who hasn't decided today yet (no
               // check-in, not excused), isn't me, and isn't under the 2/day
               // cap or 12h cooldown since my last nudge to them (canNudge).
               // The button just disappears rather than showing a disabled/
               // "done" state — a bare spacer keeps every row's dots aligned
               // either way.
-              const eligible = member.user_id !== currentUserId && !member.dailyStatus[todayString] && canNudge(member.user_id);
+              const eligible =
+                isCurrentWeek && member.user_id !== currentUserId && !member.dailyStatus[todayString] && canNudge(member.user_id);
               if (!eligible) {
                 return <View style={styles.nudgeSlot} />;
               }

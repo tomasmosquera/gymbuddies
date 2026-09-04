@@ -240,7 +240,11 @@ export default function ProfileScreen() {
               />
             </View>
             <View style={styles.groupActions}>
-              <Button label="Cambiar de grupo" variant="secondary" onPress={() => router.push('/group-select')} />
+              <Button
+                label="Cambiar de grupo"
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/group-select', params: { from: 'switch' } })}
+              />
               {membership.role === 'admin' ? (
                 <Button label="Administrar grupo" variant="secondary" onPress={() => router.push('/profile/admin')} />
               ) : null}

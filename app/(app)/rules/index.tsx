@@ -20,6 +20,8 @@ import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { ZoomableImageModal } from '@/components/ui/ZoomableImageModal';
 import { KothVideoModal } from '@/components/koth/KothVideoModal';
+import { VoteBreakdown, type VoteBreakdownPerson } from '@/components/rules/VoteBreakdown';
+import type { GroupMemberWithProfile } from '@/hooks/useGroupMembers';
 import { formatKothValue } from '@/lib/domain/koth';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
@@ -76,6 +78,37 @@ function daysUntil(dateString: string): number {
   return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
 }
 
+// Same status list is_voting_member()/is_active_participant() effectively
+// gate voting on server-side — pending_deposit already fully participates
+// (see 0039), only left/removed/admin_only can never vote.
+const VOTING_STATUSES = new Set(['pending_deposit', 'active', 'needs_recharge']);
+
+/**
+ * Splits the eligible voter pool for one open vote into who voted yes, who
+ * voted no, and who hasn't voted yet — for the "A favor / En contra / Faltan
+ * por votar" breakdown (VoteBreakdown). `eligible` should already exclude
+ * anyone who genuinely can't vote on this specific thing (the photo's own
+ * subject, a KOTH claimant, a member who joined after the vote opened) —
+ * this function only sorts by vote, it doesn't decide eligibility itself.
+ */
+function bucketVotes(
+  eligible: readonly GroupMemberWithProfile[],
+  votes: readonly { user_id: string; vote: string }[]
+): { yes: VoteBreakdownPerson[]; no: VoteBreakdownPerson[]; pending: VoteBreakdownPerson[] } {
+  const voteByUserId = new Map(votes.map((v) => [v.user_id, v.vote]));
+  const yes: VoteBreakdownPerson[] = [];
+  const no: VoteBreakdownPerson[] = [];
+  const pending: VoteBreakdownPerson[] = [];
+  for (const m of eligible) {
+    const person = { userId: m.user_id, fullName: m.profile.full_name };
+    const vote = voteByUserId.get(m.user_id);
+    if (vote === 'yes') yes.push(person);
+    else if (vote === 'no') no.push(person);
+    else pending.push(person);
+  }
+  return { yes, no, pending };
+}
+
 function formatChangeValue(key: string, value: unknown): string {
   if (BOOLEAN_CHANGE_FIELDS.has(key)) {
     return value ? 'Sí' : 'No';
@@ -100,6 +133,7 @@ export default function RulesScreen() {
   const { group, membership, isLoading: groupLoading, refresh: refreshGroup } = useActiveGroup();
   const {
     proposal,
+    votes: proposalVotes,
     yesCount,
     noCount,
     myVote,
@@ -110,6 +144,7 @@ export default function RulesScreen() {
   } = useRuleProposal(group?.id ?? null, session?.user.id ?? null);
   const {
     request: excuseVoteRequest,
+    votes: excuseVotes,
     yesCount: excuseYesCount,
     noCount: excuseNoCount,
     myVote: myExcuseVote,
@@ -464,6 +499,13 @@ export default function RulesScreen() {
           <Text style={styles.tally}>
             {yesCount} a favor · {noCount} en contra · se necesitan {proposal.required_votes} votos a favor
           </Text>
+          {(() => {
+            const { yes, no, pending } = bucketVotes(
+              members.filter((m) => VOTING_STATUSES.has(m.status) && m.joined_at <= proposal.created_at),
+              proposalVotes
+            );
+            return <VoteBreakdown favor={yes} contra={no} pending={pending} />;
+          })()}
           {myVote ? (
             <Text style={styles.myVote}>Ya votaste: {myVote.vote === 'yes' ? 'a favor' : 'en contra'}</Text>
           ) : (
@@ -530,6 +572,13 @@ export default function RulesScreen() {
             {excuseYesCount} a favor · {excuseNoCount} en contra · se necesitan {excuseVoteRequest.required_votes} votos
             a favor
           </Text>
+          {(() => {
+            const { yes, no, pending } = bucketVotes(
+              members.filter((m) => VOTING_STATUSES.has(m.status) && m.joined_at <= excuseVoteRequest.created_at),
+              excuseVotes
+            );
+            return <VoteBreakdown favor={yes} contra={no} pending={pending} />;
+          })()}
           {myExcuseVote ? (
             <Text style={styles.myVote}>Ya votaste: {myExcuseVote.vote === 'yes' ? 'a favor' : 'en contra'}</Text>
           ) : (
@@ -584,6 +633,16 @@ export default function RulesScreen() {
             <Text style={styles.tally}>
               {yesCount} a favor de invalidar · {noCount} en contra · se necesitan {challenge.required_votes} votos
             </Text>
+            {(() => {
+              const { yes, no, pending } = bucketVotes(
+                members.filter((m) => VOTING_STATUSES.has(m.status) && m.user_id !== challenge.target_user_id),
+                challenge.votes
+              );
+              // Inverted vs a plain favor/contra vote: 'yes' here means "vota
+              // inválida" (red), 'no' means "vota válida" (green) — see the
+              // Votar inválida/Votar válida buttons right below this.
+              return <VoteBreakdown favor={no} contra={yes} pending={pending} favorLabel="Votos por validar" contraLabel="Votos por invalidar" />;
+            })()}
             {isTarget ? (
               <Text style={styles.myVote}>Es tu foto — no puedes votar en esta votación.</Text>
             ) : myVote ? (
@@ -625,6 +684,15 @@ export default function RulesScreen() {
             <Text style={styles.tally}>
               {yesCount} a favor de invalidar · {noCount} en contra · se necesitan {claim.required_votes} votos
             </Text>
+            {(() => {
+              const { yes, no, pending } = bucketVotes(
+                members.filter((m) => VOTING_STATUSES.has(m.status) && m.user_id !== claim.user_id),
+                claim.votes
+              );
+              // Same inversion as the photo-challenge vote above — 'yes'
+              // means "vota inválida".
+              return <VoteBreakdown favor={no} contra={yes} pending={pending} favorLabel="Votos por validar" contraLabel="Votos por invalidar" />;
+            })()}
             {isClaimant ? (
               <Text style={styles.myVote}>Es tu reclamación — no puedes votar en esta votación.</Text>
             ) : myVote ? (
