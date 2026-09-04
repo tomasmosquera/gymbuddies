@@ -4,11 +4,14 @@ import { useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useGroupBadges, type MemberBadges } from '@/hooks/useGroupBadges';
+import { useKothCatalog } from '@/hooks/useKothCatalog';
 import { BADGES, type BadgeCategory } from '@/lib/domain/badges';
 import { MONTHLY_CHALLENGES } from '@/lib/domain/monthlyChallenges';
 import { xpForBadge } from '@/lib/domain/xp';
+import { buildXpHistory } from '@/lib/domain/xpHistory';
 import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { XpHistoryModal } from '@/components/badges/XpHistoryModal';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const CATEGORY_ORDER: BadgeCategory[] = ['racha', 'consistencia', 'fechas', 'checkins', 'financiero', 'social', 'koth'];
@@ -209,6 +212,8 @@ export default function BadgesScreen() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(userIdParam ?? null);
   const [view, setView] = useState<ViewMode>('historic');
   const [filter, setFilter] = useState<UnlockFilter>('all');
+  const [isXpHistoryOpen, setIsXpHistoryOpen] = useState(false);
+  const { exercises: kothExercises } = useKothCatalog();
 
   if (groupLoading || badgesLoading || !group) {
     return (
@@ -221,125 +226,145 @@ export default function BadgesScreen() {
   const myBadges = membersBadges.find((m) => m.userId === session?.user.id) ?? null;
   const selected = membersBadges.find((m) => m.userId === selectedUserId) ?? myBadges ?? membersBadges[0] ?? null;
   const ranking = [...membersBadges].sort((a, b) => b.level.totalXp - a.level.totalXp);
+  const exerciseNameById = Object.fromEntries(kothExercises.map((e) => [e.id, e.name]));
+  const xpHistory = myBadges
+    ? buildXpHistory(myBadges.statuses, myBadges.monthlyStatuses, myBadges.kothClaims, exerciseNameById, myBadges.checkinXpTotal)
+    : [];
 
   const matchesFilter = (earned: boolean) => filter === 'all' || (filter === 'unlocked' ? earned : !earned);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {myBadges ? (
-        <View>
-          <Card style={styles.levelCard}>
-            <View style={styles.levelSummaryRow}>
-              <Text style={styles.levelSummaryLevel}>Nivel {myBadges.level.level}</Text>
-              <Text style={styles.levelSummaryXp}>
-                {myBadges.level.currentLevelXp}/{myBadges.level.xpForNextLevel} XP
-              </Text>
-            </View>
-            <ProgressBar ratio={myBadges.level.progress} />
-          </Card>
-        </View>
-      ) : null}
-
-      <View>
-        <SectionLabel>RANKING</SectionLabel>
-        <Text style={styles.subtitle}>Toca un jugador para ver sus logros.</Text>
-        <Card style={styles.rankingCard}>
-          {ranking.map((m, i) => (
-            <RankRow
-              key={m.userId}
-              rank={i + 1}
-              member={m}
-              isSelf={m.userId === session?.user.id}
-              isSelected={selected?.userId === m.userId}
-              onPress={() => setSelectedUserId(m.userId)}
-            />
-          ))}
-        </Card>
-      </View>
-
-      <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} size="lg" />
-      <SegmentedControl options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
-
-      {selected && view === 'historic' ? (
-        <>
-          <View style={styles.overallSummary}>
-            <Text style={styles.summary}>
-              {selected.userId === session?.user.id ? 'Tus logros' : `Logros de ${selected.fullName}`}: {selected.earnedCount}/
-              {BADGES.length}
-            </Text>
-            <ProgressBar ratio={selected.earnedCount / BADGES.length} />
-          </View>
-
-          {CATEGORY_ORDER.map((category) => {
-            const categoryBadges = BADGES.filter((b) => b.category === category);
-            const earnedInCategory = categoryBadges.filter((b) => selected.statuses[b.id].earned).length;
-            const visibleBadges = categoryBadges.filter((b) => matchesFilter(selected.statuses[b.id].earned));
-            return (
-              <View key={category}>
-                <View style={styles.categoryHeader}>
-                  <SectionLabel>{CATEGORY_LABELS[category]}</SectionLabel>
-                  <Text style={styles.categoryCount}>
-                    {earnedInCategory}/{categoryBadges.length}
+    <>
+      <ScrollView contentContainerStyle={styles.container}>
+        {myBadges ? (
+          <View>
+            <Pressable onPress={() => setIsXpHistoryOpen(true)} accessibilityRole="button">
+              <Card style={styles.levelCard}>
+                <View style={styles.levelSummaryRow}>
+                  <Text style={styles.levelSummaryLevel}>Nivel {myBadges.level.level}</Text>
+                  <Text style={styles.levelSummaryXp}>
+                    {myBadges.level.currentLevelXp}/{myBadges.level.xpForNextLevel} XP
                   </Text>
                 </View>
-                {category === 'koth' ? (
-                  <Text style={styles.kothXpTotal}>
-                    🔥 XP acumulado por récords: {selected.kothClaimXpTotal}
-                  </Text>
-                ) : null}
-                <ProgressBar ratio={earnedInCategory / categoryBadges.length} thin />
-                {visibleBadges.length > 0 ? (
-                  <View style={styles.list}>
-                    {visibleBadges.map((b) => (
-                      <BadgeListRow key={b.id} member={selected} badgeId={b.id} />
-                    ))}
-                  </View>
-                ) : (
-                  <Text style={styles.emptyFilterHint}>Nada que mostrar con este filtro.</Text>
-                )}
-              </View>
-            );
-          })}
-        </>
-      ) : null}
-
-      {selected && view === 'monthly' ? (
-        <View>
-          <View style={styles.overallSummary}>
-            <Text style={styles.summary}>
-              {selected.userId === session?.user.id ? 'Tus logros' : `Logros de ${selected.fullName}`}:{' '}
-              {MONTHLY_CHALLENGES.filter((c) => selected.monthlyStatuses[c.id].timesAchieved > 0).length}/{MONTHLY_CHALLENGES.length}
-            </Text>
-            <ProgressBar
-              ratio={MONTHLY_CHALLENGES.filter((c) => selected.monthlyStatuses[c.id].timesAchieved > 0).length / MONTHLY_CHALLENGES.length}
-            />
+                <ProgressBar ratio={myBadges.level.progress} />
+                <Text style={styles.levelHistoryHint}>Toca para ver tu historial de XP</Text>
+              </Card>
+            </Pressable>
           </View>
-          <Text style={[styles.subtitle, styles.monthlySubtitle]}>
-            Se reinician cada mes — el contador suma cuántas veces los has conseguido.
-          </Text>
-          {(() => {
-            // Unlike the lifetime "X/23" summary above, the filter tracks
-            // this still-open month specifically — a challenge earned in a
-            // past month but not (yet) this one belongs under "Bloqueados".
-            // Same monotonic gate as the row's progress bar: a non-monotonic
-            // challenge never counts as "Desbloqueado" from a live preview
-            // alone, only once the month actually closes.
-            const visibleChallenges = MONTHLY_CHALLENGES.filter((c) =>
-              matchesFilter(c.monotonic === true && selected.monthlyStatuses[c.id].currentMonthEarned === true)
-            );
-            return visibleChallenges.length > 0 ? (
-              <View style={styles.list}>
-                {visibleChallenges.map((c) => (
-                  <MonthlyChallengeRow key={c.id} member={selected} challengeId={c.id} />
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.emptyFilterHint}>Nada que mostrar con este filtro.</Text>
-            );
-          })()}
+        ) : null}
+
+        <View>
+          <SectionLabel>RANKING</SectionLabel>
+          <Text style={styles.subtitle}>Toca un jugador para ver sus logros.</Text>
+          <Card style={styles.rankingCard}>
+            {ranking.map((m, i) => (
+              <RankRow
+                key={m.userId}
+                rank={i + 1}
+                member={m}
+                isSelf={m.userId === session?.user.id}
+                isSelected={selected?.userId === m.userId}
+                onPress={() => setSelectedUserId(m.userId)}
+              />
+            ))}
+          </Card>
         </View>
-      ) : null}
-    </ScrollView>
+
+        <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} size="lg" />
+        <SegmentedControl options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
+
+        {selected && view === 'historic' ? (
+          <>
+            <View style={styles.overallSummary}>
+              <Text style={styles.summary}>
+                {selected.userId === session?.user.id ? 'Tus logros' : `Logros de ${selected.fullName}`}: {selected.earnedCount}/
+                {BADGES.length}
+              </Text>
+              <ProgressBar ratio={selected.earnedCount / BADGES.length} />
+            </View>
+
+            {CATEGORY_ORDER.map((category) => {
+              const categoryBadges = BADGES.filter((b) => b.category === category);
+              const earnedInCategory = categoryBadges.filter((b) => selected.statuses[b.id].earned).length;
+              const visibleBadges = categoryBadges.filter((b) => matchesFilter(selected.statuses[b.id].earned));
+              return (
+                <View key={category}>
+                  <View style={styles.categoryHeader}>
+                    <SectionLabel>{CATEGORY_LABELS[category]}</SectionLabel>
+                    <Text style={styles.categoryCount}>
+                      {earnedInCategory}/{categoryBadges.length}
+                    </Text>
+                  </View>
+                  {category === 'koth' ? (
+                    <Text style={styles.categoryXpTotal}>
+                      🔥 XP acumulado por récords: {selected.kothClaimXpTotal}
+                    </Text>
+                  ) : null}
+                  {category === 'checkins' ? (
+                    // Not part of the badge catalog above (it doesn't gate
+                    // on any threshold, it's just 5 XP per valid check-in —
+                    // see xp.ts's checkinXp) — surfaced here as a running
+                    // total so it doesn't just look like the level total
+                    // grew from nowhere, since it deliberately never gets
+                    // its own row in the XP-history list (one entry per
+                    // check-in would be far too many).
+                    <Text style={styles.categoryXpTotal}>🎯 XP acumulado por check-ins: {selected.checkinXpTotal}</Text>
+                  ) : null}
+                  <ProgressBar ratio={earnedInCategory / categoryBadges.length} thin />
+                  {visibleBadges.length > 0 ? (
+                    <View style={styles.list}>
+                      {visibleBadges.map((b) => (
+                        <BadgeListRow key={b.id} member={selected} badgeId={b.id} />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.emptyFilterHint}>Nada que mostrar con este filtro.</Text>
+                  )}
+                </View>
+              );
+            })}
+          </>
+        ) : null}
+
+        {selected && view === 'monthly' ? (
+          <View>
+            <View style={styles.overallSummary}>
+              <Text style={styles.summary}>
+                {selected.userId === session?.user.id ? 'Tus logros' : `Logros de ${selected.fullName}`}:{' '}
+                {MONTHLY_CHALLENGES.filter((c) => selected.monthlyStatuses[c.id].timesAchieved > 0).length}/{MONTHLY_CHALLENGES.length}
+              </Text>
+              <ProgressBar
+                ratio={MONTHLY_CHALLENGES.filter((c) => selected.monthlyStatuses[c.id].timesAchieved > 0).length / MONTHLY_CHALLENGES.length}
+              />
+            </View>
+            <Text style={[styles.subtitle, styles.monthlySubtitle]}>
+              Se reinician cada mes — el contador suma cuántas veces los has conseguido.
+            </Text>
+            {(() => {
+              // Unlike the lifetime "X/23" summary above, the filter tracks
+              // this still-open month specifically — a challenge earned in a
+              // past month but not (yet) this one belongs under "Bloqueados".
+              // Same monotonic gate as the row's progress bar: a non-monotonic
+              // challenge never counts as "Desbloqueado" from a live preview
+              // alone, only once the month actually closes.
+              const visibleChallenges = MONTHLY_CHALLENGES.filter((c) =>
+                matchesFilter(c.monotonic === true && selected.monthlyStatuses[c.id].currentMonthEarned === true)
+              );
+              return visibleChallenges.length > 0 ? (
+                <View style={styles.list}>
+                  {visibleChallenges.map((c) => (
+                    <MonthlyChallengeRow key={c.id} member={selected} challengeId={c.id} />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.emptyFilterHint}>Nada que mostrar con este filtro.</Text>
+              );
+            })()}
+          </View>
+        ) : null}
+      </ScrollView>
+      <XpHistoryModal visible={isXpHistoryOpen} entries={xpHistory} onClose={() => setIsXpHistoryOpen(false)} />
+    </>
   );
 }
 
@@ -352,6 +377,7 @@ const styles = StyleSheet.create({
   levelSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   levelSummaryLevel: { ...typography.heading, fontSize: 20, color: colors.text },
   levelSummaryXp: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  levelHistoryHint: { color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: spacing.xs },
   rankingCard: { gap: spacing.xs, padding: spacing.sm },
   rankRow: {
     flexDirection: 'row',
@@ -393,7 +419,7 @@ const styles = StyleSheet.create({
   },
   categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
   categoryCount: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
-  kothXpTotal: { color: colors.primary, fontSize: 13, fontWeight: '700', marginBottom: spacing.xs },
+  categoryXpTotal: { color: colors.primary, fontSize: 13, fontWeight: '700', marginBottom: spacing.xs },
   emptyFilterHint: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
   progressTrack: {
     alignSelf: 'stretch',

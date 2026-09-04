@@ -46,12 +46,20 @@ export default function SignUpScreen() {
         <Text style={styles.subtitle}>Únete a tus amigos en Gym Buddies</Text>
 
         <View style={styles.form}>
-          <TextField label="Nombre completo" value={fullName} onChangeText={setFullName} error={errors.fullName} />
+          <TextField
+            label="Nombre completo"
+            value={fullName}
+            onChangeText={setFullName}
+            textContentType="name"
+            error={errors.fullName}
+          />
           <TextField
             label="Teléfono (opcional)"
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+            autoComplete="tel"
             error={errors.phone}
           />
           <TextField
@@ -60,6 +68,8 @@ export default function SignUpScreen() {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
+            textContentType="username"
+            autoComplete="email"
             error={errors.email}
           />
           <TextField
@@ -67,6 +77,8 @@ export default function SignUpScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            textContentType="newPassword"
+            autoComplete="new-password"
             error={errors.password}
           />
           <Button label="Crear cuenta" onPress={handleSubmit} loading={isSubmitting} />

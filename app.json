@@ -14,11 +14,12 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Gym Buddies necesita la cámara para verificar tus check-ins en el gimnasio en el momento en que ocurren.",
         "NSLocationWhenInUseUsageDescription": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Gym Buddies puede avisarte que tomes tu foto de salida cuando detecta que te alejaste del gimnasio, incluso con la app cerrada.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Gym Buddies puede avisarte que tomes tu foto de check-in cuando detecta que llegaste al gimnasio, o que tomes tu foto de salida cuando detecta que te alejaste, incluso con la app cerrada.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "associatedDomains": [
-        "applinks:gymbuddies-livid.vercel.app"
+        "applinks:gymbuddies-livid.vercel.app",
+        "webcredentials:gymbuddies-livid.vercel.app"
       ]
     },
     "android": {
@@ -71,7 +72,7 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Gym Buddies necesita tu ubicación para verificar que tu check-in fue hecho en el gimnasio.",
-          "locationAlwaysAndWhenInUsePermission": "Gym Buddies puede avisarte que tomes tu foto de salida cuando detecta que te alejaste del gimnasio, incluso con la app cerrada.",
+          "locationAlwaysAndWhenInUsePermission": "Gym Buddies puede avisarte que tomes tu foto de check-in cuando detecta que llegaste al gimnasio, o que tomes tu foto de salida cuando detecta que te alejaste, incluso con la app cerrada.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": false

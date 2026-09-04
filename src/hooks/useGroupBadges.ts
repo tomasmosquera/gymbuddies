@@ -4,8 +4,14 @@ import { toZonedDateString, toZonedHour } from '@/lib/domain/dateUtils';
 import { fetchGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
 import { fetchGroupMonthlyChallenges, type MemberMonthlyChallenges } from '@/hooks/useGroupMonthlyChallenges';
 import { BADGES, type BadgeContext, type BadgeStatus } from '@/lib/domain/badges';
-import { kothClaimXp, levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
-import { isKothGroupFounder, kothReclaimedThroneCount, type KothClaimFact } from '@/lib/domain/koth';
+import { buddyCheckinXp, checkinXp, kothClaimXp, levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
+import {
+  isKothGroupFounder,
+  kothReclaimedThroneCountWithDate,
+  kothSimultaneousHoldTimeline,
+  type KothClaimFact,
+} from '@/lib/domain/koth';
+import { findBuddyCheckinKeys } from '@/lib/domain/geo';
 import type { MonthlyChallengeStatus } from '@/lib/domain/monthlyChallenges';
 
 export interface MemberBadges {
@@ -18,6 +24,14 @@ export interface MemberBadges {
   level: LevelProgress;
   /** XP earned from valid KOTH claims alone (kothClaimXp in xp.ts) — already folded into `level` above; broken out separately so the King of the Hill section can show its own running total. */
   kothClaimXpTotal: number;
+  /** XP earned from check-ins alone (checkinXp in xp.ts, 5 per valid check-in) — already folded into `level` above; broken out in case a future summary line wants it, same pattern as kothClaimXpTotal. Deliberately NOT surfaced per-check-in in the XP-history list — one entry per check-in would be far too many rows. */
+  checkinXpTotal: number;
+  /** This member's own KOTH claims — same list badges.ts's evaluate() already saw via ctx.kothClaims, exposed here too so a caller (the XP-history modal) can build a dated entry per valid claim without a second fetch. */
+  kothClaims: readonly KothClaimFact[];
+  /** XP earned from buddy check-ins alone (buddyCheckinXp in xp.ts, 3 per buddy check-in) — already folded into `level` above; broken out same as kothClaimXpTotal/checkinXpTotal. */
+  buddyCheckinXpTotal: number;
+  /** How many of this member's check-ins were buddy check-ins — same count badges.ts's 'dupla'/'mejor-acompanado' evaluate() saw via ctx.buddyCheckinDates.length. */
+  buddyCheckinCount: number;
 }
 
 /**
@@ -47,7 +61,7 @@ export async function fetchGroupBadges(
   const [checkinsRes, resultsRes, depositsRes, reactionsRes, proposalsRes, kothClaimsRes, kothRecordsRes] = await Promise.all([
     supabase
       .from('checkins')
-      .select('user_id, checkin_date, captured_at, workout_minutes')
+      .select('user_id, checkin_date, captured_at, workout_minutes, latitude, longitude')
       .eq('group_id', groupId)
       .lte('checkin_date', todayString),
     supabase
@@ -56,7 +70,7 @@ export async function fetchGroupBadges(
       .eq('group_id', groupId),
     supabase
       .from('wallet_transactions')
-      .select('user_id')
+      .select('user_id, created_at')
       .eq('group_id', groupId)
       .in('type', ['initial_deposit', 'recharge'])
       .eq('status', 'confirmed'),
@@ -66,7 +80,7 @@ export async function fetchGroupBadges(
       .eq('group_id', groupId),
     supabase
       .from('rule_proposals')
-      .select('proposed_by, status')
+      .select('proposed_by, status, decided_at, applied_at')
       .eq('group_id', groupId)
       .in('status', ['approved', 'applied']),
     // counts_for_record excludes practice claims made during a member's
@@ -117,6 +131,20 @@ export async function fetchGroupBadges(
       .push({ date: c.checkin_date, hourBogota: toZonedHour(new Date(c.captured_at), timezone), workoutMinutes: c.workout_minutes });
   }
 
+  // Buddy check-ins: group-wide first (needs every member's check-ins to
+  // find pairs), then tallied per member below against their own already
+  // activation-filtered `checkins` list — same "not theirs before they were
+  // an accountable member" rule everything else here applies.
+  const buddyCheckinKeys = findBuddyCheckinKeys(
+    (checkinsRes.data ?? []).map((c) => ({
+      userId: c.user_id,
+      date: c.checkin_date,
+      capturedAtMs: new Date(c.captured_at).getTime(),
+      latitude: c.latitude,
+      longitude: c.longitude,
+    }))
+  );
+
   const results = (resultsRes.data ?? []) as unknown as {
     user_id: string;
     penalty_charged: number;
@@ -130,6 +158,12 @@ export async function fetchGroupBadges(
   }
 
   const fundedWalletUsers = new Set((depositsRes.data ?? []).map((d) => d.user_id));
+  const fundedWalletDatesByUser = new Map<string, string>();
+  for (const d of depositsRes.data ?? []) {
+    const date = toZonedDateString(new Date(d.created_at), timezone);
+    const existing = fundedWalletDatesByUser.get(d.user_id);
+    if (!existing || date < existing) fundedWalletDatesByUser.set(d.user_id, date);
+  }
 
   const reactions = (reactionsRes.data ?? []) as unknown as {
     user_id: string;
@@ -141,8 +175,15 @@ export async function fetchGroupBadges(
     .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toZonedDateString(new Date(r.created_at), timezone) }));
 
   const ruleProposalsWonByUser = new Map<string, number>();
+  // decided_at is confirmed to never be null for a row already filtered to
+  // status in ('approved','applied') — applied_at only lags it for a
+  // deferred (non-immediate) proposal not yet swept by the Monday cron.
+  const ruleProposalWinDatesByUser = new Map<string, string>();
   for (const p of proposalsRes.data ?? []) {
     ruleProposalsWonByUser.set(p.proposed_by, (ruleProposalsWonByUser.get(p.proposed_by) ?? 0) + 1);
+    const winDate = toZonedDateString(new Date(p.applied_at ?? p.decided_at!), timezone);
+    const existing = ruleProposalWinDatesByUser.get(p.proposed_by);
+    if (!existing || winDate < existing) ruleProposalWinDatesByUser.set(p.proposed_by, winDate);
   }
 
   const monthlyByUserId = new Map(membersChallenges.map((m) => [m.userId, m]));
@@ -154,22 +195,39 @@ export async function fetchGroupBadges(
     // practice-period history). m.days already applies this rule; the
     // extras fetched independently above need it applied here too.
     const activatedDate = m.activatedDate;
-    const checkins = (checkinsByUser.get(m.userId) ?? []).filter((c) => !activatedDate || c.date >= activatedDate);
-    const weeklyPenalties = (weeklyPenaltiesByUser.get(m.userId) ?? []).filter(
-      (w) => !activatedDate || w.weekStartDate >= activatedDate
-    );
+    // Neither the checkins nor weekly_evaluation_results query above has an
+    // .order(...), so these arrive in whatever order Postgres happens to
+    // return them — sorted here so badges.ts's "Nth checkin"/"Nth week"
+    // date derivations (e.g. donde-estas' 10th checkin) are actually
+    // correct. ctx.days doesn't need this: it's built ascending in
+    // useGroupAttendanceRecords.ts via enumerateDates.
+    const checkins = (checkinsByUser.get(m.userId) ?? [])
+      .filter((c) => !activatedDate || c.date >= activatedDate)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const weeklyPenalties = (weeklyPenaltiesByUser.get(m.userId) ?? [])
+      .filter((w) => !activatedDate || w.weekStartDate >= activatedDate)
+      .sort((a, b) => a.weekStartDate.localeCompare(b.weekStartDate));
     const reactionsGivenDates = rawReactions
       .filter((r) => r.giverId === m.userId && (!activatedDate || r.date >= activatedDate))
-      .map((r) => r.date);
+      .map((r) => r.date)
+      .sort();
     const reactionsGivenByRecipient: Record<string, number> = {};
+    const reactionsGivenToRecipientDates: Record<string, string[]> = {};
     for (const r of rawReactions) {
       if (r.giverId !== m.userId || (activatedDate && r.date < activatedDate)) continue;
       reactionsGivenByRecipient[r.recipientId] = (reactionsGivenByRecipient[r.recipientId] ?? 0) + 1;
+      (reactionsGivenToRecipientDates[r.recipientId] ??= []).push(r.date);
     }
-    const reactionsReceivedCount = rawReactions.filter(
-      (r) => r.recipientId === m.userId && (!activatedDate || r.date >= activatedDate)
-    ).length;
+    for (const dates of Object.values(reactionsGivenToRecipientDates)) dates.sort();
+    const reactionsReceivedDates = rawReactions
+      .filter((r) => r.recipientId === m.userId && (!activatedDate || r.date >= activatedDate))
+      .map((r) => r.date)
+      .sort();
+    const reactionsReceivedCount = reactionsReceivedDates.length;
 
+    const memberKothClaims = kothClaims.filter((c) => c.userId === m.userId);
+    const reclaim = kothReclaimedThroneCountWithDate(kothClaims, m.userId);
+    const buddyCheckinDates = checkins.filter((c) => buddyCheckinKeys.has(`${m.userId}|${c.date}`)).map((c) => c.date);
     const ctx: BadgeContext = {
       todayString,
       groupCreatedDate: groupCreatedDate ?? todayString,
@@ -179,14 +237,21 @@ export async function fetchGroupBadges(
       checkins,
       weeklyPenalties,
       hasFundedWallet: fundedWalletUsers.has(m.userId),
+      fundedWalletDate: fundedWalletDatesByUser.get(m.userId) ?? null,
       reactionsGivenDates,
       reactionsGivenByRecipient,
+      reactionsGivenToRecipientDates,
       reactionsReceivedCount,
+      reactionsReceivedDates,
       ruleProposalsWonCount: ruleProposalsWonByUser.get(m.userId) ?? 0,
-      kothClaims: kothClaims.filter((c) => c.userId === m.userId),
+      firstRuleProposalWinDate: ruleProposalWinDatesByUser.get(m.userId) ?? null,
+      kothClaims: memberKothClaims,
       kothCurrentlyHeldExerciseIds: kothCurrentlyHeldExerciseIdsByUser.get(m.userId) ?? [],
       kothIsGroupFounder: isKothGroupFounder(kothClaims, m.userId),
-      kothReclaimedThroneCount: kothReclaimedThroneCount(kothClaims, m.userId),
+      kothReclaimedThroneCount: reclaim.count,
+      kothFirstReclaimDate: reclaim.firstReclaimDate,
+      kothSimultaneousHoldTimeline: kothSimultaneousHoldTimeline(kothClaims, m.userId),
+      buddyCheckinDates,
     };
     const statuses: Record<string, BadgeStatus> = {};
     const earnedBadgeIds: string[] = [];
@@ -199,14 +264,20 @@ export async function fetchGroupBadges(
     const lifetimeXp = totalXpForEarnedBadges(earnedBadgeIds);
     const kothValidClaimCount = ctx.kothClaims.filter((c) => c.status === 'valid').length;
     const kothClaimXpTotal = kothClaimXp(kothValidClaimCount);
+    const checkinXpTotal = checkinXp(ctx.checkins.length);
+    const buddyCheckinXpTotal = buddyCheckinXp(ctx.buddyCheckinDates.length);
     return {
       userId: m.userId,
       fullName: m.fullName,
       statuses,
       earnedCount: earnedBadgeIds.length,
       monthlyStatuses: monthly?.statusesById ?? {},
-      level: levelProgress(lifetimeXp + (monthly?.totalXp ?? 0) + kothClaimXpTotal),
+      level: levelProgress(lifetimeXp + (monthly?.totalXp ?? 0) + kothClaimXpTotal + checkinXpTotal + buddyCheckinXpTotal),
       kothClaimXpTotal,
+      checkinXpTotal,
+      kothClaims: memberKothClaims,
+      buddyCheckinXpTotal,
+      buddyCheckinCount: ctx.buddyCheckinDates.length,
     };
   });
 }

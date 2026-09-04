@@ -62,6 +62,8 @@ export interface MonthlyMemberContext {
    * forever without doing anything new.
    */
   isKothKingThisMonth: boolean;
+  /** How many of this member's completed days in the month were buddy check-ins (see findBuddyCheckinKeys, geo.ts) — precomputed at the hook level for the same reason as the KOTH/rank facts above. */
+  buddyCheckinsInMonth: number;
 }
 
 export interface MonthlyChallengeStatus {
@@ -73,6 +75,8 @@ export interface MonthlyChallengeStatus {
   currentMonthEarned: boolean | null;
   /** Live current/target for the still-open month, for a partial progress bar — only set for monotonic challenges with a meaningful in-between state (see MonthlyChallengeDefinition.progress); null for every other challenge. Still populated once earned (current >= target) — the UI clamps the ratio itself. */
   currentMonthProgress: { current: number; target: number } | null;
+  /** Ascending YYYY-MM keys of every month that contributed to timesAchieved/totalXp — for a monotonic challenge this can include the still-open current month (same months timesAchieved itself counts, so the two always agree); the XP-history screen turns each into a dated entry. */
+  earnedMonths: string[];
 }
 
 export interface MonthlyChallengeDefinition {
@@ -414,6 +418,25 @@ export const MONTHLY_CHALLENGES: MonthlyChallengeDefinition[] = [
     description: 'Mejorar de posición en el ranking respecto al mes anterior.',
     xpPerOccurrence: 25,
     evaluate: (ctx) => (ctx.rank !== null && ctx.previousMonthRank !== null ? ctx.rank < ctx.previousMonthRank : null),
+  },
+  {
+    id: 'companero-del-mes',
+    name: 'Compañero del Mes',
+    emoji: '🫱🏼‍🫲🏻',
+    description: 'Tener al menos 1 check-in en pareja (junto a un compañero) en el mes.',
+    xpPerOccurrence: 15,
+    monotonic: true,
+    evaluate: (ctx) => ctx.buddyCheckinsInMonth >= 1,
+  },
+  {
+    id: 'dupla-constante',
+    name: 'Dupla Constante',
+    emoji: '👯',
+    description: 'Tener al menos 5 check-ins en pareja en el mismo mes.',
+    xpPerOccurrence: 45,
+    monotonic: true,
+    evaluate: (ctx) => ctx.buddyCheckinsInMonth >= 5,
+    progress: (ctx) => ({ current: ctx.buddyCheckinsInMonth, target: 5 }),
   },
   {
     id: 'mes-de-cobre',

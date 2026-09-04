@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
 import { TimezonePicker } from '@/components/ui/TimezonePicker';
 import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
@@ -12,7 +14,7 @@ import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { toZonedDateString } from '@/lib/domain/dateUtils';
 import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, spacing } from '@/constants/theme';
 
 const YES_NO_OPTIONS: { key: 'yes' | 'no'; label: string }[] = [
   { key: 'no', label: 'No' },
@@ -144,7 +146,8 @@ export default function AdminEditGroupScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={styles.form}>
+        <SectionHeader icon="information-circle-outline" title="Información básica" />
+        <Card style={styles.card}>
           <TextField label="Nombre del grupo" value={name} onChangeText={setName} />
           <TextField
             label="Datos de pago (Nequi, Bancolombia, etc.)"
@@ -152,52 +155,51 @@ export default function AdminEditGroupScreen() {
             onChangeText={setAdminPaymentInfo}
             placeholder="Ej: Nequi 300 123 4567"
           />
-          <View style={styles.timezoneSection}>
-            <Text style={styles.timezoneLabel}>Zona horaria del grupo</Text>
-            <Text style={styles.timezoneHint}>
-              Se aplica de inmediato, sin votación — define qué día/semana cuentan los check-ins nuevos y qué
-              festivos aplican.
-            </Text>
-            <TimezonePicker value={timezone} onChange={setTimezone} />
-          </View>
-          {canManagePublic ? (
-            <View style={styles.timezoneSection}>
-              <Text style={styles.timezoneLabel}>Grupo público</Text>
-              <Text style={styles.timezoneHint}>
-                Se aplica de inmediato — visible y unible desde &ldquo;Mis grupos → Unirme a un grupo público&rdquo;, sin
-                código de invitación.
+        </Card>
+
+        <SectionHeader icon="time-outline" title="Zona horaria" />
+        <Card style={styles.card}>
+          <Text style={styles.hint}>
+            Se aplica de inmediato, sin votación — define qué día/semana cuentan los check-ins nuevos y qué festivos
+            aplican.
+          </Text>
+          <TimezonePicker value={timezone} onChange={setTimezone} />
+        </Card>
+
+        {canManagePublic ? (
+          <>
+            <SectionHeader icon="globe-outline" title="Visibilidad" />
+            <Card style={styles.card}>
+              <Text style={styles.hint}>
+                Se aplica de inmediato — visible y unible desde &ldquo;Mis grupos → Unirme a un grupo público&rdquo;,
+                sin código de invitación.
               </Text>
-              <SegmentedControl
-                options={YES_NO_OPTIONS}
-                value={isPublic ? 'yes' : 'no'}
-                onChange={handleTogglePublic}
-              />
+              <SegmentedControl options={YES_NO_OPTIONS} value={isPublic ? 'yes' : 'no'} onChange={handleTogglePublic} />
               {isTogglingPublic ? <ActivityIndicator color={colors.primary} /> : null}
-            </View>
-          ) : null}
-          {group && group.payout_mode !== 'cooperative' && cycle ? (
-            <View style={styles.timezoneSection}>
-              <Text style={styles.timezoneLabel}>Fecha de inicio del ciclo de Liga</Text>
-              <Text style={styles.timezoneHint}>
+            </Card>
+          </>
+        ) : null}
+
+        {group && group.payout_mode !== 'cooperative' && cycle ? (
+          <>
+            <SectionHeader icon="trophy-outline" title="Ciclo de Liga" />
+            <Card style={styles.card}>
+              <Text style={styles.hint}>
                 Se aplica de inmediato, sin votación — mueve también la fecha en que se reparte el premio.
               </Text>
-              <InlineDatePicker value={leagueCycleStartDate} onChange={setLeagueCycleStartDate} />
+              <InlineDatePicker value={leagueCycleStartDate} onChange={setLeagueCycleStartDate} wide />
               <Button
                 label="Guardar fecha de inicio"
                 variant="secondary"
                 onPress={handleSaveCycleStart}
                 loading={isSavingCycleStart}
               />
-            </View>
-          ) : null}
-          <Button label="Guardar cambios" onPress={handleSubmit} loading={isSubmitting} />
-          <Button
-            label="Cancelar"
-            variant="secondary"
-            onPress={() => router.replace('/profile/admin')}
-            disabled={isSubmitting}
-          />
-        </View>
+            </Card>
+          </>
+        ) : null}
+
+        <Button label="Guardar cambios" onPress={handleSubmit} loading={isSubmitting} />
+        <Button label="Cancelar" variant="secondary" onPress={() => router.replace('/profile/admin')} disabled={isSubmitting} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -205,9 +207,7 @@ export default function AdminEditGroupScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg },
-  form: { gap: spacing.md },
-  timezoneSection: { gap: spacing.xs },
-  timezoneLabel: { ...typography.body, color: colors.text, fontWeight: '600' },
-  timezoneHint: { color: colors.textMuted, fontSize: 12, lineHeight: 16, marginBottom: spacing.xs },
+  container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md },
+  card: { gap: spacing.md },
+  hint: { color: colors.textMuted, fontSize: 12, lineHeight: 16 },
 });

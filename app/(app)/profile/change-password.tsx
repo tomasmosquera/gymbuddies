@@ -43,13 +43,24 @@ export default function ChangePasswordScreen() {
           value={currentPassword}
           onChangeText={setCurrentPassword}
           secureTextEntry
+          textContentType="password"
+          autoComplete="current-password"
         />
-        <TextField label="Nueva contraseña" value={newPassword} onChangeText={setNewPassword} secureTextEntry />
+        <TextField
+          label="Nueva contraseña"
+          value={newPassword}
+          onChangeText={setNewPassword}
+          secureTextEntry
+          textContentType="newPassword"
+          autoComplete="new-password"
+        />
         <TextField
           label="Confirmar nueva contraseña"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
+          textContentType="newPassword"
+          autoComplete="new-password"
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button label="Cambiar contraseña" onPress={handleSubmit} loading={isSubmitting} />

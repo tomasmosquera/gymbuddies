@@ -70,6 +70,13 @@ function PendingTransactionRow({
       <Text style={styles.rowSubtitle}>
         {transaction.type === 'initial_deposit' ? 'Depósito inicial' : 'Recarga'} · {transaction.amount.toLocaleString('es-CO')}
       </Text>
+      {transaction.enrollment_fee_amount > 0 ? (
+        <Text style={styles.rowSubtitle}>
+          + {transaction.enrollment_fee_amount.toLocaleString('es-CO')} de cuota de inscripción (no se suma al saldo del
+          grupo) · Total recibido:{' '}
+          {(transaction.amount + transaction.enrollment_fee_amount).toLocaleString('es-CO')}
+        </Text>
+      ) : null}
       {signedUrl ? (
         <Image
           source={{ uri: signedUrl, cacheKey: transaction.receipt_path ?? undefined }}

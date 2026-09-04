@@ -60,6 +60,8 @@ export const XP_BY_BADGE_ID: Record<string, number> = {
   'el-propio-gordo': 20,
 
   // Social
+  dupla: 20,
+  'mejor-acompanado': 100,
   motivador: 20,
   'gran-motivador': 35,
   'se-le-quiere': 30,
@@ -105,6 +107,34 @@ export const KOTH_CLAIM_XP = 50;
 
 export function kothClaimXp(validClaimCount: number): number {
   return validClaimCount * KOTH_CLAIM_XP;
+}
+
+/**
+ * Flat XP for every valid check-in — same "valid" definition the rest of
+ * the check-in badge catalog already uses (a real row in the checkins
+ * table, from BadgeContext.checkins; see e.g. 'donde-estas'), not
+ * override-aware. Stacks without limit, same monotonic reasoning as
+ * kothClaimXp above. Deliberately NOT surfaced in the XP-history list
+ * (xpHistory.ts) — one entry per check-in would be far too many rows to be
+ * useful there; it only ever shows up folded into the member's total XP.
+ */
+export const CHECKIN_XP = 5;
+
+export function checkinXp(validCheckinCount: number): number {
+  return validCheckinCount * CHECKIN_XP;
+}
+
+/**
+ * Bonus on top of CHECKIN_XP for a "buddy check-in" — trained with a
+ * teammate the same day, close enough in time and place (see
+ * findBuddyCheckinKeys in geo.ts). Same monotonic/stacks-without-limit
+ * reasoning as checkinXp; also deliberately not itemized in xpHistory.ts for
+ * the same "too many rows" reason.
+ */
+export const BUDDY_CHECKIN_XP = 3;
+
+export function buddyCheckinXp(buddyCheckinCount: number): number {
+  return buddyCheckinCount * BUDDY_CHECKIN_XP;
 }
 
 /** Every badge in the catalog has an assigned XP value (0 counts, e.g. the revocable one). */

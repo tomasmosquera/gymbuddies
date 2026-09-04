@@ -26,6 +26,11 @@ export default function AppLayout() {
   if (!isSignedIn) return <Redirect href="/sign-in" />;
   if (!membership) return <Redirect href="/group-select" />;
 
+  // An admin_only member never checks in — that tab becomes the group admin
+  // panel instead (see checkin/index.tsx), so its label/icon should read as
+  // that, not as a dead camera tab.
+  const isAdminOnly = membership.status === 'admin_only';
+
   return (
     <Tabs
       screenOptions={{
@@ -47,10 +52,13 @@ export default function AppLayout() {
       <Tabs.Screen
         name="checkin"
         options={{
-          title: 'Check-in',
-          tabBarIcon: ({ focused, color }) => (
-            <TabIcon filled="camera" outline="camera-outline" focused={focused} color={color} />
-          ),
+          title: isAdminOnly ? 'Admin' : 'Check-in',
+          tabBarIcon: ({ focused, color }) =>
+            isAdminOnly ? (
+              <TabIcon filled="shield-checkmark" outline="shield-checkmark-outline" focused={focused} color={color} />
+            ) : (
+              <TabIcon filled="camera" outline="camera-outline" focused={focused} color={color} />
+            ),
         }}
       />
       <Tabs.Screen

@@ -12,7 +12,7 @@
  */
 
 export type GroupMemberRole = 'admin' | 'member';
-export type GroupMemberStatus = 'pending_deposit' | 'active' | 'needs_recharge' | 'left' | 'removed';
+export type GroupMemberStatus = 'pending_deposit' | 'active' | 'needs_recharge' | 'left' | 'removed' | 'admin_only';
 export type WalletTransactionType = 'initial_deposit' | 'penalty' | 'recharge' | 'adjustment' | 'payout';
 export type WalletTransactionStatus = 'pending' | 'confirmed' | 'rejected';
 export type RuleProposalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'applied';
@@ -44,6 +44,8 @@ export type Profile = {
   checkout_reminder_minutes: number;
   /** Grants the ability to create/mark groups public — set once via a one-off migration, not client-settable. See list_public_groups/create_group/admin_set_group_public. */
   is_platform_admin: boolean;
+  /** Consumed by create_group (1 per group), free to start (default 1, including a one-time backfill for every pre-existing profile). The platform admin never spends this. See admin_grant_group_creation_credits for the platform admin's manual top-up tool — in-app purchase isn't built yet. */
+  group_creation_credits: number;
   created_at: string;
 };
 
@@ -85,6 +87,12 @@ export type Group = {
   game_starts_at: string | null;
   /** Discoverable via list_public_groups and joinable without an invite code (join_public_group) — only a platform admin can set this, at creation or later via admin_set_group_public. */
   is_public: boolean;
+  /** League mode only. Number of last-place members penalized at cycle close (0 = descenso disabled). See evaluate_due_league_cycle. */
+  descenso_rank_count: number;
+  /** Fixed amount charged to each relegated member — can be 0 (marks the zone without charging). Added to that same cycle's prize pool. */
+  descenso_penalty_amount: number;
+  /** Charged to every new member on top of initial_deposit_amount when they join — goes straight to the admin, never pooled into group_members.balance. See wallet_transactions.enrollment_fee_amount for how a given deposit's split is recorded. */
+  enrollment_fee_amount: number;
   created_at: string;
 };
 
@@ -200,6 +208,8 @@ export type WalletTransaction = {
   confirmed_at: string | null;
   weekly_evaluation_result_id: string | null;
   note: string | null;
+  /** Only meaningful on type = 'initial_deposit' rows — the portion of `amount`'s companion transfer that was the group's enrollment_fee_amount, kept in its own column specifically so apply_wallet_transaction_effect (which only ever adds `amount`) never pools it. Always 0 on every other transaction type. */
+  enrollment_fee_amount: number;
   created_at: string;
 };
 
@@ -216,6 +226,9 @@ export type RuleProposalChanges = {
   league_prize_splits?: number[];
   mixed_league_share_percent?: number;
   league_cycle_started_at?: string;
+  descenso_rank_count?: number;
+  descenso_penalty_amount?: number;
+  enrollment_fee_amount?: number;
 };
 
 export type RuleProposal = {
@@ -366,6 +379,15 @@ export type CheckinReaction = {
   created_at: string;
 };
 
+export type BuddyNudge = {
+  id: string;
+  group_id: string;
+  sender_id: string;
+  recipient_id: string;
+  sent_at: string;
+  sent_date: string;
+};
+
 export type AppVersionInfo = {
   platform: 'ios' | 'android';
   latest_version: string;
@@ -440,7 +462,8 @@ export type Database = {
       checkins: { Row: Checkin; Insert: never; Update: never } & NoRelationships;
       wallet_transactions: {
         Row: WalletTransaction;
-        Insert: Pick<WalletTransaction, 'group_id' | 'user_id' | 'type' | 'amount' | 'status' | 'receipt_path'>;
+        Insert: Pick<WalletTransaction, 'group_id' | 'user_id' | 'type' | 'amount' | 'status' | 'receipt_path'> &
+          Partial<Pick<WalletTransaction, 'enrollment_fee_amount'>>;
         Update: Partial<Pick<WalletTransaction, 'status'>>;
       } & NoRelationships;
       rule_proposals: {
@@ -463,6 +486,8 @@ export type Database = {
       koth_records: { Row: KothRecord; Insert: never; Update: never } & NoRelationships;
       checkin_reactions: { Row: CheckinReaction; Insert: never; Update: never } & NoRelationships;
       app_version_info: { Row: AppVersionInfo; Insert: never; Update: never } & NoRelationships;
+      // Select-only (own sent rows) — every write goes through send_buddy_nudge.
+      buddy_nudges: { Row: BuddyNudge; Insert: never; Update: never } & NoRelationships;
       league_cycles: { Row: LeagueCycle; Insert: never; Update: never } & NoRelationships;
       league_cycle_payouts: { Row: LeagueCyclePayout; Insert: never; Update: never } & NoRelationships;
     };
@@ -487,6 +512,9 @@ export type Database = {
           p_game_starts_at?: string | null;
           p_timezone?: string;
           p_is_public?: boolean;
+          p_descenso_rank_count?: number;
+          p_descenso_penalty_amount?: number;
+          p_enrollment_fee_amount?: number;
         };
         Returns: Group;
       };
@@ -535,6 +563,7 @@ export type Database = {
       run_weekly_evaluation: { Args: Record<string, never>; Returns: WeeklyEvaluationRun[] };
       close_expired_proposals: { Args: Record<string, never>; Returns: void };
       admin_remove_member: { Args: { p_member_id: string; p_pay_out?: boolean }; Returns: GroupMember };
+      admin_settle_league_departure: { Args: { p_group_id: string; p_user_id: string; p_refund: boolean }; Returns: void };
       start_league_cycle: { Args: { p_group_id: string }; Returns: LeagueCycle };
       admin_set_league_cycle_start: { Args: { p_group_id: string; p_started_at: string }; Returns: LeagueCycle };
       admin_set_cooperative_share_percent: {
@@ -559,6 +588,14 @@ export type Database = {
       remove_reaction: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_checkin: { Args: { p_checkin_id: string }; Returns: void };
       admin_set_checkin_workout_minutes: { Args: { p_checkin_id: string; p_workout_minutes: number }; Returns: Checkin };
+      admin_set_checkin_active_energy: {
+        Args: { p_checkin_id: string; p_active_energy_kcal: number | null };
+        Returns: Checkin;
+      };
+      admin_replace_checkin_photo: {
+        Args: { p_checkin_id: string; p_which: 'initial' | 'final'; p_photo_path: string };
+        Returns: Checkin;
+      };
       delete_own_checkin: { Args: { p_checkin_id: string }; Returns: void };
       admin_delete_wallet_transaction: { Args: { p_transaction_id: string }; Returns: void };
       set_attendance_override: {
@@ -645,6 +682,11 @@ export type Database = {
       set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
       set_auto_checkin_other_groups: { Args: { p_enabled: boolean }; Returns: void };
       set_checkout_reminder_minutes: { Args: { p_minutes: number }; Returns: void };
+      admin_find_user_by_email: {
+        Args: { p_email: string };
+        Returns: { id: string; full_name: string; group_creation_credits: number }[];
+      };
+      admin_grant_group_creation_credits: { Args: { p_user_id: string; p_amount: number }; Returns: number };
       submit_checkin: {
         Args: {
           p_group_id: string;
@@ -659,6 +701,35 @@ export type Database = {
         // null when p_auto_created is true and a genuinely separate manual
         // check-in already existed that day in the target group.
         Returns: Checkin | null;
+      };
+      send_buddy_nudge: { Args: { p_group_id: string; p_recipient_id: string }; Returns: BuddyNudge };
+      platform_admin_overview: {
+        Args: Record<string, never>;
+        Returns: {
+          total_groups: number;
+          active_groups: number;
+          total_active_members: number;
+          total_active_unique_members: number;
+          total_balance: number;
+          total_penalties_collected: number;
+          cooperative_count: number;
+          league_count: number;
+          mixed_count: number;
+        }[];
+      };
+      platform_admin_groups_list: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          payout_mode: PayoutMode;
+          currency: string;
+          created_at: string;
+          admin_name: string | null;
+          active_member_count: number;
+          total_balance: number;
+          last_checkin_at: string | null;
+        }[];
       };
     };
   };

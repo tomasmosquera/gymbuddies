@@ -25,6 +25,21 @@ export function checkoutPhotoPath(groupId: string, userId: string, checkinDate: 
   return `${groupId}/${userId}/${checkinDate}-checkout.jpg`;
 }
 
+/**
+ * A fresh, unique path for an admin replacing a check-in photo from Moderar
+ * Fotos (admin_replace_checkin_photo) — deliberately never the same key as
+ * checkinPhotoPath/checkoutPhotoPath, so CheckinPhotoColumn's on-disk cache
+ * (keyed by photo_path) can't ever show the old photo after a replace.
+ */
+export function adminReplacedCheckinPhotoPath(
+  groupId: string,
+  userId: string,
+  checkinDate: string,
+  which: 'initial' | 'final'
+): string {
+  return `${groupId}/${userId}/${checkinDate}-${which}-admin-${Date.now()}.jpg`;
+}
+
 export function receiptPath(groupId: string, userId: string, transactionRef: string): string {
   return `${groupId}/${userId}/${transactionRef}.jpg`;
 }

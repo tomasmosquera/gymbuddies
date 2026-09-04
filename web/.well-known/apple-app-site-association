@@ -6,5 +6,8 @@
         "paths": ["/join/*"]
       }
     ]
+  },
+  "webcredentials": {
+    "apps": ["2BR837BRHU.com.gymbuddiestm.app"]
   }
 }

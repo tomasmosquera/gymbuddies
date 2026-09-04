@@ -7,7 +7,7 @@ export interface MembershipWithGroup extends GroupMember {
   group: Group;
 }
 
-/** All of the signed-in user's group memberships (any status except left/removed), with the group joined in. */
+/** All of the signed-in user's group memberships (any status except left/removed), with the group joined in. Includes 'admin_only' — a non-participating admin still needs to see/manage the group. */
 export function useMyMemberships() {
   const { session } = useAuth();
   const [memberships, setMemberships] = useState<MembershipWithGroup[]>([]);
@@ -24,7 +24,7 @@ export function useMyMemberships() {
       .from('group_members')
       .select('*, group:groups(*)')
       .eq('user_id', session.user.id)
-      .in('status', ['pending_deposit', 'active', 'needs_recharge'])
+      .in('status', ['pending_deposit', 'active', 'needs_recharge', 'admin_only'])
       .order('joined_at', { ascending: true });
 
     if (!error && data) {

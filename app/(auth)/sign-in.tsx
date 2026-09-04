@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
@@ -36,6 +36,7 @@ export default function SignInScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Image source={require('../../assets/icon-header.png')} style={styles.logo} resizeMode="contain" />
         <Text style={styles.title}>Gym Buddies</Text>
         <Text style={styles.subtitle}>Entra a tu cuenta</Text>
 
@@ -46,6 +47,8 @@ export default function SignInScreen() {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
+            textContentType="username"
+            autoComplete="email"
             error={errors.email}
           />
           <TextField
@@ -53,6 +56,8 @@ export default function SignInScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            textContentType="password"
+            autoComplete="password"
             error={errors.password}
           />
           <Button label="Entrar" onPress={handleSubmit} loading={isSubmitting} />
@@ -69,6 +74,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, justifyContent: 'center', gap: spacing.lg },
+  logo: { width: 220, height: 69, alignSelf: 'center' },
   title: { ...typography.title, color: colors.text, textAlign: 'center' },
   subtitle: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
   form: { gap: spacing.md },

@@ -19,7 +19,7 @@ import {
   type BadgeContext,
   type BadgeDayRecord,
 } from '@/lib/domain/badges';
-import type { KothClaimFact } from '@/lib/domain/koth';
+import { kothSimultaneousHoldTimeline, type KothClaimFact } from '@/lib/domain/koth';
 
 let nextKothClaimId = 1;
 function kothClaim(overrides: Partial<KothClaimFact> & Pick<KothClaimFact, 'exerciseId'>): KothClaimFact {
@@ -57,14 +57,21 @@ function baseContext(overrides: Partial<BadgeContext> = {}): BadgeContext {
     checkins: [],
     weeklyPenalties: [],
     hasFundedWallet: false,
+    fundedWalletDate: null,
     reactionsGivenDates: [],
     reactionsGivenByRecipient: {},
+    reactionsGivenToRecipientDates: {},
     reactionsReceivedCount: 0,
+    reactionsReceivedDates: [],
     ruleProposalsWonCount: 0,
+    firstRuleProposalWinDate: null,
     kothClaims: [],
     kothCurrentlyHeldExerciseIds: [],
     kothIsGroupFounder: false,
     kothReclaimedThroneCount: 0,
+    kothFirstReclaimDate: null,
+    kothSimultaneousHoldTimeline: [],
+    buddyCheckinDates: [],
     ...overrides,
   };
 }
@@ -76,9 +83,9 @@ function badge(id: string) {
 }
 
 describe('badge catalog', () => {
-  it('has exactly 57 badges with unique ids', () => {
-    expect(BADGES.length).toBe(57);
-    expect(new Set(BADGES.map((b) => b.id)).size).toBe(57);
+  it('has exactly 59 badges with unique ids', () => {
+    expect(BADGES.length).toBe(59);
+    expect(new Set(BADGES.map((b) => b.id)).size).toBe(59);
   });
 });
 
@@ -246,7 +253,7 @@ describe('isFixedHoliday', () => {
 describe('representative badge evaluations', () => {
   it('Primer Paso earns on the first checkin', () => {
     const ctx = baseContext({ checkins: [{ date: '2026-01-01', hourBogota: 7, workoutMinutes: null }] });
-    expect(badge('primer-paso').evaluate(ctx)).toEqual({ earned: true, current: 1, target: 1 });
+    expect(badge('primer-paso').evaluate(ctx)).toEqual({ earned: true, current: 1, target: 1, earnedDate: '2026-01-01' });
   });
 
   it('Mes Perfecto requires a 30-day streak', () => {
@@ -347,6 +354,13 @@ describe('representative badge evaluations', () => {
         })
       ).earned
     ).toBe(false);
+  });
+
+  it('Ahorrador Involuntario never carries an earnedDate — the sole revocable badge, so "when earned" is not a stable fact', () => {
+    const ctx = baseContext({ weeklyPenalties: [{ weekStartDate: '2026-01-05', penaltyCharged: 0 }] });
+    const status = badge('ahorrador-involuntario').evaluate(ctx);
+    expect(status.earned).toBe(true);
+    expect(status.earnedDate).toBeNull();
   });
 
   it('Fan Número Uno needs 20 reactions given to the same recipient', () => {
@@ -470,12 +484,29 @@ describe('King of the Hill badges', () => {
     expect(badge('fundador-del-trono').evaluate(baseContext({ kothIsGroupFounder: true })).earned).toBe(true);
   });
 
-  it('multi-corona / rey-absoluto / dueno-del-gym threshold on simultaneously held exercises', () => {
-    const held = ['bench', 'squat', 'deadlift'];
-    expect(badge('multi-corona').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: held })).earned).toBe(true);
-    expect(badge('rey-absoluto').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: held })).earned).toBe(false);
-    expect(badge('dueno-del-gym').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: held })).earned).toEqual(false);
-    expect(badge('dueno-del-gym').evaluate(baseContext({ kothCurrentlyHeldExerciseIds: Array.from({ length: 12 }, (_, i) => `ex-${i}`) })).earned).toBe(true);
+  it('multi-corona / rey-absoluto / dueno-del-gym key off the historical peak of simultaneously-held exercises (monotonic), not a live snapshot', () => {
+    const claims = [
+      kothClaim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      kothClaim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-05T00:00:00Z' }),
+      kothClaim({ exerciseId: 'deadlift', userId: 'a', createdAt: '2026-01-10T00:00:00Z' }),
+      // 'a' is later dethroned on all three — a live snapshot would show 0
+      // held, but the badge (like every other lifetime badge) must stay earned.
+      kothClaim({ exerciseId: 'bench', userId: 'b', createdAt: '2026-03-01T00:00:00Z' }),
+      kothClaim({ exerciseId: 'squat', userId: 'b', createdAt: '2026-03-02T00:00:00Z' }),
+      kothClaim({ exerciseId: 'deadlift', userId: 'b', createdAt: '2026-03-03T00:00:00Z' }),
+    ];
+    const ctx = baseContext({ kothSimultaneousHoldTimeline: kothSimultaneousHoldTimeline(claims, 'a') });
+    const multiCorona = badge('multi-corona').evaluate(ctx);
+    expect(multiCorona.earned).toBe(true);
+    expect(multiCorona.earnedDate).toBe('2026-01-10T00:00:00Z');
+    expect(badge('rey-absoluto').evaluate(ctx).earned).toBe(false);
+    expect(badge('dueno-del-gym').evaluate(ctx).earned).toBe(false);
+
+    const twelveClaims = Array.from({ length: 12 }, (_, i) =>
+      kothClaim({ exerciseId: `ex-${i}`, userId: 'a', createdAt: `2026-02-${String(i + 1).padStart(2, '0')}T00:00:00Z` })
+    );
+    const twelveCtx = baseContext({ kothSimultaneousHoldTimeline: kothSimultaneousHoldTimeline(twelveClaims, 'a') });
+    expect(badge('dueno-del-gym').evaluate(twelveCtx).earned).toBe(true);
   });
 
   it('todocampista needs all 12 exercises ever championed, not necessarily at once', () => {
@@ -485,17 +516,21 @@ describe('King of the Hill badges', () => {
     expect(badge('todocampista').evaluate(baseContext({ kothClaims: twelveDistinct })).earned).toBe(true);
   });
 
-  it('doble-amenaza needs a currently-held weight exercise and a currently-held reps exercise at once', () => {
-    const claims = [
-      kothClaim({ exerciseId: 'bench', metricType: 'weight_kg' }),
-      kothClaim({ exerciseId: 'pullups', metricType: 'reps' }),
+  it('doble-amenaza needs a weight exercise and a reps exercise held at once, at some point in history (not necessarily right now)', () => {
+    const bothTypes = [
+      kothClaim({ exerciseId: 'bench', userId: 'a', metricType: 'weight_kg', createdAt: '2026-01-01T00:00:00Z' }),
+      kothClaim({ exerciseId: 'pullups', userId: 'a', metricType: 'reps', createdAt: '2026-01-05T00:00:00Z' }),
     ];
+    const status = badge('doble-amenaza').evaluate(
+      baseContext({ kothSimultaneousHoldTimeline: kothSimultaneousHoldTimeline(bothTypes, 'a') })
+    );
+    expect(status.earned).toBe(true);
+    expect(status.earnedDate).toBe('2026-01-05T00:00:00Z');
+
+    const onlyWeight = [kothClaim({ exerciseId: 'bench', userId: 'a', metricType: 'weight_kg', createdAt: '2026-01-01T00:00:00Z' })];
     expect(
-      badge('doble-amenaza').evaluate(baseContext({ kothClaims: claims, kothCurrentlyHeldExerciseIds: ['bench'] })).earned
+      badge('doble-amenaza').evaluate(baseContext({ kothSimultaneousHoldTimeline: kothSimultaneousHoldTimeline(onlyWeight, 'a') })).earned
     ).toBe(false);
-    expect(
-      badge('doble-amenaza').evaluate(baseContext({ kothClaims: claims, kothCurrentlyHeldExerciseIds: ['bench', 'pullups'] })).earned
-    ).toBe(true);
   });
 
   it('el-resistente needs a claim that survived a real challenge (valid + wasChallenged)', () => {

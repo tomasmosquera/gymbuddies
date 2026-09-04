@@ -1,29 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { clusterLocations, type DatedLocation } from '@/lib/domain/geo';
 
-export interface MemberCheckinLocation {
-  latitude: number;
-  longitude: number;
-  accuracyMeters: number | null;
-  /** Most recent checkin_date this exact spot was used for — just a label, not stored. */
-  lastUsedDate: string;
-}
+export type MemberCheckinLocation = DatedLocation;
 
-/** ~11m grid — near-identical GPS noise from the same real spot collapses into one entry instead of a dozen near-duplicates. */
-function roundedKey(lat: number, lon: number): string {
-  return `${lat.toFixed(4)},${lon.toFixed(4)}`;
-}
-
+const DEFAULT_LIMIT = 50;
 const MAX_LOCATIONS = 6;
 
 /**
  * A member's own distinct past check-in locations, most recently used first
- * — powers the location picker in admin_create_checkin's "attach evidence"
- * flow (see admin-members.tsx), so an admin backfilling a day reuses a real
- * spot that member has actually checked in from, instead of typing
- * coordinates by hand.
+ * (see clusterLocations for how "distinct" is decided). Two consumers, two
+ * different needs, same underlying data:
+ *  - admin_create_checkin's "attach evidence" location picker (see
+ *    admin-members.tsx) wants the full history (default `limit` of 50) so
+ *    an admin backfilling a day can reuse ANY real spot the member has ever
+ *    checked in from, however rarely.
+ *  - useArrivalReminderSync.ts wants a narrower, recent-only window (a
+ *    smaller `limit`) so a spot the member hasn't actually trained at in
+ *    months doesn't keep getting treated as "where they currently train"
+ *    just because it happened more than once a long time ago.
  */
-export function useMemberCheckinLocations(groupId: string | null, userId: string | null) {
+export function useMemberCheckinLocations(groupId: string | null, userId: string | null, limit: number = DEFAULT_LIMIT) {
   const [locations, setLocations] = useState<MemberCheckinLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,24 +37,17 @@ export function useMemberCheckinLocations(groupId: string | null, userId: string
       .eq('group_id', groupId)
       .eq('user_id', userId)
       .order('checkin_date', { ascending: false })
-      .limit(50);
+      .limit(limit);
 
-    const seen = new Map<string, MemberCheckinLocation>();
-    for (const c of data ?? []) {
-      const key = roundedKey(c.latitude, c.longitude);
-      if (!seen.has(key)) {
-        seen.set(key, {
-          latitude: c.latitude,
-          longitude: c.longitude,
-          accuracyMeters: c.location_accuracy_m,
-          lastUsedDate: c.checkin_date,
-        });
-      }
-      if (seen.size >= MAX_LOCATIONS) break;
-    }
-    setLocations([...seen.values()]);
+    const rows = (data ?? []).map((c) => ({
+      checkinDate: c.checkin_date,
+      latitude: c.latitude,
+      longitude: c.longitude,
+      accuracyMeters: c.location_accuracy_m,
+    }));
+    setLocations(clusterLocations(rows).slice(0, MAX_LOCATIONS));
     setIsLoading(false);
-  }, [groupId, userId]);
+  }, [groupId, userId, limit]);
 
   useEffect(() => {
     refresh();

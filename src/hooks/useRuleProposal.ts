@@ -43,15 +43,21 @@ export function useRuleProposal(groupId: string | null, userId: string | null) {
         .maybeSingle(),
     ]);
 
+    // Fetch votes (if any) BEFORE committing any state — setting proposal
+    // and votes in two separate state updates would let a re-render land in
+    // between them, where proposal is already the fresh one but votes is
+    // still the old list (missing a vote the caller just cast). That stale
+    // sliver was enough to make myVote look wrong for a tick, which made the
+    // Home "votación pendiente" popup flicker after voting. Batching every
+    // setState call together (all in the same tick, no await between them)
+    // means React commits them as a single consistent render instead.
+    const voteData = proposalData
+      ? (await supabase.from('rule_votes').select('*').eq('proposal_id', proposalData.id)).data
+      : null;
+
     setProposal(proposalData ?? null);
     setUpcomingChange(upcomingData ?? null);
-
-    if (proposalData) {
-      const { data: voteData } = await supabase.from('rule_votes').select('*').eq('proposal_id', proposalData.id);
-      setVotes(voteData ?? []);
-    } else {
-      setVotes([]);
-    }
+    setVotes(voteData ?? []);
     setIsLoading(false);
     loadedForGroupIdRef.current = groupId;
   }, [groupId]);

@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { AvatarLevelRing } from '@/components/ui/AvatarLevelRing';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useMyMemberships } from '@/hooks/useMyMemberships';
 import { useGroupMoneyOverview } from '@/hooks/useGroupMoneyOverview';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
@@ -15,6 +17,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
+import { APP_BUILD_NUMBER, APP_LAST_UPDATED_DDMMYY } from '@/constants/appVersionInfo';
 
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -26,6 +29,11 @@ function getInitials(fullName: string): string {
 function SectionLabel({ children }: { children: string }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
+
+// Same UI-only gate used in create-group.tsx/admin-edit-group.tsx/
+// admin-credits.tsx — the real authority is server-side (is_platform_admin),
+// this only decides who sees the link to a platform-wide tool at all.
+const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
 
 /** Same section-header slot as SectionLabel, but for the two consequential
  * sections at the tail of the screen — an icon + a tone color (amber for
@@ -52,11 +60,14 @@ function RiskSectionHeader({
 export default function ProfileScreen() {
   const { profile, session, signOut } = useAuth();
   const { group, membership, isLoading, refresh } = useActiveGroup();
+  const { memberships } = useMyMemberships();
+  const administersAnyGroup = memberships.some((m) => m.role === 'admin');
   const { rowsByPeriod, isLoading: leaderboardLoading } = useLeaderboard(group?.id ?? null, group?.timezone ?? 'America/Bogota');
   const { overview: moneyOverview, isLoading: moneyOverviewLoading } = useGroupMoneyOverview(group?.id ?? null);
   const { membersBadges } = useGroupBadges(group?.id ?? null, group?.timezone ?? 'America/Bogota');
   const { hasUnread: hasUnreadNotifications } = useNotifications();
   const [isLeaving, setIsLeaving] = useState(false);
+  const isPlatformAdmin = session?.user.email === PLATFORM_ADMIN_EMAIL;
 
   if (isLoading || !profile) {
     return (
@@ -233,6 +244,13 @@ export default function ProfileScreen() {
               {membership.role === 'admin' ? (
                 <Button label="Administrar grupo" variant="secondary" onPress={() => router.push('/profile/admin')} />
               ) : null}
+              {administersAnyGroup ? (
+                <Button
+                  label="Panel de administrador"
+                  variant="secondary"
+                  onPress={() => router.push('/profile/admin-dashboard')}
+                />
+              ) : null}
             </View>
           </Card>
         </View>
@@ -256,9 +274,32 @@ export default function ProfileScreen() {
       <View>
         <SectionLabel>PREFERENCIAS</SectionLabel>
         <Card style={styles.stackCard}>
-          <Button label="Notificaciones y ubicación" variant="secondary" onPress={() => router.push('/profile/permissions')} />
+          <Button label="Configuración" variant="secondary" onPress={() => router.push('/profile/settings')} />
+          <Button
+            label="Notificaciones"
+            variant="secondary"
+            onPress={() => router.push('/profile/notification-preferences')}
+          />
         </Card>
       </View>
+
+      {isPlatformAdmin ? (
+        <View>
+          <SectionLabel>ADMINISTRACIÓN DE LA PLATAFORMA</SectionLabel>
+          <Card style={styles.stackCard}>
+            <Button
+              label="Panel de la plataforma"
+              variant="secondary"
+              onPress={() => router.push('/profile/platform-dashboard')}
+            />
+            <Button
+              label="Créditos de creación de grupo"
+              variant="secondary"
+              onPress={() => router.push('/profile/admin-credits')}
+            />
+          </Card>
+        </View>
+      ) : null}
 
       {group && membership ? (
         <View style={styles.riskSection}>
@@ -316,11 +357,16 @@ export default function ProfileScreen() {
       </View>
 
       <Button label="Cerrar sesión" variant="secondary" onPress={signOut} />
+
+      <Text style={styles.versionText}>
+        Versión {Constants.expoConfig?.version ?? '?'}.{APP_BUILD_NUMBER}.{APP_LAST_UPDATED_DDMMYY}
+      </Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  versionText: { color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: spacing.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
   topBar: { flexDirection: 'row', justifyContent: 'space-between' },

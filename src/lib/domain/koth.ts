@@ -77,6 +77,12 @@ export function isKothGroupFounder(allClaims: readonly KothClaimFact[], userId: 
   return earliest.userId === userId;
 }
 
+export interface KothReclaimResult {
+  count: number;
+  /** createdAt of the earliest qualifying reclaim, across every exercise — null if never reclaimed. */
+  firstReclaimDate: string | null;
+}
+
 /**
  * How many times this member has reclaimed an exercise's throne after
  * someone else took it from them — walks each exercise's claim history
@@ -84,29 +90,173 @@ export function isKothGroupFounder(allClaims: readonly KothClaimFact[], userId: 
  * reclaim only when they had already held that exercise at some earlier
  * point AND the claim immediately before this one belonged to someone else
  * (proof they actually lost it, not just re-claimed their own dethroned-by-
- * nobody claim).
+ * nobody claim). Also collects each qualifying reclaim's createdAt, since
+ * "the date this was first true" is what an XP-history entry needs — a
+ * per-exercise reclaim's date isn't chronological across exercises just by
+ * Map iteration order, so every date is collected then sorted.
  */
-export function kothReclaimedThroneCount(allClaims: readonly KothClaimFact[], userId: string): number {
+export function kothReclaimedThroneCountWithDate(allClaims: readonly KothClaimFact[], userId: string): KothReclaimResult {
   const byExercise = new Map<string, KothClaimFact[]>();
   for (const claim of allClaims) {
     if (!byExercise.has(claim.exerciseId)) byExercise.set(claim.exerciseId, []);
     byExercise.get(claim.exerciseId)!.push(claim);
   }
 
-  let count = 0;
+  const reclaimDates: string[] = [];
   for (const claims of byExercise.values()) {
     const sorted = [...claims].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     let heldBefore = false;
     let previousUserId: string | null = null;
     for (const claim of sorted) {
       if (claim.userId === userId) {
-        if (heldBefore && previousUserId !== userId) count++;
+        if (heldBefore && previousUserId !== userId) reclaimDates.push(claim.createdAt);
         heldBefore = true;
       }
       previousUserId = claim.userId;
     }
   }
-  return count;
+  reclaimDates.sort();
+  return { count: reclaimDates.length, firstReclaimDate: reclaimDates[0] ?? null };
+}
+
+/** @deprecated prefer kothReclaimedThroneCountWithDate when a date is also needed — kept as a thin wrapper so existing call sites/tests are untouched. */
+export function kothReclaimedThroneCount(allClaims: readonly KothClaimFact[], userId: string): number {
+  return kothReclaimedThroneCountWithDate(allClaims, userId).count;
+}
+
+// ---- historical simultaneous-hold reconstruction ---------------------------
+// multi-corona/rey-absoluto/dueno-del-gym/doble-amenaza used to read
+// ctx.kothCurrentlyHeldExerciseIds — a live snapshot of "what do you hold
+// right now" — which meant these 4 badges could un-earn themselves if a
+// member later lost records, breaking this app's core "lifetime badges are
+// monotonic" invariant (the only accepted exception is
+// 'ahorrador-involuntario', deliberately worth 0 XP for exactly that
+// reason). The functions below instead reconstruct the member's FULL
+// history of which exercises they held and when, so "earned" can depend on
+// the historical peak (monotonic, like every other badge) and the earned
+// date can point at the real moment that peak first happened.
+
+interface HoldingInterval {
+  userId: string;
+  /** createdAt of the claim that started holding it. */
+  start: string;
+  /** createdAt of the claim that dethroned it, or the decidedAt it was invalidated at; null = still held as of the data available. */
+  end: string | null;
+}
+
+/**
+ * For one exercise's full claim list, reconstructs who held it and during
+ * which interval — mirrors refresh_koth_record's own rule (the
+ * server-side function that recomputes koth_records.current_claim_id
+ * whenever a claim is invalidated): at any instant, the holder is the claim
+ * with the latest createdAt among claims that already exist and aren't
+ * (invalidated AND already decided) as of that instant. Submitting a new
+ * claim always dethrones immediately, at its own createdAt, regardless of
+ * the old claim's vote status (0083_koth.sql's "regla clave"); a claim can
+ * only ever be invalidated while it's still the current holder (once
+ * dethroned it's permanently locked to whatever it already was), so when
+ * the current claim IS invalidated, the holder reverts to the most recent
+ * still-valid claim before it — which this walk naturally re-derives at
+ * each boundary rather than assuming it can never happen.
+ */
+function computeHoldingIntervals(claimsForExercise: readonly KothClaimFact[]): HoldingInterval[] {
+  const sorted = [...claimsForExercise].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const boundaries = new Set<string>();
+  for (const c of sorted) {
+    boundaries.add(c.createdAt);
+    if (c.status === 'invalidated' && c.decidedAt) boundaries.add(c.decidedAt);
+  }
+  const sortedBoundaries = [...boundaries].sort();
+
+  const intervals: HoldingInterval[] = [];
+  let prevHolder: string | null = null;
+  let prevStart: string | null = null;
+  for (const t of sortedBoundaries) {
+    const candidates = sorted.filter(
+      (c) => c.createdAt <= t && !(c.status === 'invalidated' && c.decidedAt !== null && c.decidedAt <= t)
+    );
+    const current = candidates.length > 0 ? candidates.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)) : null;
+    const holderId = current?.userId ?? null;
+    if (holderId !== prevHolder) {
+      if (prevHolder !== null && prevStart !== null) intervals.push({ userId: prevHolder, start: prevStart, end: t });
+      prevHolder = holderId;
+      prevStart = t;
+    }
+  }
+  if (prevHolder !== null && prevStart !== null) intervals.push({ userId: prevHolder, start: prevStart, end: null });
+  return intervals;
+}
+
+export interface SimultaneousHoldEvent {
+  date: string;
+  /** How many exercises this member held at once, immediately after this event. */
+  count: number;
+  /** Which metric types were represented among the exercises held at this point. */
+  metricTypes: Set<KothMetricType>;
+}
+
+/**
+ * The member's real chronological timeline of "how many exercises did I
+ * hold at once" — built from `allClaims` (the FULL group log, not just this
+ * member's own claims: knowing exactly when they lost an exercise requires
+ * knowing when someone ELSE claimed it, same reason isKothGroupFounder/
+ * kothReclaimedThroneCount also take the full list). Unlike a live
+ * snapshot, this only ever grows and shrinks with real history — the
+ * historical MAXIMUM (kothMaxSimultaneousHeld) is monotonic by
+ * construction: once reached, it's a fact about the past that can't be
+ * undone by later losing records.
+ */
+export function kothSimultaneousHoldTimeline(allClaims: readonly KothClaimFact[], userId: string): SimultaneousHoldEvent[] {
+  const byExercise = new Map<string, KothClaimFact[]>();
+  for (const claim of allClaims) {
+    if (!byExercise.has(claim.exerciseId)) byExercise.set(claim.exerciseId, []);
+    byExercise.get(claim.exerciseId)!.push(claim);
+  }
+
+  const userIntervals: { start: string; end: string | null; metricType: KothMetricType }[] = [];
+  for (const claims of byExercise.values()) {
+    const metricType = claims[0]?.metricType;
+    if (!metricType) continue;
+    for (const iv of computeHoldingIntervals(claims)) {
+      if (iv.userId === userId) userIntervals.push({ start: iv.start, end: iv.end, metricType });
+    }
+  }
+  if (userIntervals.length === 0) return [];
+
+  const events: { date: string; delta: 1 | -1; metricType: KothMetricType }[] = [];
+  for (const iv of userIntervals) {
+    events.push({ date: iv.start, delta: 1, metricType: iv.metricType });
+    if (iv.end !== null) events.push({ date: iv.end, delta: -1, metricType: iv.metricType });
+  }
+  // Starts before ends at the exact same instant, so a same-instant handoff still registers as briefly simultaneous.
+  events.sort((a, b) => a.date.localeCompare(b.date) || b.delta - a.delta);
+
+  const activeCountByType = new Map<KothMetricType, number>();
+  let count = 0;
+  const timeline: SimultaneousHoldEvent[] = [];
+  for (const e of events) {
+    count += e.delta;
+    activeCountByType.set(e.metricType, (activeCountByType.get(e.metricType) ?? 0) + e.delta);
+    const metricTypes = new Set<KothMetricType>();
+    for (const [type, n] of activeCountByType) if (n > 0) metricTypes.add(type);
+    timeline.push({ date: e.date, count, metricTypes });
+  }
+  return timeline;
+}
+
+/** Historical peak of `count` across the timeline — the value multi-corona/rey-absoluto/dueno-del-gym now earn against, instead of a live snapshot. */
+export function kothMaxSimultaneousHeld(timeline: readonly SimultaneousHoldEvent[]): number {
+  return timeline.reduce((max, e) => Math.max(max, e.count), 0);
+}
+
+/** First date the timeline's count reaches `target` — the earnedDate for multi-corona(3)/rey-absoluto(6)/dueno-del-gym(12). */
+export function dateFirstReachedSimultaneousCount(timeline: readonly SimultaneousHoldEvent[], target: number): string | null {
+  return timeline.find((e) => e.count >= target)?.date ?? null;
+}
+
+/** First date the timeline shows both metric types held at once — earned/earnedDate for doble-amenaza. */
+export function dateFirstHadBothMetricTypes(timeline: readonly SimultaneousHoldEvent[]): string | null {
+  return timeline.find((e) => e.metricTypes.has('weight_kg') && e.metricTypes.has('reps'))?.date ?? null;
 }
 
 /** Distinct exercise ids this member became champion of during `month` (YYYY-MM) — for monthly challenges that count fresh claims. */

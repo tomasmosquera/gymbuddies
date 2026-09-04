@@ -18,6 +18,7 @@ import {
   type MonthlyMemberContext,
 } from '@/lib/domain/monthlyChallenges';
 import { kothActiveExerciseIdsInMonth, kothClaimedExerciseIdsInMonth, kothDefendedInMonth, type KothClaimFact } from '@/lib/domain/koth';
+import { findBuddyCheckinKeys } from '@/lib/domain/geo';
 
 export interface MemberMonthlyChallenges {
   userId: string;
@@ -57,7 +58,7 @@ export async function fetchGroupMonthlyChallenges(
 
   const todayString = toZonedDateString(new Date(), timezone);
 
-  const [resultsRes, reactionsRes, checkinsRes, groupRes, kothClaimsRes] = await Promise.all([
+  const [resultsRes, reactionsRes, checkinsRes, buddyCheckinsRes, groupRes, kothClaimsRes] = await Promise.all([
     supabase
       .from('weekly_evaluation_results')
       .select('user_id, failed_days, penalty_charged, penalty_protected, run:weekly_evaluation_runs(week_start_date)')
@@ -69,6 +70,14 @@ export async function fetchGroupMonthlyChallenges(
       .eq('group_id', groupId)
       .lte('checkin_date', todayString)
       .not('workout_minutes', 'is', null),
+    // Separate from checkinsRes above (which excludes checkins with no
+    // recorded duration) — buddy pairing must see EVERY check-in regardless
+    // of whether a checkout/duration was ever recorded.
+    supabase
+      .from('checkins')
+      .select('user_id, checkin_date, captured_at, latitude, longitude')
+      .eq('group_id', groupId)
+      .lte('checkin_date', todayString),
     supabase.from('groups').select('require_checkout_photo').eq('id', groupId).single(),
     // counts_for_record excludes practice claims made during a member's
     // protection period — see 0084_koth_respects_protection.sql.
@@ -103,6 +112,16 @@ export async function fetchGroupMonthlyChallenges(
     if (!workoutMinutesByUser.has(c.user_id)) workoutMinutesByUser.set(c.user_id, []);
     workoutMinutesByUser.get(c.user_id)!.push({ date: c.checkin_date, minutes: c.workout_minutes });
   }
+
+  const buddyCheckinKeys = findBuddyCheckinKeys(
+    (buddyCheckinsRes.data ?? []).map((c) => ({
+      userId: c.user_id,
+      date: c.checkin_date,
+      capturedAtMs: new Date(c.captured_at).getTime(),
+      latitude: c.latitude,
+      longitude: c.longitude,
+    }))
+  );
 
   const results = (resultsRes.data ?? []) as unknown as {
     user_id: string;
@@ -251,6 +270,8 @@ export async function fetchGroupMonthlyChallenges(
         kothClaimedExerciseIdsThisMonth: kothClaimedExerciseIdsInMonth(kothClaims, m.userId, month),
         kothDefendedThisMonth: kothDefendedInMonth(kothClaims, m.userId, month),
         isKothKingThisMonth: kothKingThisMonth.has(m.userId),
+        buddyCheckinsInMonth: daysInMonth.filter((d) => d.status === 'completed' && buddyCheckinKeys.has(`${m.userId}|${d.date}`))
+          .length,
       });
     }
     contextsByMonthByUser.set(month, byUser);
@@ -263,6 +284,7 @@ export async function fetchGroupMonthlyChallenges(
     for (const challengeDef of MONTHLY_CHALLENGES) {
       let timesAchieved = 0;
       let monthsEvaluated = 0;
+      const earnedMonths: string[] = [];
       // Monotonic challenges (counters that only grow within a month) are
       // credited the moment they're met — including the still-open current
       // month — instead of waiting for month-close like comparative/
@@ -274,13 +296,16 @@ export async function fetchGroupMonthlyChallenges(
         const result = challengeDef.evaluate(ctx);
         if (result === null) continue;
         monthsEvaluated++;
-        if (result) timesAchieved++;
+        if (result) {
+          timesAchieved++;
+          earnedMonths.push(month);
+        }
       }
       const currentCtx = contextsByMonthByUser.get(currentMonth)?.get(m.userId);
       const currentMonthEarned = currentCtx ? challengeDef.evaluate(currentCtx) : null;
       const currentMonthProgress =
         currentCtx && currentMonthEarned !== null && challengeDef.progress ? challengeDef.progress(currentCtx) : null;
-      statusesById[challengeDef.id] = { timesAchieved, monthsEvaluated, currentMonthEarned, currentMonthProgress };
+      statusesById[challengeDef.id] = { timesAchieved, monthsEvaluated, currentMonthEarned, currentMonthProgress, earnedMonths };
       totalXp += timesAchieved * challengeDef.xpPerOccurrence;
     }
     return { userId: m.userId, fullName: m.fullName, statusesById, totalXp };

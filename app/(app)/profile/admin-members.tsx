@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
 import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
 import { InlineTimePicker } from '@/components/ui/InlineTimePicker';
@@ -184,6 +185,9 @@ export default function AdminMembersScreen() {
 
   // --- Section 5: allow a removed member back in ---
   const [isAllowingRejoin, setIsAllowingRejoin] = useState(false);
+
+  // --- Section: pending league departure settlements ---
+  const [settlingUserId, setSettlingUserId] = useState<string | null>(null);
 
   // Reset every section's transient state whenever a different member is picked.
   useEffect(() => {
@@ -531,24 +535,22 @@ export default function AdminMembersScreen() {
   };
 
   const confirmRemove = () => {
-    if (!selectedMember) return;
+    if (!selectedMember || !group) return;
     const name = selectedMember.profile.full_name;
-    if (group && group.payout_mode !== 'league') {
-      Alert.alert('Sacar del grupo', `¿Sacar a ${name} del grupo? No podrá volver a entrar con el código de invitación.`, [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sacar y pagar su parte', onPress: () => handleRemove(true) },
-        { text: 'Sacar sin pagar', style: 'destructive', onPress: () => handleRemove(false) },
-      ]);
-      return;
-    }
-    Alert.alert(
-      'Sacar del grupo',
-      `¿Sacar a ${name} del grupo? No podrá volver a entrar con el código de invitación.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sacar', style: 'destructive', onPress: () => handleRemove(false) },
-      ]
-    );
+    const question = `¿Sacar a ${name} del grupo? No podrá volver a entrar con el código de invitación.`;
+    // League also needs a real choice now — the admin decides here, in the
+    // same dialog, since removal is always admin-initiated (unlike a member
+    // leaving on their own, which defers the same decision to the "Salidas
+    // pendientes de liquidar" section below).
+    const [payLabel, noPayLabel] =
+      group.payout_mode === 'league'
+        ? ['Sacar y devolver su saldo', 'Sacar y que quede en el pozo']
+        : ['Sacar y pagar su parte', 'Sacar sin pagar'];
+    Alert.alert('Sacar del grupo', question, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: payLabel, onPress: () => handleRemove(true) },
+      { text: noPayLabel, style: 'destructive', onPress: () => handleRemove(false) },
+    ]);
   };
 
   const handleRemove = async (payOut: boolean) => {
@@ -567,6 +569,25 @@ export default function AdminMembersScreen() {
       Alert.alert('No se pudo sacar al miembro', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsRemoving(false);
+    }
+  };
+
+  const handleSettleLeagueDeparture = async (userId: string, refund: boolean) => {
+    if (!group) return;
+    setSettlingUserId(userId);
+    try {
+      const { error } = await supabase.rpc('admin_settle_league_departure', {
+        p_group_id: group.id,
+        p_user_id: userId,
+        p_refund: refund,
+      });
+      if (error) throw new Error(error.message);
+      await refreshMembers();
+      Alert.alert('Listo', refund ? 'Se devolvió el saldo completo.' : 'El saldo quedó en el pozo de premios.');
+    } catch (err) {
+      Alert.alert('No se pudo liquidar el saldo', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setSettlingUserId(null);
     }
   };
 
@@ -600,6 +621,15 @@ export default function AdminMembersScreen() {
           ? 'Marcado fallado por el admin'
           : 'Sin registro';
 
+  // Whoever left/was removed from a league group with an unsettled balance
+  // — nothing marks this explicitly, `balance !== 0` on an inactive row IS
+  // the signal (see admin_settle_league_departure: it always zeroes the
+  // balance once resolved, whichever way the admin decides).
+  const pendingLeagueDepartures =
+    group.payout_mode === 'league'
+      ? members.filter((m) => (m.status === 'left' || m.status === 'removed') && m.balance !== 0)
+      : [];
+
   const dayStatusTone =
     hasCheckin || currentOverride?.status === 'valid'
       ? 'success'
@@ -612,13 +642,52 @@ export default function AdminMembersScreen() {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
+      <SectionHeader icon="people-outline" title="Elegir jugador" />
       <Text style={styles.subtitle}>Selecciona un jugador para administrarlo.</Text>
+
+      {pendingLeagueDepartures.length > 0 ? (
+        <>
+        <SectionHeader icon="log-out-outline" title="Salidas pendientes de liquidar" />
+        <Card style={styles.section}>
+          <Text style={styles.sectionHint}>
+            Estos jugadores salieron del grupo con saldo sin resolver. Decide si se les devuelve o si queda en el
+            pozo de premios de este ciclo.
+          </Text>
+          {pendingLeagueDepartures.map((m) => (
+            <View key={m.id} style={styles.pendingDepartureRow}>
+              <View style={styles.pendingDepartureInfo}>
+                <Text style={styles.pendingDepartureName}>{m.profile.full_name}</Text>
+                <Text style={styles.pendingDepartureAmount}>
+                  {group.currency} {m.balance.toLocaleString('es-CO')}
+                </Text>
+              </View>
+              <View style={styles.actionButtons}>
+                <Button
+                  label="Devolver"
+                  onPress={() => handleSettleLeagueDeparture(m.user_id, true)}
+                  loading={settlingUserId === m.user_id}
+                  disabled={settlingUserId !== null && settlingUserId !== m.user_id}
+                />
+                <Button
+                  label="Que quede en el pozo"
+                  variant="secondary"
+                  onPress={() => handleSettleLeagueDeparture(m.user_id, false)}
+                  loading={settlingUserId === m.user_id}
+                  disabled={settlingUserId !== null && settlingUserId !== m.user_id}
+                />
+              </View>
+            </View>
+          ))}
+        </Card>
+        </>
+      ) : null}
+
       <MemberPicker members={members} selectedId={selectedUserId} onSelect={setSelectedUserId} />
 
       {selectedMember ? (
         <>
+          <SectionHeader icon="calendar-outline" title="Fecha de entrada al grupo" />
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Fecha de entrada al grupo</Text>
             <Text style={styles.sectionHint}>
               Actual: {new Date(selectedMember.activated_at ?? selectedMember.joined_at).toLocaleDateString('es-CO')}
             </Text>
@@ -626,8 +695,8 @@ export default function AdminMembersScreen() {
             <Button label="Guardar fecha" onPress={handleSaveActivationDate} loading={isSavingActivation} />
           </Card>
 
+          <SectionHeader icon="hourglass-outline" title="Fecha de inicio de penalizaciones" />
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Fecha de inicio de penalizaciones</Text>
             <Text style={styles.sectionHint}>
               Actual:{' '}
               {new Date(
@@ -643,8 +712,8 @@ export default function AdminMembersScreen() {
             <Button label="Guardar fecha" onPress={handleSavePenaltyStartDate} loading={isSavingPenaltyStart} />
           </Card>
 
+          <SectionHeader icon="checkmark-circle-outline" title="Asignar día válido/fallado" />
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Asignar día válido/fallado</Text>
             <InlineDatePicker value={attendanceDate} onChange={setAttendanceDate} maximumDate={new Date()} />
             <View style={styles.dayStatusRow}>
               <Text style={styles.sectionHint}>Estado actual:</Text>
@@ -792,8 +861,9 @@ export default function AdminMembersScreen() {
           </Card>
 
           {selectedMember.status === 'pending_deposit' ? (
+            <>
+            <SectionHeader icon="receipt-outline" title="Confirmar depósito sin comprobante" />
             <Card style={styles.section}>
-              <Text style={styles.sectionTitle}>Confirmar depósito sin comprobante</Text>
               <Text style={styles.sectionHint}>
                 Úsalo si el pago llegó por fuera de la app (efectivo, u otro medio que ya verificaste) y el miembro no
                 necesita subir foto de comprobante. Si ya había enviado una, queda reemplazada por esta confirmación.
@@ -811,10 +881,11 @@ export default function AdminMembersScreen() {
                 loading={isConfirmingDeposit}
               />
             </Card>
+            </>
           ) : null}
 
+          <SectionHeader icon="cash-outline" title="Ajustar saldo" />
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Ajustar saldo</Text>
             <Text style={styles.balanceValue}>
               {group.currency} {selectedMember.balance.toLocaleString('es-CO')}
             </Text>
@@ -854,15 +925,18 @@ export default function AdminMembersScreen() {
           </Card>
 
           {selectedMember.role !== 'admin' ? (
+            <>
+            <SectionHeader icon="person-remove-outline" title="Sacar del grupo" />
             <Card style={styles.section}>
-              <Text style={styles.sectionTitle}>Sacar del grupo</Text>
               <Button label="Sacar del grupo" variant="danger" onPress={confirmRemove} loading={isRemoving} />
             </Card>
+            </>
           ) : null}
 
           {selectedMember.status === 'removed' ? (
+            <>
+            <SectionHeader icon="person-add-outline" title="Permitir reingreso" />
             <Card style={styles.section}>
-              <Text style={styles.sectionTitle}>Permitir reingreso</Text>
               <Text style={styles.sectionHint}>
                 Este jugador fue sacado del grupo y no puede volver a entrar con el código de invitación. Si querés
                 dejarlo volver, esto lo habilita — al reingresar empieza limpio, como si fuera nuevo (no arrastra su
@@ -870,6 +944,7 @@ export default function AdminMembersScreen() {
               </Text>
               <Button label="Permitir que vuelva a entrar" onPress={handleAllowRejoin} loading={isAllowingRejoin} />
             </Card>
+            </>
           ) : null}
         </>
       ) : null}
@@ -903,9 +978,17 @@ const styles = StyleSheet.create({
   memberChipText: { color: colors.textMuted, fontWeight: '600' },
   memberChipTextSelected: { color: colors.primaryText },
   section: { gap: spacing.sm },
-  sectionTitle: { ...typography.heading, fontSize: 15, color: colors.text },
   sectionHint: { color: colors.textMuted, fontSize: 13 },
   dayStatusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  pendingDepartureRow: {
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  pendingDepartureInfo: { gap: 2 },
+  pendingDepartureName: { color: colors.text, fontWeight: '700' },
+  pendingDepartureAmount: { color: colors.warning, fontWeight: '600' },
   actionButtons: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm },
   balanceValue: { ...typography.title, color: colors.text },
   adjustmentsList: { gap: spacing.xs, marginTop: spacing.xs },

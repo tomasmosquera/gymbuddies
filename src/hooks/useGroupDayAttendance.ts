@@ -21,7 +21,7 @@ export interface MemberAttendance {
   failedCount: number;
   activeDaysCount: number;
   dailyStatus: Record<string, 'completed' | 'excused' | 'failed'>;
-  /** Wilson score lower bound (70% confidence) on completedCount/(completedCount+failedCount) — what members are actually ranked/sorted by here, not the raw ratio. See gbScore. */
+  /** Wilson score lower bound (80% confidence) on completedCount/(completedCount+failedCount) — what members are actually ranked/sorted by here, not the raw ratio. See gbScore. */
   gbScore: number | null;
 }
 
@@ -70,7 +70,8 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       if (opts?.manual) setIsRefreshing(true);
       else setIsLoading(true);
 
-    const [membersRes, checkinsRes, excusedRes, pendingVoteRes, overridesRes, reactionsRes] = await Promise.all([
+    const [groupRes, membersRes, checkinsRes, excusedRes, pendingVoteRes, overridesRes, reactionsRes] = await Promise.all([
+      supabase.from('groups').select('created_at').eq('id', groupId).single(),
       supabase
         .from('group_members')
         .select('user_id, status, activated_at, joined_at, profile:profiles(full_name)')
@@ -184,8 +185,17 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     }
 
     const todayString = toZonedDateString(new Date(), timezone);
+    // Never further back than the group itself existing — matches the same
+    // floor fetchGroupAttendanceRecords already applies for the Ranking.
+    // Without this, a range starting before the group's created_at (e.g. a
+    // wide Dashboard range, or a check-in somehow dated earlier than the
+    // group — the two views would silently disagree on the day count for
+    // that stretch, exactly like Ranking and this per-member breakdown did
+    // for a group created mid-week.
+    const groupCreatedDate = groupRes.data?.created_at ? toZonedDateString(new Date(groupRes.data.created_at), timezone) : null;
+    const effectiveRangeStart = groupCreatedDate && groupCreatedDate > rangeStart ? groupCreatedDate : rangeStart;
     const allDates: string[] = [];
-    for (let cursor = rangeStart; cursor <= rangeEnd && cursor <= todayString; cursor = addOneDay(cursor)) {
+    for (let cursor = effectiveRangeStart; cursor <= rangeEnd && cursor <= todayString; cursor = addOneDay(cursor)) {
       allDates.push(cursor);
     }
 
@@ -209,10 +219,27 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         for (const uid of dayOverrides.failed) completedUserIds.delete(uid);
       }
       const completedCount = completedUserIds.size;
+      // A member who's excused but trains anyway is completed, not excused —
+      // same precedence classifyMemberDay applies below for the per-member
+      // breakdown. Without excluding completedUserIds here, someone like that
+      // got double-counted (once as completed, once as excused), which both
+      // inflated the day's total past activeMemberCount and hid a genuinely
+      // untrained member behind the phantom "extra" excused slot.
       const excusedCount = [...(excusedByDate.get(date) ?? [])].filter((uid) => {
         const activatedDate = activatedDateByUserId.get(uid);
-        return !activatedDate || activatedDate <= date;
+        return (!activatedDate || activatedDate <= date) && !completedUserIds.has(uid);
       }).length;
+      // Same precedence for the Calendario bubbles: a member who trained
+      // shouldn't also show up as excused that day (that's what was
+      // duplicating "TM" into both the completed and excused badge rows).
+      const excusedMembers = nextExcusedMembersByDate.get(date);
+      if (excusedMembers) {
+        const filtered = excusedMembers.filter((m) => !completedUserIds.has(m.user_id));
+        if (filtered.length !== excusedMembers.length) {
+          if (filtered.length > 0) nextExcusedMembersByDate.set(date, filtered);
+          else nextExcusedMembersByDate.delete(date);
+        }
+      }
       // Today isn't over yet — anyone who hasn't checked in still can, so
       // nobody can be counted as "failed" until the day has actually passed.
       const notTrainedCount =
@@ -281,11 +308,18 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     // per-member dailyStatus above already applies.
     const visibleByDate = new Map<string, GroupCheckinWithProfile[]>();
     for (const [date, list] of byDate) {
-      const visible = list.filter((c) => {
-        if (overridesByDate.get(date)?.failed.has(c.user_id)) return false;
-        const activatedDate = activatedDateByUserId.get(c.user_id);
-        return !activatedDate || activatedDate <= date;
-      });
+      const visible = list
+        .filter((c) => {
+          if (overridesByDate.get(date)?.failed.has(c.user_id)) return false;
+          const activatedDate = activatedDateByUserId.get(c.user_id);
+          return !activatedDate || activatedDate <= date;
+        })
+        // Earliest check-in of the day first — reads as a timeline of who
+        // showed up when, instead of whatever order Postgres happened to
+        // return rows in. Every consumer of checkinsByDate (Día por día,
+        // per-member cells, the calendar's expanded-day list) gets this for
+        // free from the one shared source.
+        .sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
       if (visible.length > 0) visibleByDate.set(date, visible);
     }
 

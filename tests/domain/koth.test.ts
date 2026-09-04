@@ -1,12 +1,17 @@
 import {
   beatsCurrentRecord,
+  dateFirstHadBothMetricTypes,
+  dateFirstReachedSimultaneousCount,
   formatKothValue,
   isKothGroupFounder,
   kgToLbs,
   kothActiveExerciseIdsInMonth,
   kothClaimedExerciseIdsInMonth,
   kothDefendedInMonth,
+  kothMaxSimultaneousHeld,
   kothReclaimedThroneCount,
+  kothReclaimedThroneCountWithDate,
+  kothSimultaneousHoldTimeline,
   lbsToKg,
   toCanonicalValue,
   type KothClaimFact,
@@ -139,6 +144,108 @@ describe('kothReclaimedThroneCount', () => {
       claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-10T00:00:00Z' }),
     ];
     expect(kothReclaimedThroneCount(claims, 'a')).toBe(2);
+  });
+});
+
+describe('kothReclaimedThroneCountWithDate', () => {
+  it('matches kothReclaimedThroneCount.count and reports the reclaiming claim\'s createdAt', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      claim({ exerciseId: 'bench', userId: 'b', createdAt: '2026-01-05T00:00:00Z' }),
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-10T00:00:00Z' }),
+    ];
+    expect(kothReclaimedThroneCountWithDate(claims, 'a')).toEqual({ count: 1, firstReclaimDate: '2026-01-10T00:00:00Z' });
+  });
+
+  it('is null/0 for a member who never reclaimed anything', () => {
+    const claims = [claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' })];
+    expect(kothReclaimedThroneCountWithDate(claims, 'a')).toEqual({ count: 0, firstReclaimDate: null });
+  });
+
+  it('takes the earliest reclaim across multiple exercises, not just the first exercise iterated', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      claim({ exerciseId: 'bench', userId: 'b', createdAt: '2026-01-05T00:00:00Z' }),
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-03-01T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'c', createdAt: '2026-01-05T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-10T00:00:00Z' }),
+    ];
+    expect(kothReclaimedThroneCountWithDate(claims, 'a')).toEqual({ count: 2, firstReclaimDate: '2026-01-10T00:00:00Z' });
+  });
+});
+
+describe('kothSimultaneousHoldTimeline / kothMaxSimultaneousHeld / dateFirstReachedSimultaneousCount', () => {
+  it('counts up as the member claims more exercises with nobody else ever claiming anything', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-05T00:00:00Z' }),
+      claim({ exerciseId: 'deadlift', userId: 'a', createdAt: '2026-01-10T00:00:00Z' }),
+    ];
+    const timeline = kothSimultaneousHoldTimeline(claims, 'a');
+    expect(timeline.map((e) => e.count)).toEqual([1, 2, 3]);
+    expect(kothMaxSimultaneousHeld(timeline)).toBe(3);
+    expect(dateFirstReachedSimultaneousCount(timeline, 3)).toBe('2026-01-10T00:00:00Z');
+    expect(dateFirstReachedSimultaneousCount(timeline, 4)).toBeNull();
+  });
+
+  it('stays monotonic — the historical peak survives even after every record is later lost', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-05T00:00:00Z' }),
+      claim({ exerciseId: 'deadlift', userId: 'a', createdAt: '2026-01-10T00:00:00Z' }),
+      // 'a' is dethroned on all three, months later — a live snapshot would show 0.
+      claim({ exerciseId: 'bench', userId: 'b', createdAt: '2026-03-01T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'b', createdAt: '2026-03-02T00:00:00Z' }),
+      claim({ exerciseId: 'deadlift', userId: 'b', createdAt: '2026-03-03T00:00:00Z' }),
+    ];
+    const timeline = kothSimultaneousHoldTimeline(claims, 'a');
+    expect(kothMaxSimultaneousHeld(timeline)).toBe(3);
+    expect(dateFirstReachedSimultaneousCount(timeline, 3)).toBe('2026-01-10T00:00:00Z');
+  });
+
+  it('reconstructs a reversion: if the claim that dethroned the member is later invalidated, they regain that exercise in the timeline', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z' }),
+      claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-05T00:00:00Z' }),
+      // dethrones 'a' on bench at creation, but is invalidated 2 days later —
+      // the holder should revert to 'a' from 2026-01-12 onward.
+      claim({
+        exerciseId: 'bench',
+        userId: 'b',
+        createdAt: '2026-01-10T00:00:00Z',
+        status: 'invalidated',
+        decidedAt: '2026-01-12T00:00:00Z',
+      }),
+    ];
+    const timeline = kothSimultaneousHoldTimeline(claims, 'a');
+    // count history: +bench(1/1)=1, +squat(1/5)=2, -bench(1/10, dethroned)=1, +bench(1/12, reverted)=2
+    expect(timeline.map((e) => [e.date, e.count])).toEqual([
+      ['2026-01-01T00:00:00Z', 1],
+      ['2026-01-05T00:00:00Z', 2],
+      ['2026-01-10T00:00:00Z', 1],
+      ['2026-01-12T00:00:00Z', 2],
+    ]);
+  });
+});
+
+describe('dateFirstHadBothMetricTypes', () => {
+  it('finds the date both a weight and a reps exercise were held at once', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z', metricType: 'weight_kg' }),
+      claim({ exerciseId: 'pull_ups', userId: 'a', createdAt: '2026-01-05T00:00:00Z', metricType: 'reps' }),
+    ];
+    const timeline = kothSimultaneousHoldTimeline(claims, 'a');
+    expect(dateFirstHadBothMetricTypes(timeline)).toBe('2026-01-05T00:00:00Z');
+  });
+
+  it('is null when the member only ever held one metric type', () => {
+    const claims = [
+      claim({ exerciseId: 'bench', userId: 'a', createdAt: '2026-01-01T00:00:00Z', metricType: 'weight_kg' }),
+      claim({ exerciseId: 'squat', userId: 'a', createdAt: '2026-01-05T00:00:00Z', metricType: 'weight_kg' }),
+    ];
+    const timeline = kothSimultaneousHoldTimeline(claims, 'a');
+    expect(dateFirstHadBothMetricTypes(timeline)).toBeNull();
   });
 });
 

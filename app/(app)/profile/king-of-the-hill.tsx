@@ -10,7 +10,8 @@ import { formatKothValue } from '@/lib/domain/koth';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function KingOfTheHillScreen() {
-  const { group, isLoading: groupLoading } = useActiveGroup();
+  const { group, membership, isLoading: groupLoading } = useActiveGroup();
+  const isAdminOnly = membership?.status === 'admin_only';
   const { entries, tally, isLoading, refresh } = useKothLeaderboard(group?.id ?? null);
 
   // This screen stays mounted across tab switches — without refetching on
@@ -33,7 +34,9 @@ export default function KingOfTheHillScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.subtitle}>
-        El récord de cada ejercicio se reclama con un video. Si nadie logra invalidarlo, queda en pie.
+        {isAdminOnly
+          ? 'Como administrador no participás, pero podés ver quién tiene el récord de cada ejercicio.'
+          : 'El récord de cada ejercicio se reclama con un video. Si nadie logra invalidarlo, queda en pie.'}
       </Text>
 
       {tally.length > 0 ? (
@@ -73,7 +76,7 @@ export default function KingOfTheHillScreen() {
                     {claim.fullName} — {formatKothValue(claim.metric_type, claim.value_canonical)}
                   </Text>
                 ) : (
-                  <Text style={styles.exerciseVacant}>Vacante — sé el primero</Text>
+                  <Text style={styles.exerciseVacant}>{isAdminOnly ? 'Vacante — nadie tiene el récord todavía' : 'Vacante — sé el primero'}</Text>
                 )}
               </View>
               {claim?.status === 'pending_vote' ? <Badge label="En votación 🗳️" tone="warning" /> : null}

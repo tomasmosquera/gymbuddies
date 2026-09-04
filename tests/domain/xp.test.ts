@@ -1,7 +1,9 @@
 import { BADGES } from '@/lib/domain/badges';
 import {
+  CHECKIN_XP,
   KOTH_CLAIM_XP,
   XP_BY_BADGE_ID,
+  checkinXp,
   cumulativeXpForLevel,
   hasCompleteXpTable,
   kothClaimXp,
@@ -54,6 +56,14 @@ describe('kothClaimXp', () => {
     // exactly as much as 3 claims spread across 3 different exercises.
     expect(kothClaimXp(3)).toBe(kothClaimXp(3));
     expect(kothClaimXp(3)).toBe(150);
+  });
+});
+
+describe('checkinXp', () => {
+  it('grants 5 XP per valid check-in, stacking without limit', () => {
+    expect(checkinXp(0)).toBe(0);
+    expect(checkinXp(1)).toBe(CHECKIN_XP);
+    expect(checkinXp(40)).toBe(40 * CHECKIN_XP);
   });
 });
 

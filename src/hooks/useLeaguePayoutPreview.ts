@@ -63,21 +63,28 @@ export async function fetchLeaguePayoutPreview(groupId: string, payoutMode: Payo
 export function useLeaguePayoutPreview(groupId: string | null, payoutMode: PayoutMode | null) {
   const [amountByUserId, setAmountByUserId] = useState<Record<string, number>>({});
   const [placeByUserId, setPlaceByUserId] = useState<Record<string, number>>({});
+  // Starts true so a consumer can gate rendering until this first resolves —
+  // without it, LeaderboardCard's Acumulado tab in League mode has nothing
+  // to fall back on except GB Score's generic rank while this is still in
+  // flight, then visibly re-sorts to the real league place a moment later.
+  const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!groupId) {
       setAmountByUserId({});
       setPlaceByUserId({});
+      setIsLoading(false);
       return;
     }
     const preview = await fetchLeaguePayoutPreview(groupId, payoutMode);
     setAmountByUserId(preview.amountByUserId);
     setPlaceByUserId(preview.placeByUserId);
+    setIsLoading(false);
   }, [groupId, payoutMode]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  return { amountByUserId, placeByUserId, refresh };
+  return { amountByUserId, placeByUserId, isLoading, refresh };
 }

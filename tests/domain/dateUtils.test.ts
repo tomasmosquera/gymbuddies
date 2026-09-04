@@ -7,6 +7,7 @@ import {
   getWeekBounds,
   getWeekBoundsForDateString,
   isWithinClockDriftTolerance,
+  lastDayOfMonth,
   nextMondayAfter,
   previousWeekBounds,
   toZonedDateString,
@@ -74,6 +75,24 @@ describe('enumerateMonths', () => {
 
   it('returns an empty array when start is after end', () => {
     expect(enumerateMonths('2026-08-01', '2026-07-01')).toEqual([]);
+  });
+});
+
+describe('lastDayOfMonth', () => {
+  it('returns the 31st for a 31-day month', () => {
+    expect(lastDayOfMonth('2026-01')).toBe('2026-01-31');
+  });
+
+  it('returns the 30th for a 30-day month', () => {
+    expect(lastDayOfMonth('2026-04')).toBe('2026-04-30');
+  });
+
+  it('returns the 28th for February in a non-leap year', () => {
+    expect(lastDayOfMonth('2026-02')).toBe('2026-02-28');
+  });
+
+  it('returns the 29th for February in a leap year', () => {
+    expect(lastDayOfMonth('2028-02')).toBe('2028-02-29');
   });
 });
 

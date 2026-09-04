@@ -5,6 +5,7 @@ export const RULE_FIELD_HELP = {
   penaltyAmount: 'Se descuenta del saldo del miembro por cada día fallado.',
   weeklyPenaltyCap: 'Lo máximo que se le puede cobrar a un miembro en una sola semana, sin importar cuántos días falle.',
   exitFeeAmount: 'Se cobra a quien decide salir del grupo de inmediato, sin avisar con anticipación.',
+  enrollmentFeeAmount: 'Se cobra a cada nuevo miembro al unirse, además del depósito inicial. Va directo a ti como administrador y nunca se suma al saldo repartible del grupo.',
   exitNoticeDays: 'Días de aviso previo para salir del grupo sin pagar la cuota de salida.',
   requireCheckoutPhoto: 'Pide una segunda foto al terminar el entreno, además de la de llegada.',
   minWorkoutMinutes: 'Minutos mínimos entre la foto inicial y la final para que el entreno cuente (solo aplica si exiges foto final).',
@@ -14,4 +15,6 @@ export const RULE_FIELD_HELP = {
   mixedLeagueSharePercent: 'El resto del fondo (100% menos esto) se reparte por igual entre todos, como en Cooperativo.',
   leagueCycleStartedAt: 'Cuándo arrancó el ciclo actual de Liga — mueve también la fecha en que se reparte el premio.',
   adminPaymentInfo: 'Cómo deben transferirte el dinero los demás miembros (Nequi, Bancolombia, etc.).',
+  descensoRankCount: 'Cuántos de los últimos lugares del ranking quedan en zona de descenso al terminar el ciclo (0 = desactivado). Si hay empate justo en el límite, todos los empatados quedan en la zona.',
+  descensoPenaltyAmount: 'Lo que se le cobra a cada jugador en zona de descenso al terminar el ciclo — puede ser $0 para solo marcarlos sin cobrar. Ese dinero se suma al premio del mismo ciclo.',
 } as const;

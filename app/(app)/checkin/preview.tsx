@@ -12,7 +12,10 @@ import { supabase } from '@/lib/supabase/client';
 import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
+import { setLastCheckinDateCache } from '@/lib/notifications/checkinArrivalCache';
+import { todayLocalDateString } from '@/lib/domain/checkinReminders';
 import { getActiveEnergyBurnedKcal } from '@/lib/health/appleHealth';
+import { findBuddyPartner } from '@/lib/domain/geo';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 interface FanOutParams {
@@ -32,13 +35,19 @@ interface FanOutParams {
 /**
  * Auto check-in fan-out (profile.auto_checkin_other_groups): the same
  * photo/location that just satisfied one group also gets submitted to
- * every other group the user actively belongs to. Each group gets its own
- * uploaded copy of the photo — the 'checkins' storage bucket's read policy
- * scopes access by the group_id folder segment of the path, so reusing one
- * path across groups would silently break photo viewing for the other
- * groups' members. Best-effort per group (own try/catch) — a failure or a
- * skip in one other group must never affect the primary check-in, which
- * has already succeeded by the time this runs.
+ * every other group the user actively belongs to — but only once the member
+ * has said yes to confirmReplicateToOtherGroups below, called at every
+ * confirm-photo tap this is reachable from. It used to run silently off the
+ * toggle alone; that once overwrote an already-decided, unrelated check-in
+ * in another group with a retake meant to fix only the current one — so the
+ * toggle now just controls whether the question gets asked, not whether it
+ * fans out. Each group gets its own uploaded copy of the photo — the
+ * 'checkins' storage bucket's read policy scopes access by the group_id
+ * folder segment of the path, so reusing one path across groups would
+ * silently break photo viewing for the other groups' members. Best-effort
+ * per group (own try/catch) — a failure or a skip in one other group must
+ * never affect the primary check-in, which has already succeeded by the
+ * time this runs.
  */
 async function fanOutCheckinToOtherGroups(params: FanOutParams) {
   const {
@@ -132,6 +141,28 @@ async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
       }
     })
   );
+}
+
+/**
+ * A previous silent auto-fan-out clobbered an independently-decided check-in
+ * in another group (observed: a retake meant to fix *this* group's photo
+ * also overwrote an already-valid, unrelated check-in elsewhere) — asking
+ * every time, on every check-in/checkout, hands that decision back to the
+ * member instead of guessing from context.
+ */
+function confirmReplicateToOtherGroups(otherGroups: MembershipWithGroup[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      '¿Replicar en tus otros grupos?',
+      `Tienes "Check-in en otros grupos" activado. ¿Quieres registrar esta misma foto también en: ${otherGroups
+        .map((m) => m.group.name)
+        .join(', ')}?`,
+      [
+        { text: 'No', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Sí', onPress: () => resolve(true) },
+      ]
+    );
+  });
 }
 
 export default function CheckinPreviewScreen() {
@@ -230,7 +261,7 @@ export default function CheckinPreviewScreen() {
         // failure per other group still never fails this checkout, which
         // already succeeded in the primary group (see the function's own
         // per-group try/catch).
-        if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0) {
+        if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0 && (await confirmReplicateToOtherGroups(otherActiveGroups))) {
           await fanOutCheckoutToOtherGroups({
             otherGroups: otherActiveGroups,
             userId: session.user.id,
@@ -276,12 +307,20 @@ export default function CheckinPreviewScreen() {
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
 
+      // Fast path for the arrival-reminder geofence (checkinArrivalReminders.ts):
+      // marks "already checked in today" immediately, without waiting for the
+      // member to reopen Home for that to be re-derived there. Deliberately
+      // the device's own local date (todayLocalDateString), not the group's
+      // timezone-defined day — that's what the geofence task compares it
+      // against, see checkinReminders.ts's doc comment.
+      setLastCheckinDateCache(todayLocalDateString()).catch(() => {});
+
       // Awaited — see fanOutCheckoutToOtherGroups's call site above for why
       // fire-and-forget here is unreliable (the app backgrounding right
       // after this screen navigates away can silently kill it mid-flight).
       // A failure per other group still never fails this check-in, which
       // already succeeded in the primary group.
-      if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0) {
+      if (profile?.auto_checkin_other_groups && otherActiveGroups.length > 0 && (await confirmReplicateToOtherGroups(otherActiveGroups))) {
         await fanOutCheckinToOtherGroups({
           otherGroups: otherActiveGroups,
           userId: session.user.id,
@@ -299,12 +338,57 @@ export default function CheckinPreviewScreen() {
       if (group.require_checkout_photo) {
         await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude, profile?.checkout_reminder_minutes);
       }
+
+      // Buddy check-in: best-effort only, same spirit as the fan-out's own
+      // per-group try/catch above — a lookup failure must never block a
+      // check-in that already succeeded. The actual bonus XP/'dupla' badge
+      // is computed independently (useGroupBadges.ts, via
+      // findBuddyCheckinKeys) the next time badges load; this is purely the
+      // in-the-moment "you weren't training alone" callout.
+      let buddyPartnerName: string | null = null;
+      try {
+        const { data: othersTodayRaw } = await supabase
+          .from('checkins')
+          .select('user_id, latitude, longitude, captured_at, profile:profiles(full_name)')
+          .eq('group_id', group.id)
+          .eq('checkin_date', checkinDate)
+          .neq('user_id', session.user.id);
+        // checkins is declared NoRelationships in types.ts (see its comment),
+        // so the embedded profile join can't be inferred — same cast every
+        // other checkins+profile query in this codebase already uses (e.g.
+        // useGroupWeekCheckins.ts).
+        const othersToday = othersTodayRaw as unknown as
+          | { user_id: string; latitude: number; longitude: number; captured_at: string; profile: { full_name: string } | null }[]
+          | null;
+        const partner = findBuddyPartner(
+          {
+            userId: session.user.id,
+            date: checkinDate,
+            capturedAtMs: new Date(draft.capturedAt).getTime(),
+            latitude: draft.latitude,
+            longitude: draft.longitude,
+          },
+          (othersToday ?? []).map((o) => ({
+            userId: o.user_id,
+            date: checkinDate,
+            capturedAtMs: new Date(o.captured_at).getTime(),
+            latitude: o.latitude,
+            longitude: o.longitude,
+            fullName: o.profile?.full_name ?? null,
+          }))
+        );
+        buddyPartnerName = partner?.fullName ?? null;
+      } catch {
+        // Best-effort only — see comment above.
+      }
+      const buddyLine = buddyPartnerName ? `\n\n🫱🏼‍🫲🏻 Entrenaste junto a ${buddyPartnerName} — +3 XP bonus.` : '';
+
       setDraft(null);
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
-        group.require_checkout_photo
+        (group.require_checkout_photo
           ? 'Tu día de hoy ya cuenta. Cuando termines de entrenar, vuelve a esta app y registra tu foto final.'
-          : 'Tu día de hoy ya cuenta.'
+          : 'Tu día de hoy ya cuenta.') + buddyLine
       );
       router.replace('/home');
     } catch (err) {

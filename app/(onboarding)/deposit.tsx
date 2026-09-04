@@ -57,6 +57,8 @@ export default function DepositScreen() {
   }
 
   const amountValue = amount ? Number(amount) : group.initial_deposit_amount;
+  const hasEnrollmentFee = group.enrollment_fee_amount > 0;
+  const totalToTransfer = amountValue + group.enrollment_fee_amount;
 
   const pickReceipt = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -91,6 +93,11 @@ export default function DepositScreen() {
           user_id: session.user.id,
           type: 'initial_deposit',
           amount: result.data.amount,
+          // Kept in its own column, never folded into `amount` — that's what
+          // keeps it out of group_members.balance (apply_wallet_transaction_effect
+          // only ever adds `amount`) while still going through the exact same
+          // single-row confirm/reject flow as the deposit itself.
+          enrollment_fee_amount: group.enrollment_fee_amount,
           status: 'pending',
           receipt_path: path,
         })
@@ -136,10 +143,19 @@ export default function DepositScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Depósito inicial</Text>
-      <Text style={styles.subtitle}>
-        Transfiere {group.currency} {group.initial_deposit_amount.toLocaleString('es-CO')} para empezar en{' '}
-        {group.name}. Esta transferencia se hace por fuera de la app; aquí solo registras el comprobante.
-      </Text>
+      {hasEnrollmentFee ? (
+        <Text style={styles.subtitle}>
+          Transfiere {group.currency} {totalToTransfer.toLocaleString('es-CO')} para empezar en {group.name}: {group.currency}{' '}
+          {group.initial_deposit_amount.toLocaleString('es-CO')} de depósito + {group.currency}{' '}
+          {group.enrollment_fee_amount.toLocaleString('es-CO')} de cuota de inscripción (va directo al administrador, no se
+          reparte). Esta transferencia se hace por fuera de la app; aquí solo registras el comprobante.
+        </Text>
+      ) : (
+        <Text style={styles.subtitle}>
+          Transfiere {group.currency} {group.initial_deposit_amount.toLocaleString('es-CO')} para empezar en{' '}
+          {group.name}. Esta transferencia se hace por fuera de la app; aquí solo registras el comprobante.
+        </Text>
+      )}
 
       {group.admin_payment_info ? (
         <Card>
@@ -168,11 +184,19 @@ export default function DepositScreen() {
         <View style={styles.form}>
           <TextField
             label="Monto transferido (COP)"
+            hint={hasEnrollmentFee ? 'Solo la parte del depósito — la cuota de inscripción se suma aparte, no la edites aquí.' : undefined}
             value={amount}
             onChangeText={setAmount}
             keyboardType="numeric"
             placeholder={group.initial_deposit_amount.toLocaleString('es-CO')}
           />
+          {hasEnrollmentFee ? (
+            <Text style={styles.totalHint}>
+              Total a transferir: {group.currency} {totalToTransfer.toLocaleString('es-CO')} ({group.currency}{' '}
+              {amountValue.toLocaleString('es-CO')} depósito + {group.currency}{' '}
+              {group.enrollment_fee_amount.toLocaleString('es-CO')} inscripción)
+            </Text>
+          ) : null}
           <Button
             label={receiptUri ? 'Cambiar comprobante' : 'Adjuntar comprobante'}
             variant="secondary"
@@ -197,6 +221,7 @@ const styles = StyleSheet.create({
   cardLabel: { color: colors.textMuted, fontSize: 13, marginBottom: spacing.xs },
   cardValue: { color: colors.text, fontSize: 16, fontWeight: '600' },
   form: { gap: spacing.md },
+  totalHint: { color: colors.textMuted, fontSize: 13 },
   preview: { width: '100%', height: 200, borderRadius: radii.md },
   error: { color: colors.danger },
   pendingCard: { gap: spacing.sm },

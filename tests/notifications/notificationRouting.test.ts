@@ -28,6 +28,9 @@ describe('getNotificationRoute', () => {
     expect(getNotificationRoute({ category: 'group_activity', data: { route: 'new_member' } })).toBe(
       '/profile/admin-members'
     );
+    expect(getNotificationRoute({ category: 'money', data: { route: 'league_departure' } })).toBe(
+      '/profile/admin-members'
+    );
   });
 
   it('admin_review disambiguates by category (reused across money and votes)', () => {

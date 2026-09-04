@@ -56,8 +56,8 @@ export function consistencyPercent(completedCount: number, failedCount: number):
   return decided > 0 ? Math.round((completedCount / decided) * 100) : null;
 }
 
-/** z for a 70% confidence Wilson score interval — see gbScore. */
-const WILSON_Z_70 = 1.0364333894937898;
+/** z for an 80% confidence Wilson score interval — see gbScore. */
+const WILSON_Z_80 = 1.2815515655446004;
 
 /** User-facing copy explaining GB Score — shared by every screen with an "ⓘ" next to the ranking, so the explanation never drifts between them. */
 export const GB_SCORE_EXPLANATION_TITLE = '¿Qué es el GB Score?';
@@ -66,16 +66,16 @@ export const GB_SCORE_EXPLANATION_BODY =
 
 /**
  * Wilson score lower bound on completedCount/(completedCount+failedCount), at
- * 70% confidence, as a 0-100 integer — displayed to members as "GB Score".
+ * 80% confidence, as a 0-100 integer — displayed to members as "GB Score".
  * Unlike consistencyPercent, this accounts for sample size: it's the
  * pessimistic end of "how consistent is this person really, given how much
  * evidence we actually have" — someone 4-for-4 (100%) scores LOWER than
  * someone 22-for-25 (88%), because a tiny sample could easily be a fluke,
  * while a bigger sample backing a slightly lower rate is more trustworthy.
- * 70% is a deliberately gentle confidence level — chosen so the score stays
- * close to the raw percent instead of dropping sharply — but it's already
- * close to the floor: much below this, the sample-size penalty gets too
- * weak to still rank 22-for-25 above 4-for-4, which defeats the point.
+ * Raised from 70% to 80% confidence (product decision) — a stricter
+ * confidence level widens the interval, so the sample-size penalty bites
+ * harder: a small perfect streak gets discounted more relative to a long,
+ * solid track record than it did at 70%.
  * This is what rankMembersByConsistency sorts by; consistencyPercent (the
  * literal ratio) is left untouched everywhere it's already shown to members.
  * Null with no decided days, same convention as consistencyPercent.
@@ -84,9 +84,9 @@ export function gbScore(completedCount: number, failedCount: number): number | n
   const n = completedCount + failedCount;
   if (n === 0) return null;
   const p = completedCount / n;
-  const z2 = WILSON_Z_70 * WILSON_Z_70;
+  const z2 = WILSON_Z_80 * WILSON_Z_80;
   const center = p + z2 / (2 * n);
-  const margin = WILSON_Z_70 * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  const margin = WILSON_Z_80 * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
   const denominator = 1 + z2 / n;
   return Math.round(((center - margin) / denominator) * 100);
 }

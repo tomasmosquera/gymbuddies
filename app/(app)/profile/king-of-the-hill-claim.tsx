@@ -31,7 +31,7 @@ async function getFileSizeBytes(uri: string): Promise<number | null> {
 export default function KingOfTheHillClaimScreen() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const { session } = useAuth();
-  const { group, isLoading: groupLoading } = useActiveGroup();
+  const { group, membership, isLoading: groupLoading } = useActiveGroup();
   const { exercises, isLoading: catalogLoading } = useKothCatalog();
   const { claims, isLoading: claimsLoading } = useKothClaimHistory(group?.id ?? null, exerciseId ?? null);
   const { submit, isSubmitting, uploadProgress } = useSubmitKothClaim();
@@ -57,6 +57,23 @@ export default function KingOfTheHillClaimScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  // The "Reclamar el trono" button that leads here is already hidden for
+  // admin_only (see king-of-the-hill-exercise.tsx) — this only guards
+  // someone reaching the route directly (e.g. a stale deep link), same
+  // "solo los miembros activos pueden reclamar un récord" rule submit_koth_claim
+  // already enforces server-side (0083_koth.sql), surfaced here instead of a
+  // failed submit.
+  if (membership?.status === 'admin_only') {
+    return (
+      <View style={styles.center}>
+        <View style={styles.adminOnlyBlock}>
+          <Text style={styles.subtitle}>Como administrador no participás — solo los miembros activos pueden reclamar un récord.</Text>
+          <Button label="Volver" variant="secondary" onPress={() => router.back()} />
+        </View>
       </View>
     );
   }
@@ -276,6 +293,7 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
   title: { ...typography.title, color: colors.text },
   subtitle: { ...typography.body, color: colors.textMuted },
+  adminOnlyBlock: { gap: spacing.md, paddingHorizontal: spacing.lg },
   form: { gap: spacing.md },
   videoCard: { gap: spacing.sm },
   videoLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },

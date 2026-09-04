@@ -47,6 +47,7 @@ export function getNotificationRoute(n: RoutableNotification): Href | null {
     case 'leave':
       return '/rules';
     case 'new_member':
+    case 'league_departure':
       return '/profile/admin-members';
     case 'admin_review':
       // Reused across two categories — the category itself disambiguates.

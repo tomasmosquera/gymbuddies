@@ -21,7 +21,8 @@ const STATUS_INFO: Record<KothClaimStatus, { label: string; tone: 'success' | 'w
 
 export default function KingOfTheHillExerciseScreen() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
-  const { group, isLoading: groupLoading } = useActiveGroup();
+  const { group, membership, isLoading: groupLoading } = useActiveGroup();
+  const isAdminOnly = membership?.status === 'admin_only';
   const { exercises, isLoading: catalogLoading } = useKothCatalog();
   const { claims, isLoading: claimsLoading, refresh } = useKothClaimHistory(group?.id ?? null, exerciseId ?? null);
   const [viewingVideoPath, setViewingVideoPath] = useState<string | null>(null);
@@ -80,12 +81,16 @@ export default function KingOfTheHillExerciseScreen() {
           </Card>
         )}
 
-        <Button
-          label="Reclamar el trono"
-          onPress={() =>
-            router.push({ pathname: '/profile/king-of-the-hill-claim', params: { exerciseId: exercise.id } })
-          }
-        />
+        {isAdminOnly ? (
+          <Text style={styles.adminOnlyNote}>Como administrador no participás — solo administrás el grupo.</Text>
+        ) : (
+          <Button
+            label="Reclamar el trono"
+            onPress={() =>
+              router.push({ pathname: '/profile/king-of-the-hill-claim', params: { exerciseId: exercise.id } })
+            }
+          />
+        )}
 
         {claims.length > 0 ? (
           <View>
@@ -136,6 +141,7 @@ const styles = StyleSheet.create({
   currentHolder: { ...typography.heading, color: colors.text },
   currentValue: { color: colors.primary, fontSize: 18, fontWeight: '700' },
   vacantText: { color: colors.textMuted, fontStyle: 'italic' },
+  adminOnlyNote: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
   sectionLabel: { color: colors.text, fontSize: 20, fontWeight: '700', letterSpacing: 0.3, marginBottom: spacing.sm },
   list: { gap: spacing.sm },
   historyRow: {

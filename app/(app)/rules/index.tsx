@@ -37,6 +37,7 @@ const CHANGE_LABELS: Record<string, string> = {
   penalty_amount: 'Penalización por día fallado',
   weekly_penalty_cap: 'Tope de multa por semana',
   exit_fee_amount: 'Cuota por salir sin aviso',
+  enrollment_fee_amount: 'Cuota de inscripción',
   exit_notice_days: 'Días de aviso para salir sin costo',
   require_checkout_photo: 'Foto final requerida',
   min_workout_minutes: 'Duración mínima del entreno (min)',
@@ -45,9 +46,17 @@ const CHANGE_LABELS: Record<string, string> = {
   league_prize_splits: 'Premio por puesto',
   mixed_league_share_percent: '% del fondo para el premio de Liga',
   league_cycle_started_at: 'Fecha de inicio del ciclo de Liga',
+  descenso_rank_count: 'Jugadores en zona de descenso',
+  descenso_penalty_amount: 'Multa por descenso',
 };
 
-const MONEY_CHANGE_FIELDS = new Set(['penalty_amount', 'weekly_penalty_cap', 'exit_fee_amount']);
+const MONEY_CHANGE_FIELDS = new Set([
+  'penalty_amount',
+  'weekly_penalty_cap',
+  'exit_fee_amount',
+  'descenso_penalty_amount',
+  'enrollment_fee_amount',
+]);
 const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
 const PAYOUT_MODE_FIELDS = new Set(['payout_mode']);
 const PERCENT_ARRAY_FIELDS = new Set(['league_prize_splits']);
@@ -333,6 +342,12 @@ export default function RulesScreen() {
           </>
         ) : null}
         <View style={styles.ruleRow}>
+          <Text style={styles.ruleLabel}>Cuota de inscripción</Text>
+          <Text style={styles.ruleValue}>
+            {group.currency} {group.enrollment_fee_amount.toLocaleString('es-CO')}
+          </Text>
+        </View>
+        <View style={styles.ruleRow}>
           <Text style={styles.ruleLabel}>Cuota por salir sin aviso</Text>
           <Text style={styles.ruleValue}>
             {group.currency} {group.exit_fee_amount.toLocaleString('es-CO')}
@@ -369,6 +384,22 @@ export default function RulesScreen() {
             <Text style={styles.ruleLabel}>% del fondo para el premio de Liga</Text>
             <Text style={styles.ruleValue}>{group.mixed_league_share_percent}%</Text>
           </View>
+        ) : null}
+        {/* Descenso only exists in pure Liga — Mixto already charges a real
+            per-missed-day penalty, so it doesn't need this too. */}
+        {group.payout_mode === 'league' && group.descenso_rank_count > 0 ? (
+          <>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Jugadores en zona de descenso</Text>
+              <Text style={styles.ruleValue}>{group.descenso_rank_count}</Text>
+            </View>
+            <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Multa por descenso</Text>
+              <Text style={styles.ruleValue}>
+                {group.currency} {group.descenso_penalty_amount.toLocaleString('es-CO')}
+              </Text>
+            </View>
+          </>
         ) : null}
       </Card>
 
@@ -537,6 +568,17 @@ export default function RulesScreen() {
                   timezone={group?.timezone ?? 'America/Bogota'}
                   onPress={() => setViewingPhotoPath(challenge.checkin!.photo_path)}
                 />
+                {challenge.checkin.checkout_photo_path ? (
+                  <CheckinPhotoColumn
+                    label="Foto Final"
+                    photoPath={challenge.checkin.checkout_photo_path}
+                    capturedAt={challenge.checkin.checkout_captured_at}
+                    latitude={challenge.checkin.checkout_latitude}
+                    longitude={challenge.checkin.checkout_longitude}
+                    timezone={group?.timezone ?? 'America/Bogota'}
+                    onPress={() => setViewingPhotoPath(challenge.checkin!.checkout_photo_path)}
+                  />
+                ) : null}
               </View>
             ) : null}
             <Text style={styles.tally}>
@@ -611,9 +653,11 @@ export default function RulesScreen() {
         );
       })}
 
-      <View style={styles.actionButtons}>
-        <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
-      </View>
+      {membership.status !== 'admin_only' ? (
+        <View style={styles.actionButtons}>
+          <Button label="Solicitar excusa" variant="secondary" onPress={() => router.push('/rules/excuse-request')} />
+        </View>
+      ) : null}
 
       {myActiveExcuses.length > 0 ? (
         <Card style={styles.proposalCard}>
@@ -673,5 +717,5 @@ const styles = StyleSheet.create({
   voteButtons: { gap: spacing.sm, marginTop: spacing.sm },
   emptyText: { color: colors.textMuted, textAlign: 'center' },
   actionButtons: { gap: spacing.sm },
-  challengePhotoRow: { flexDirection: 'row', width: '50%' },
+  challengePhotoRow: { flexDirection: 'row', gap: spacing.md },
 });

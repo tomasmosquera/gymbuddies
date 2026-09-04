@@ -32,15 +32,18 @@ export function useExcuseVote(groupId: string | null, userId: string | null) {
       .not('voting_closes_at', 'is', null)
       .maybeSingle();
 
+    // Fetch votes BEFORE committing any state — see useRuleProposal.ts for
+    // why setting request and votes in two separate state updates (with an
+    // await between them) can let a render land on fresh request + stale
+    // votes, making myVote look wrong for a tick right after casting a
+    // vote.
     const typedRequest = requestData as unknown as (ExcuseRequest & { profile: { full_name: string } | null }) | null;
-    setRequest(typedRequest ? { ...typedRequest, member_name: typedRequest.profile?.full_name ?? 'Miembro' } : null);
+    const voteData = requestData
+      ? (await supabase.from('excuse_votes').select('*').eq('excuse_request_id', requestData.id)).data
+      : null;
 
-    if (requestData) {
-      const { data: voteData } = await supabase.from('excuse_votes').select('*').eq('excuse_request_id', requestData.id);
-      setVotes(voteData ?? []);
-    } else {
-      setVotes([]);
-    }
+    setRequest(typedRequest ? { ...typedRequest, member_name: typedRequest.profile?.full_name ?? 'Miembro' } : null);
+    setVotes(voteData ?? []);
     setIsLoading(false);
     loadedForGroupIdRef.current = groupId;
   }, [groupId]);

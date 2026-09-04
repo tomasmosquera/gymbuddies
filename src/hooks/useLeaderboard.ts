@@ -15,7 +15,7 @@ export interface LeaderboardRow {
   failedDays: number;
   /** completedDays / (completedDays + failedDays) — null until this member has any decided day yet. Purely informational; see gbScore for what actually drives rank. */
   consistencyPercent: number | null;
-  /** Wilson score lower bound (70% confidence) on the same ratio — what `rank` below is actually sorted by. Rewards a track record backed by more days, not just a high ratio over few of them. */
+  /** Wilson score lower bound (80% confidence) on the same ratio — what `rank` below is actually sorted by. Rewards a track record backed by more days, not just a high ratio over few of them. */
   gbScore: number | null;
   /** Money charged this period (or, for the still-open current week, a live projection) — never negative. Never used for ranking. */
   chargedAmount: number;

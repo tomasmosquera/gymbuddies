@@ -212,6 +212,13 @@ export function enumerateMonths(startDate: string, endDate: string): string[] {
   return months;
 }
 
+/** The last calendar date (YYYY-MM-DD) in `month` (YYYY-MM) — pure calendar math, no timezone involved. */
+export function lastDayOfMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  const day = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${month}-${String(day).padStart(2, '0')}`;
+}
+
 /** The `timeZone` hour (0-23) a given instant falls in. */
 export function toZonedHour(date: Date, timeZone: string): number {
   return zonedParts(date, timeZone).hour;

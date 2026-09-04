@@ -1,5 +1,11 @@
 import type { DayAttendanceStatus } from '@/lib/domain/attendance';
-import type { KothClaimFact } from '@/lib/domain/koth';
+import type { KothClaimFact, SimultaneousHoldEvent } from '@/lib/domain/koth';
+import {
+  dateFirstHadBothMetricTypes,
+  dateFirstReachedSimultaneousCount,
+  kothMaxSimultaneousHeld,
+} from '@/lib/domain/koth';
+import { lastDayOfMonth } from '@/lib/domain/dateUtils';
 
 /**
  * Achievements are computed live from existing data every time — there is no
@@ -53,18 +59,44 @@ export interface BadgeContext {
   ruleProposalsWonCount: number;
   /** Every KOTH claim this member has ever made in this group, across every exercise, any status. */
   kothClaims: readonly KothClaimFact[];
-  /** Exercise ids this member currently holds the record for, right now. */
+  /** Exercise ids this member currently holds the record for, right now. Kept for reference, but no longer used to decide any badge here — see kothSimultaneousHoldTimeline below for why a live snapshot can't be what "earned" depends on. */
   kothCurrentlyHeldExerciseIds: readonly string[];
   /** True if this member's earliest KOTH claim is the group's overall earliest — precomputed at the hook level (isKothGroupFounder needs the full group's claim log, not just this member's). */
   kothIsGroupFounder: boolean;
   /** How many times this member reclaimed an exercise's throne after losing it — precomputed at the hook level (kothReclaimedThroneCount needs the full group's claim log). */
   kothReclaimedThroneCount: number;
+  /** createdAt of the earliest reclaim counted above, or null if kothReclaimedThroneCount is 0 — precomputed at the hook level alongside it (kothReclaimedThroneCountWithDate). */
+  kothFirstReclaimDate: string | null;
+  /**
+   * This member's full history of how many KOTH exercises they held at
+   * once, reconstructed from the group's entire claim log (precomputed at
+   * the hook level — see kothSimultaneousHoldTimeline in koth.ts). Multi-
+   * corona/rey-absoluto/dueno-del-gym/doble-amenaza key off the historical
+   * MAXIMUM in this timeline rather than kothCurrentlyHeldExerciseIds — a
+   * live snapshot would let those badges un-earn themselves if the member
+   * later lost records, which is exactly the non-monotonic bug this fixes
+   * (every other lifetime badge here can never be un-earned once true,
+   * except the one deliberately-0-XP exception below).
+   */
+  kothSimultaneousHoldTimeline: SimultaneousHoldEvent[];
+  /** True once this member has any confirmed wallet_transactions row (see hasFundedWallet); this is the date of the earliest one. Null exactly when hasFundedWallet is false. */
+  fundedWalletDate: string | null;
+  /** Calendar dates (in the group's own timezone) this member received at least one reaction on — one entry per reaction received, mirrors reactionsGivenDates. */
+  reactionsReceivedDates: string[];
+  /** Same reactions reactionsGivenByRecipient counts, but the actual dates per recipient instead of just a count. */
+  reactionsGivenToRecipientDates: Record<string, string[]>;
+  /** Date this member's first rule proposal was actually applied to the group (falls back to when the vote was decided, for a proposal not yet swept by the Monday cron) — null if ruleProposalsWonCount is 0. */
+  firstRuleProposalWinDate: string | null;
+  /** Ascending dates of this member's own buddy check-ins — a teammate's check-in was close by in time and place that same day (findBuddyCheckinKeys, geo.ts). Precomputed at the hook level, same reason as the KOTH group-wide facts above: it needs every member's check-ins, not just this one's. Feeds buddyCheckinXp (xp.ts) and the 'dupla'/'mejor-acompanado' badges, same dated-list pattern as reactionsGivenDates. */
+  buddyCheckinDates: string[];
 }
 
 export interface BadgeStatus {
   earned: boolean;
   current: number;
   target: number;
+  /** YYYY-MM-DD (or, for KOTH-derived dates, a full ISO timestamp) the badge was first earned — null when not earned, or earned but no date is derivable (only 'ahorrador-involuntario', the sole revocable badge, by design). */
+  earnedDate: string | null;
 }
 
 export interface BadgeDefinition {
@@ -123,6 +155,70 @@ function longestBrokenStreak(runs: readonly number[]): number {
   return Math.max(...runs.slice(0, -1));
 }
 
+/**
+ * Mirrors completedStreakRuns' exact day-by-day walk (excused days pause
+ * without resetting, failed days reset to 0), but instead of collecting run
+ * lengths, returns the date of the day the running streak FIRST reaches
+ * `target` — the day a streak-length badge (semana-fuerte, mes-perfecto,
+ * etc.) actually becomes earned. null if the streak never reaches target.
+ */
+export function dateStreakFirstReachedLength(days: readonly BadgeDayRecord[], target: number): string | null {
+  let current = 0;
+  for (const day of days) {
+    if (day.status === 'completed') {
+      current++;
+      if (current === target) return day.date;
+    } else if (day.status === 'excused') {
+      continue;
+    } else {
+      current = 0;
+    }
+  }
+  return null;
+}
+
+/**
+ * Mirrors completedStreakRuns' walk, but returns the date of the FAILED day
+ * that broke a run which had already reached at least `target` days — the
+ * day a 30+ day streak actually broke (fenix). Only ever fires on a real
+ * 'failed' day, matching longestBrokenStreak's exclusion of the still-open
+ * trailing run.
+ */
+export function dateFirstBrokenStreakReachedLength(days: readonly BadgeDayRecord[], target: number): string | null {
+  let current = 0;
+  for (const day of days) {
+    if (day.status === 'completed') current++;
+    else if (day.status === 'excused') continue;
+    else {
+      if (current >= target) return day.date;
+      current = 0;
+    }
+  }
+  return null;
+}
+
+/**
+ * The date the member's SECOND streak run began (segunda-oportunidad) — the
+ * first 'completed' day that starts a fresh run after at least one prior
+ * run was terminated by a real 'failed' day.
+ */
+export function dateSecondStreakRunStarted(days: readonly BadgeDayRecord[]): string | null {
+  let current = 0;
+  let sawTerminatedRun = false;
+  for (const day of days) {
+    if (day.status === 'completed') {
+      if (current === 0 && sawTerminatedRun) return day.date;
+      current++;
+    } else if (day.status === 'excused') {
+      continue;
+    } else {
+      if (current > 0) sawTerminatedRun = true;
+      current = 0;
+    }
+  }
+  return null;
+}
+
 function addDaysToDateString(date: string, n: number): string {
   const [y, m, d] = date.split('-').map(Number);
   const ms = Date.UTC(y, m - 1, d) + n * 24 * 60 * 60 * 1000;
@@ -160,6 +256,20 @@ export function currentWeekendWarriorRun(days: readonly BadgeDayRecord[]): numbe
     current = bothCompleted ? current + 1 : 0;
   }
   return current;
+}
+
+/** Mirrors weekendWarriorRun's walk: the date of the Sunday the running consecutive-weekend count FIRST reaches `target` (finde-guerrero's earnedDate). */
+export function dateWeekendWarriorRunFirstReachedLength(days: readonly BadgeDayRecord[], target: number): string | null {
+  const statusByDate = new Map(days.map((d) => [d.date, d.status]));
+  const saturdays = days.map((d) => d.date).filter((date) => weekdayOf(date) === 6);
+  let current = 0;
+  for (const saturday of saturdays) {
+    const sunday = addDaysToDateString(saturday, 1);
+    const bothCompleted = statusByDate.get(saturday) === 'completed' && statusByDate.get(sunday) === 'completed';
+    current = bothCompleted ? current + 1 : 0;
+    if (current === target) return sunday;
+  }
+  return null;
 }
 
 export interface MonthlyConsistency {
@@ -233,6 +343,18 @@ export function currentConsecutiveMonthRun(monthQualifies: ReadonlyMap<string, b
     month = prevMonthKey(month);
   }
   return current;
+}
+
+/** Mirrors longestConsecutiveMonthRun's walk over an already-filtered, ascending-sorted qualifying-months list, but returns the last day of the month where the running consecutive count FIRST reaches `target` (constante-de-verdad/trimestre-solido/ano-impecable's earnedDate). */
+export function dateConsecutiveMonthRunFirstReached(sortedMonths: readonly string[], target: number): string | null {
+  let current = 0;
+  let prev: string | null = null;
+  for (const month of sortedMonths) {
+    current = prev && nextMonthKey(prev) === month ? current + 1 : 1;
+    if (current === target) return lastDayOfMonth(month);
+    prev = month;
+  }
+  return null;
 }
 
 export interface MonthlyPenalty {
@@ -353,6 +475,16 @@ export function longestSingleWorkoutMinutes(checkins: readonly BadgeCheckinFact[
   return checkins.reduce((max, c) => Math.max(max, c.workoutMinutes ?? 0), 0);
 }
 
+/** Date of the checkin whose cumulative running sum of workoutMinutes (over ascending checkins) FIRST reaches `target` — maratonista/ultra-maratonista's earnedDate. */
+export function dateCumulativeWorkoutMinutesReached(checkins: readonly BadgeCheckinFact[], target: number): string | null {
+  let sum = 0;
+  for (const c of checkins) {
+    sum += c.workoutMinutes ?? 0;
+    if (sum >= target) return c.date;
+  }
+  return null;
+}
+
 /**
  * The best average workout duration (minutes) sustained over any
  * `windowSize`-consecutive-checkins stretch in the member's history —
@@ -379,6 +511,21 @@ export function bestSustainedAverageWorkout(
   return { average: Math.round(best), qualifies: true };
 }
 
+/** Date-aware variant of bestSustainedAverageWorkout: the date of the LAST checkin in the first windowSize-window whose average reaches `target` — the day constancia-de-acero's condition actually completed. null if no window ever qualifies. */
+export function dateSustainedAverageWorkoutReached(
+  checkins: readonly BadgeCheckinFact[],
+  windowSize: number,
+  target: number
+): string | null {
+  const dated = checkins.filter((c): c is BadgeCheckinFact & { workoutMinutes: number } => c.workoutMinutes !== null);
+  for (let i = 0; i + windowSize <= dated.length; i++) {
+    const window = dated.slice(i, i + windowSize);
+    const avg = window.reduce((sum, c) => sum + c.workoutMinutes, 0) / windowSize;
+    if (avg >= target) return window[window.length - 1].date;
+  }
+  return null;
+}
+
 function daysBetween(start: string, end: string): number {
   const [sy, sm, sd] = start.split('-').map(Number);
   const [ey, em, ed] = end.split('-').map(Number);
@@ -390,19 +537,33 @@ export function kothDistinctExercisesEverChampioned(claims: readonly KothClaimFa
   return new Set(claims.map((c) => c.exerciseId)).size;
 }
 
-/** True if, right now, this member holds at least one weight-based (1RM) record and at least one reps-based record simultaneously. */
+/** @deprecated no longer used by any badge here (see kothSimultaneousHoldTimeline in koth.ts for why a live snapshot can't decide a lifetime badge) — kept for its own existing test coverage. True if, right now, this member holds at least one weight-based (1RM) record and at least one reps-based record simultaneously. */
 export function kothHasCurrentWeightAndReps(claims: readonly KothClaimFact[], currentlyHeldExerciseIds: readonly string[]): boolean {
   const held = new Set(currentlyHeldExerciseIds);
   const heldClaims = claims.filter((c) => held.has(c.exerciseId));
   return heldClaims.some((c) => c.metricType === 'weight_kg') && heldClaims.some((c) => c.metricType === 'reps');
 }
 
-function bool(earned: boolean): BadgeStatus {
-  return { earned, current: earned ? 1 : 0, target: 1 };
+/** Same pattern as dateStreakFirstReachedLength, but over a set of reaction dates instead of BadgeDayRecord[] — the date alma-del-grupo's 30-consecutive-day streak first completed. Dedupes first, same as the badge's own best/current computation. */
+export function dateReactionStreakFirstReachedLength(dates: readonly string[], target: number): string | null {
+  const sorted = [...new Set(dates)].sort();
+  let run = 0;
+  let prev: string | null = null;
+  for (const date of sorted) {
+    run = prev && addDaysToDateString(prev, 1) === date ? run + 1 : 1;
+    if (run === target) return date;
+    prev = date;
+  }
+  return null;
 }
 
-function threshold(current: number, target: number): BadgeStatus {
-  return { earned: current >= target, current, target };
+function bool(earned: boolean, earnedDate: string | null = null): BadgeStatus {
+  return { earned, current: earned ? 1 : 0, target: 1, earnedDate: earned ? earnedDate : null };
+}
+
+function threshold(current: number, target: number, earnedDate: string | null = null): BadgeStatus {
+  const earned = current >= target;
+  return { earned, current, target, earnedDate: earned ? earnedDate : null };
 }
 
 /**
@@ -411,10 +572,12 @@ function threshold(current: number, target: number): BadgeStatus {
  * `threshold` — a badge doesn't un-earn just because the streak later
  * broke), but the displayed `current` is the run still in progress right
  * now, so the progress bar answers "how close am I today", not "how close
- * did I ever get".
+ * did I ever get". `earnedDate` is the date the target was FIRST reached —
+ * still permanent even if the current streak has since dropped.
  */
-function streakStatus(longest: number, current: number, target: number): BadgeStatus {
-  return { earned: longest >= target, current, target };
+function streakStatus(longest: number, current: number, target: number, earnedDate: string | null = null): BadgeStatus {
+  const earned = longest >= target;
+  return { earned, current, target, earnedDate: earned ? earnedDate : null };
 }
 
 // ---- catalog ---------------------------------------------------------------
@@ -427,7 +590,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🥇',
     description: 'Primer check-in registrado.',
     category: 'racha',
-    evaluate: (ctx) => bool(ctx.checkins.length >= 1),
+    evaluate: (ctx) => bool(ctx.checkins.length >= 1, ctx.checkins[0]?.date ?? null),
   },
   {
     id: 'semana-fuerte',
@@ -435,7 +598,8 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '💪',
     description: '7 días de racha.',
     category: 'racha',
-    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 7),
+    evaluate: (ctx) =>
+      streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 7, dateStreakFirstReachedLength(ctx.days, 7)),
   },
   {
     id: 'mes-perfecto',
@@ -443,7 +607,8 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📅',
     description: 'Racha de 30 días sin fallar.',
     category: 'racha',
-    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 30),
+    evaluate: (ctx) =>
+      streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 30, dateStreakFirstReachedLength(ctx.days, 30)),
   },
   {
     id: 'inquebrantable',
@@ -451,7 +616,8 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🛡️',
     description: 'Racha de 100 días.',
     category: 'racha',
-    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 100),
+    evaluate: (ctx) =>
+      streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 100, dateStreakFirstReachedLength(ctx.days, 100)),
   },
   {
     id: 'leyenda',
@@ -459,7 +625,8 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '👑',
     description: 'Racha de 365 días.',
     category: 'racha',
-    evaluate: (ctx) => streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 365),
+    evaluate: (ctx) =>
+      streakStatus(longestCompletedStreak(ctx.days), currentCompletedStreak(ctx.days), 365, dateStreakFirstReachedLength(ctx.days, 365)),
   },
   {
     id: 'segunda-oportunidad',
@@ -467,7 +634,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🔁',
     description: 'Recuperar una racha después de haberla perdido.',
     category: 'racha',
-    evaluate: (ctx) => threshold(completedStreakRuns(ctx.days).length, 2),
+    evaluate: (ctx) => threshold(completedStreakRuns(ctx.days).length, 2, dateSecondStreakRunStarted(ctx.days)),
   },
   {
     id: 'fenix',
@@ -475,7 +642,8 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🐦‍🔥',
     description: 'Reiniciar la racha tras perder una de 30+ días.',
     category: 'racha',
-    evaluate: (ctx) => threshold(longestBrokenStreak(completedStreakRuns(ctx.days)), 30),
+    evaluate: (ctx) =>
+      threshold(longestBrokenStreak(completedStreakRuns(ctx.days)), 30, dateFirstBrokenStreakReachedLength(ctx.days, 30)),
   },
   {
     id: 'finde-guerrero',
@@ -483,7 +651,13 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '⚔️',
     description: 'Check-ins en sábado y domingo, 4 semanas seguidas.',
     category: 'racha',
-    evaluate: (ctx) => streakStatus(weekendWarriorRun(ctx.days), currentWeekendWarriorRun(ctx.days), 4),
+    evaluate: (ctx) =>
+      streakStatus(
+        weekendWarriorRun(ctx.days),
+        currentWeekendWarriorRun(ctx.days),
+        4,
+        dateWeekendWarriorRunFirstReachedLength(ctx.days, 4)
+      ),
   },
   {
     id: 'sin-excusas',
@@ -491,7 +665,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🎌',
     description: 'Check-in registrado en un día festivo.',
     category: 'racha',
-    evaluate: (ctx) => bool(ctx.days.some((d) => d.status === 'completed' && isFixedHoliday(d.date, ctx.timezone))),
+    evaluate: (ctx) => {
+      const match = ctx.days.find((d) => d.status === 'completed' && isFixedHoliday(d.date, ctx.timezone));
+      return bool(!!match, match?.date ?? null);
+    },
   },
 
   // Consistencia
@@ -503,10 +680,10 @@ export const BADGES: BadgeDefinition[] = [
     category: 'consistencia',
     evaluate: (ctx) => {
       const currentMonth = ctx.todayString.slice(0, 7);
-      const best = monthlyConsistency(ctx.days)
-        .filter((m) => m.month < currentMonth)
-        .reduce((max, m) => Math.max(max, m.percent), 0);
-      return threshold(best, 90);
+      const closedMonths = monthlyConsistency(ctx.days).filter((m) => m.month < currentMonth);
+      const best = closedMonths.reduce((max, m) => Math.max(max, m.percent), 0);
+      const firstQualifying = closedMonths.find((m) => m.percent >= 90);
+      return threshold(best, 90, firstQualifying ? lastDayOfMonth(firstQualifying.month) : null);
     },
   },
   {
@@ -517,10 +694,10 @@ export const BADGES: BadgeDefinition[] = [
     category: 'consistencia',
     evaluate: (ctx) => {
       const currentMonth = ctx.todayString.slice(0, 7);
-      const best = monthlyConsistency(ctx.days)
-        .filter((m) => m.month < currentMonth)
-        .reduce((max, m) => Math.max(max, m.percent), 0);
-      return threshold(best, 100);
+      const closedMonths = monthlyConsistency(ctx.days).filter((m) => m.month < currentMonth);
+      const best = closedMonths.reduce((max, m) => Math.max(max, m.percent), 0);
+      const firstQualifying = closedMonths.find((m) => m.percent >= 100);
+      return threshold(best, 100, firstQualifying ? lastDayOfMonth(firstQualifying.month) : null);
     },
   },
   {
@@ -534,7 +711,12 @@ export const BADGES: BadgeDefinition[] = [
       const closedMonths = monthlyConsistency(ctx.days).filter((m) => m.month < currentMonth);
       const qualifying = closedMonths.filter((m) => m.percent > 80).map((m) => m.month);
       const monthQualifies = new Map(closedMonths.map((m) => [m.month, m.percent > 80]));
-      return streakStatus(longestConsecutiveMonthRun(qualifying), currentConsecutiveMonthRun(monthQualifies), 6);
+      return streakStatus(
+        longestConsecutiveMonthRun(qualifying),
+        currentConsecutiveMonthRun(monthQualifies),
+        6,
+        dateConsecutiveMonthRunFirstReached(qualifying, 6)
+      );
     },
   },
   {
@@ -543,7 +725,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🎖️',
     description: '1 año de antigüedad en el grupo.',
     category: 'consistencia',
-    evaluate: (ctx) => threshold(daysBetween(ctx.joinedDate, ctx.todayString), 365),
+    evaluate: (ctx) => threshold(daysBetween(ctx.joinedDate, ctx.todayString), 365, addDaysToDateString(ctx.joinedDate, 365)),
   },
   {
     id: 'el-fundador',
@@ -551,7 +733,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🏛️',
     description: 'Miembro desde la creación del grupo.',
     category: 'consistencia',
-    evaluate: (ctx) => bool(ctx.joinedDate === ctx.groupCreatedDate),
+    evaluate: (ctx) => bool(ctx.joinedDate === ctx.groupCreatedDate, ctx.joinedDate),
   },
   {
     id: 'por-algo-se-empieza',
@@ -559,7 +741,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🌱',
     description: 'Una semana sin penalizaciones.',
     category: 'consistencia',
-    evaluate: (ctx) => bool(ctx.weeklyPenalties.some((w) => w.penaltyCharged === 0)),
+    evaluate: (ctx) => {
+      const match = ctx.weeklyPenalties.find((w) => w.penaltyCharged === 0);
+      return bool(!!match, match?.weekStartDate ?? null);
+    },
   },
   {
     id: 'cero-multas-mes',
@@ -567,7 +752,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🚫',
     description: 'Un mes entero sin ninguna penalización.',
     category: 'consistencia',
-    evaluate: (ctx) => bool(monthlyPenalties(ctx.weeklyPenalties).some((m) => m.penaltyCharged === 0)),
+    evaluate: (ctx) => {
+      const match = monthlyPenalties(ctx.weeklyPenalties).find((m) => m.penaltyCharged === 0);
+      return bool(!!match, match ? lastDayOfMonth(match.month) : null);
+    },
   },
   {
     id: 'trimestre-solido',
@@ -579,7 +767,12 @@ export const BADGES: BadgeDefinition[] = [
       const closedMonths = monthlyPenalties(ctx.weeklyPenalties);
       const qualifying = closedMonths.filter((m) => m.penaltyCharged === 0).map((m) => m.month);
       const monthQualifies = new Map(closedMonths.map((m) => [m.month, m.penaltyCharged === 0]));
-      return streakStatus(longestConsecutiveMonthRun(qualifying), currentConsecutiveMonthRun(monthQualifies), 3);
+      return streakStatus(
+        longestConsecutiveMonthRun(qualifying),
+        currentConsecutiveMonthRun(monthQualifies),
+        3,
+        dateConsecutiveMonthRunFirstReached(qualifying, 3)
+      );
     },
   },
   {
@@ -592,7 +785,12 @@ export const BADGES: BadgeDefinition[] = [
       const closedMonths = monthlyPenalties(ctx.weeklyPenalties);
       const qualifying = closedMonths.filter((m) => m.penaltyCharged === 0).map((m) => m.month);
       const monthQualifies = new Map(closedMonths.map((m) => [m.month, m.penaltyCharged === 0]));
-      return streakStatus(longestConsecutiveMonthRun(qualifying), currentConsecutiveMonthRun(monthQualifies), 12);
+      return streakStatus(
+        longestConsecutiveMonthRun(qualifying),
+        currentConsecutiveMonthRun(monthQualifies),
+        12,
+        dateConsecutiveMonthRunFirstReached(qualifying, 12)
+      );
     },
   },
 
@@ -603,7 +801,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🎆',
     description: 'Check-in el 1 de enero.',
     category: 'fechas',
-    evaluate: (ctx) => bool(ctx.days.some((d) => d.status === 'completed' && d.date.slice(5) === '01-01')),
+    evaluate: (ctx) => {
+      const match = ctx.days.find((d) => d.status === 'completed' && d.date.slice(5) === '01-01');
+      return bool(!!match, match?.date ?? null);
+    },
   },
   {
     id: 'sin-descanso-navideno',
@@ -613,9 +814,9 @@ export const BADGES: BadgeDefinition[] = [
     category: 'fechas',
     evaluate: (ctx) => {
       const completedDates = new Set(ctx.days.filter((d) => d.status === 'completed').map((d) => d.date));
-      const years = new Set(ctx.days.map((d) => d.date.slice(0, 4)));
-      const hasBoth = [...years].some((year) => completedDates.has(`${year}-12-24`) && completedDates.has(`${year}-12-25`));
-      return bool(hasBoth);
+      const years = [...new Set(ctx.days.map((d) => d.date.slice(0, 4)))].sort();
+      const firstQualifyingYear = years.find((year) => completedDates.has(`${year}-12-24`) && completedDates.has(`${year}-12-25`));
+      return bool(!!firstQualifyingYear, firstQualifyingYear ? `${firstQualifyingYear}-12-25` : null);
     },
   },
   {
@@ -627,10 +828,10 @@ export const BADGES: BadgeDefinition[] = [
     evaluate: (ctx) => {
       const anniversaryMonthDay = ctx.groupCreatedDate.slice(5);
       const creationYear = ctx.groupCreatedDate.slice(0, 4);
-      const hasAnniversary = ctx.days.some(
+      const match = ctx.days.find(
         (d) => d.status === 'completed' && d.date.slice(5) === anniversaryMonthDay && d.date.slice(0, 4) > creationYear
       );
-      return bool(hasAnniversary);
+      return bool(!!match, match?.date ?? null);
     },
   },
 
@@ -641,7 +842,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📸',
     description: 'Primera foto de check-in.',
     category: 'checkins',
-    evaluate: (ctx) => bool(ctx.checkins.length >= 1),
+    evaluate: (ctx) => bool(ctx.checkins.length >= 1, ctx.checkins[0]?.date ?? null),
   },
   {
     id: 'donde-estas',
@@ -649,7 +850,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🗺️',
     description: '10 check-ins con GPS.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.length, 10),
+    evaluate: (ctx) => threshold(ctx.checkins.length, 10, ctx.checkins[9]?.date ?? null),
   },
   {
     id: 'ubicacion-verificada',
@@ -657,7 +858,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📍',
     description: '50 check-ins con GPS.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.length, 50),
+    evaluate: (ctx) => threshold(ctx.checkins.length, 50, ctx.checkins[49]?.date ?? null),
   },
   {
     id: 'madrugador-novato',
@@ -665,7 +866,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🌅',
     description: '10 check-ins antes de las 7 a.m.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.filter((c) => c.hourBogota < 7).length, 10),
+    evaluate: (ctx) => {
+      const early = ctx.checkins.filter((c) => c.hourBogota < 7);
+      return threshold(early.length, 10, early[9]?.date ?? null);
+    },
   },
   {
     id: 'madrugador-experto',
@@ -673,7 +877,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🌄',
     description: '50 check-ins antes de las 7 a.m.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.filter((c) => c.hourBogota < 7).length, 50),
+    evaluate: (ctx) => {
+      const early = ctx.checkins.filter((c) => c.hourBogota < 7);
+      return threshold(early.length, 50, early[49]?.date ?? null);
+    },
   },
   {
     id: 'buho-novato',
@@ -681,7 +888,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🦉',
     description: '10 check-ins después de las 7 p.m.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.filter((c) => c.hourBogota >= 19).length, 10),
+    evaluate: (ctx) => {
+      const late = ctx.checkins.filter((c) => c.hourBogota >= 19);
+      return threshold(late.length, 10, late[9]?.date ?? null);
+    },
   },
   {
     id: 'buho-experto',
@@ -689,7 +899,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🦇',
     description: '50 check-ins después de las 7 p.m.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.filter((c) => c.hourBogota >= 19).length, 50),
+    evaluate: (ctx) => {
+      const late = ctx.checkins.filter((c) => c.hourBogota >= 19);
+      return threshold(late.length, 50, late[49]?.date ?? null);
+    },
   },
   {
     id: 'pequeno-coleccionista',
@@ -697,7 +910,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📁',
     description: '10 check-ins acumulados en total.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.length, 10),
+    evaluate: (ctx) => threshold(ctx.checkins.length, 10, ctx.checkins[9]?.date ?? null),
   },
   {
     id: 'buen-coleccionista',
@@ -705,7 +918,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🗃️',
     description: '30 check-ins acumulados en total.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.length, 30),
+    evaluate: (ctx) => threshold(ctx.checkins.length, 30, ctx.checkins[29]?.date ?? null),
   },
   {
     // id kept as 'coleccionista' (not renamed) so existing earned/notified
@@ -716,7 +929,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🗂️',
     description: '100 check-ins acumulados en total.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.length, 100),
+    evaluate: (ctx) => threshold(ctx.checkins.length, 100, ctx.checkins[99]?.date ?? null),
   },
   {
     id: 'los-365',
@@ -724,7 +937,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🎯',
     description: '365 check-ins acumulados.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(ctx.checkins.length, 365),
+    evaluate: (ctx) => threshold(ctx.checkins.length, 365, ctx.checkins[364]?.date ?? null),
   },
   {
     id: 'maratonista',
@@ -732,7 +945,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🏃',
     description: 'Acumular 1,000 minutos totales de entreno.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(totalWorkoutMinutes(ctx.checkins), 1000),
+    evaluate: (ctx) => threshold(totalWorkoutMinutes(ctx.checkins), 1000, dateCumulativeWorkoutMinutesReached(ctx.checkins, 1000)),
   },
   {
     id: 'ultra-maratonista',
@@ -740,7 +953,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🏔️',
     description: 'Acumular 10,000 minutos totales de entreno.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(totalWorkoutMinutes(ctx.checkins), 10000),
+    evaluate: (ctx) => threshold(totalWorkoutMinutes(ctx.checkins), 10000, dateCumulativeWorkoutMinutesReached(ctx.checkins, 10000)),
   },
   {
     id: 'entreno-de-hierro',
@@ -748,7 +961,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '💪',
     description: 'Un solo entreno de al menos 120 minutos.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(longestSingleWorkoutMinutes(ctx.checkins), 120),
+    evaluate: (ctx) => {
+      const match = ctx.checkins.find((c) => (c.workoutMinutes ?? 0) >= 120);
+      return threshold(longestSingleWorkoutMinutes(ctx.checkins), 120, match?.date ?? null);
+    },
   },
   {
     id: 'maquina-de-resistencia',
@@ -756,7 +972,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🦾',
     description: 'Un solo entreno de al menos 180 minutos.',
     category: 'checkins',
-    evaluate: (ctx) => threshold(longestSingleWorkoutMinutes(ctx.checkins), 180),
+    evaluate: (ctx) => {
+      const match = ctx.checkins.find((c) => (c.workoutMinutes ?? 0) >= 180);
+      return threshold(longestSingleWorkoutMinutes(ctx.checkins), 180, match?.date ?? null);
+    },
   },
   {
     id: 'constancia-de-acero',
@@ -766,7 +985,8 @@ export const BADGES: BadgeDefinition[] = [
     category: 'checkins',
     evaluate: (ctx) => {
       const { average, qualifies } = bestSustainedAverageWorkout(ctx.checkins, 50);
-      return { earned: qualifies && average >= 45, current: average, target: 45 };
+      const earned = qualifies && average >= 45;
+      return { earned, current: average, target: 45, earnedDate: earned ? dateSustainedAverageWorkoutReached(ctx.checkins, 50, 45) : null };
     },
   },
 
@@ -777,7 +997,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '💵',
     description: 'Meter dinero al grupo (depósito inicial o recarga).',
     category: 'financiero',
-    evaluate: (ctx) => bool(ctx.hasFundedWallet),
+    evaluate: (ctx) => bool(ctx.hasFundedWallet, ctx.fundedWalletDate),
   },
   {
     id: 'ahorrador-involuntario',
@@ -785,6 +1005,9 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🐖',
     description: 'Nunca haber perdido dinero por penalización.',
     category: 'financiero',
+    // No earnedDate: this is the sole revocable badge (see xp.ts — it's
+    // deliberately worth 0 XP for exactly that reason), so "the date it was
+    // earned" isn't a stable fact the way it is for every other badge here.
     evaluate: (ctx) =>
       bool(ctx.weeklyPenalties.length > 0 && ctx.weeklyPenalties.every((w) => w.penaltyCharged === 0)),
   },
@@ -795,22 +1018,46 @@ export const BADGES: BadgeDefinition[] = [
     description: 'Recibir 3 penalizaciones en un mes.',
     category: 'financiero',
     evaluate: (ctx) => {
-      const worstMonthPenaltyWeeks = monthlyPenalties(ctx.weeklyPenalties).reduce(
-        (max, m) => Math.max(max, ctx.weeklyPenalties.filter((w) => w.weekStartDate.slice(0, 7) === m.month && w.penaltyCharged > 0).length),
-        0
-      );
-      return threshold(worstMonthPenaltyWeeks, 3);
+      let worstMonthPenaltyWeeks = 0;
+      let earnedDate: string | null = null;
+      for (const month of monthlyPenalties(ctx.weeklyPenalties).map((m) => m.month)) {
+        const penalizedWeeks = ctx.weeklyPenalties
+          .filter((w) => w.weekStartDate.slice(0, 7) === month && w.penaltyCharged > 0)
+          .sort((a, b) => a.weekStartDate.localeCompare(b.weekStartDate));
+        worstMonthPenaltyWeeks = Math.max(worstMonthPenaltyWeeks, penalizedWeeks.length);
+        if (earnedDate === null && penalizedWeeks.length >= 3) earnedDate = penalizedWeeks[2].weekStartDate;
+      }
+      return threshold(worstMonthPenaltyWeeks, 3, earnedDate);
     },
   },
 
   // Social
+  {
+    id: 'dupla',
+    name: 'Dupla',
+    emoji: '🫱🏼‍🫲🏻',
+    description: 'Entrenar el mismo día, cerca y a la misma hora, que otro miembro del grupo (check-in en pareja).',
+    category: 'social',
+    evaluate: (ctx) => bool(ctx.buddyCheckinDates.length >= 1, ctx.buddyCheckinDates[0] ?? null),
+  },
+  {
+    id: 'mejor-acompanado',
+    name: 'Mejor Acompañado',
+    emoji: '👯',
+    description: 'Entrenar en pareja (check-in en pareja) 20 veces.',
+    category: 'social',
+    evaluate: (ctx) => threshold(ctx.buddyCheckinDates.length, 20, ctx.buddyCheckinDates[19] ?? null),
+  },
   {
     id: 'motivador',
     name: 'Motivador',
     emoji: '📣',
     description: 'Primera reacción dada a un check-in de otro.',
     category: 'social',
-    evaluate: (ctx) => bool(Object.values(ctx.reactionsGivenByRecipient).some((n) => n > 0)),
+    // reactionsGivenByRecipient only carries counts, but this badge is
+    // really just "gave >= 1 reaction ever", which reactionsGivenDates (a
+    // dated list) already answers directly.
+    evaluate: (ctx) => bool(ctx.reactionsGivenDates.length >= 1, ctx.reactionsGivenDates[0] ?? null),
   },
   {
     id: 'gran-motivador',
@@ -818,7 +1065,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📢',
     description: 'Dar 10 reacciones a check-ins de otros.',
     category: 'social',
-    evaluate: (ctx) => threshold(ctx.reactionsGivenDates.length, 10),
+    evaluate: (ctx) => threshold(ctx.reactionsGivenDates.length, 10, ctx.reactionsGivenDates[9] ?? null),
   },
   {
     id: 'se-le-quiere',
@@ -826,7 +1073,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🥰',
     description: 'Recibir 10 reacciones acumuladas.',
     category: 'social',
-    evaluate: (ctx) => threshold(ctx.reactionsReceivedCount, 10),
+    evaluate: (ctx) => threshold(ctx.reactionsReceivedCount, 10, ctx.reactionsReceivedDates[9] ?? null),
   },
   {
     id: 'el-mas-querido',
@@ -834,7 +1081,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '❤️',
     description: 'Recibir 50 reacciones acumuladas.',
     category: 'social',
-    evaluate: (ctx) => threshold(ctx.reactionsReceivedCount, 50),
+    evaluate: (ctx) => threshold(ctx.reactionsReceivedCount, 50, ctx.reactionsReceivedDates[49] ?? null),
   },
   {
     id: 'fan-numero-uno',
@@ -842,7 +1089,15 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🙌',
     description: '20 reacciones dadas a un mismo compañero.',
     category: 'social',
-    evaluate: (ctx) => threshold(Math.max(0, ...Object.values(ctx.reactionsGivenByRecipient)), 20),
+    evaluate: (ctx) => {
+      const counts = Object.values(ctx.reactionsGivenByRecipient);
+      const max = counts.length > 0 ? Math.max(...counts) : 0;
+      // Ties (two recipients at the same max count) pick whichever comes
+      // first — the badge is earned either way, only the shown date could
+      // point at a different (but equally valid) 20th-reaction moment.
+      const datesForMax = Object.values(ctx.reactionsGivenToRecipientDates).find((d) => d.length === max) ?? [];
+      return threshold(max, 20, datesForMax[19] ?? null);
+    },
   },
   {
     id: 'alma-del-grupo',
@@ -870,7 +1125,7 @@ export const BADGES: BadgeDefinition[] = [
         current++;
         day = addDaysToDateString(day, -1);
       }
-      return streakStatus(best, current, 30);
+      return streakStatus(best, current, 30, dateReactionStreakFirstReachedLength(ctx.reactionsGivenDates, 30));
     },
   },
   {
@@ -879,7 +1134,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🗳️',
     description: 'Proponer una regla que gane la votación.',
     category: 'social',
-    evaluate: (ctx) => bool(ctx.ruleProposalsWonCount >= 1),
+    evaluate: (ctx) => bool(ctx.ruleProposalsWonCount >= 1, ctx.firstRuleProposalWinDate),
   },
 
   // King of the Hill
@@ -889,7 +1144,10 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '👑',
     description: 'Reclamar tu primer récord de King of the Hill.',
     category: 'koth',
-    evaluate: (ctx) => bool(ctx.kothClaims.length >= 1),
+    evaluate: (ctx) => {
+      const earliest = [...ctx.kothClaims].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      return bool(ctx.kothClaims.length >= 1, earliest?.createdAt ?? null);
+    },
   },
   {
     id: 'fundador-del-trono',
@@ -897,31 +1155,52 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🏛️',
     description: 'Ser el primer miembro del grupo en reclamar un récord de King of the Hill.',
     category: 'koth',
-    evaluate: (ctx) => bool(ctx.kothIsGroupFounder),
+    evaluate: (ctx) => {
+      // A group founder's own earliest claim IS the group's overall
+      // earliest by definition, so this member's own kothClaims already
+      // has the date — no need for the full group log here.
+      const earliest = [...ctx.kothClaims].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      return bool(ctx.kothIsGroupFounder, earliest?.createdAt ?? null);
+    },
   },
   {
     id: 'multi-corona',
     name: 'Multi-Corona',
     emoji: '🎖️',
-    description: 'Tener el récord vigente de 3 ejercicios al mismo tiempo.',
+    description: 'Tener el récord de 3 ejercicios al mismo tiempo, en algún momento.',
     category: 'koth',
-    evaluate: (ctx) => threshold(ctx.kothCurrentlyHeldExerciseIds.length, 3),
+    evaluate: (ctx) =>
+      threshold(
+        kothMaxSimultaneousHeld(ctx.kothSimultaneousHoldTimeline),
+        3,
+        dateFirstReachedSimultaneousCount(ctx.kothSimultaneousHoldTimeline, 3)
+      ),
   },
   {
     id: 'rey-absoluto',
     name: 'Rey/Reina Absoluto',
     emoji: '🏆',
-    description: 'Tener el récord vigente de 6 ejercicios al mismo tiempo.',
+    description: 'Tener el récord de 6 ejercicios al mismo tiempo, en algún momento.',
     category: 'koth',
-    evaluate: (ctx) => threshold(ctx.kothCurrentlyHeldExerciseIds.length, 6),
+    evaluate: (ctx) =>
+      threshold(
+        kothMaxSimultaneousHeld(ctx.kothSimultaneousHoldTimeline),
+        6,
+        dateFirstReachedSimultaneousCount(ctx.kothSimultaneousHoldTimeline, 6)
+      ),
   },
   {
     id: 'dueno-del-gym',
     name: 'Dueño del Gym',
     emoji: '💎',
-    description: 'Tener el récord vigente de los 12 ejercicios al mismo tiempo.',
+    description: 'Tener el récord de los 12 ejercicios al mismo tiempo, en algún momento.',
     category: 'koth',
-    evaluate: (ctx) => threshold(ctx.kothCurrentlyHeldExerciseIds.length, 12),
+    evaluate: (ctx) =>
+      threshold(
+        kothMaxSimultaneousHeld(ctx.kothSimultaneousHoldTimeline),
+        12,
+        dateFirstReachedSimultaneousCount(ctx.kothSimultaneousHoldTimeline, 12)
+      ),
   },
   {
     id: 'todocampista',
@@ -929,15 +1208,27 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🌟',
     description: 'Haber sido campeón alguna vez en los 12 ejercicios (no hace falta que sea al mismo tiempo).',
     category: 'koth',
-    evaluate: (ctx) => threshold(kothDistinctExercisesEverChampioned(ctx.kothClaims), 12),
+    evaluate: (ctx) => {
+      const sorted = [...ctx.kothClaims].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const seen = new Set<string>();
+      let earnedDate: string | null = null;
+      for (const c of sorted) {
+        seen.add(c.exerciseId);
+        if (seen.size === 12 && earnedDate === null) earnedDate = c.createdAt;
+      }
+      return threshold(kothDistinctExercisesEverChampioned(ctx.kothClaims), 12, earnedDate);
+    },
   },
   {
     id: 'doble-amenaza',
     name: 'Doble Amenaza',
     emoji: '⚔️',
-    description: 'Tener vigente al menos un récord con peso y uno sin peso al mismo tiempo.',
+    description: 'Tener al menos un récord con peso y uno sin peso al mismo tiempo, en algún momento.',
     category: 'koth',
-    evaluate: (ctx) => bool(kothHasCurrentWeightAndReps(ctx.kothClaims, ctx.kothCurrentlyHeldExerciseIds)),
+    evaluate: (ctx) => {
+      const date = dateFirstHadBothMetricTypes(ctx.kothSimultaneousHoldTimeline);
+      return bool(date !== null, date);
+    },
   },
   {
     id: 'el-resistente',
@@ -945,7 +1236,13 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🛡️',
     description: 'Defender un récord exitosamente en una votación de invalidación.',
     category: 'koth',
-    evaluate: (ctx) => bool(ctx.kothClaims.some((c) => c.status === 'valid' && c.wasChallenged)),
+    evaluate: (ctx) => {
+      const matches = ctx.kothClaims
+        .filter((c) => c.status === 'valid' && c.wasChallenged)
+        .sort((a, b) => (a.decidedAt ?? a.createdAt).localeCompare(b.decidedAt ?? b.createdAt));
+      const first = matches[0];
+      return bool(matches.length > 0, first ? (first.decidedAt ?? first.createdAt) : null);
+    },
   },
   {
     id: 'retorno-del-rey',
@@ -953,7 +1250,7 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '🔄',
     description: 'Recuperar el trono de un ejercicio después de haberlo perdido.',
     category: 'koth',
-    evaluate: (ctx) => bool(ctx.kothReclaimedThroneCount >= 1),
+    evaluate: (ctx) => bool(ctx.kothReclaimedThroneCount >= 1, ctx.kothFirstReclaimDate),
   },
   {
     id: 'veinte-superaciones',
@@ -961,6 +1258,9 @@ export const BADGES: BadgeDefinition[] = [
     emoji: '📈',
     description: 'Enviar 20 reclamaciones de King of the Hill en total.',
     category: 'koth',
-    evaluate: (ctx) => threshold(ctx.kothClaims.length, 20),
+    evaluate: (ctx) => {
+      const sorted = [...ctx.kothClaims].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return threshold(sorted.length, 20, sorted[19]?.createdAt ?? null);
+    },
   },
 ];

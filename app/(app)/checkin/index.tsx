@@ -6,21 +6,28 @@ import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AdminPanel } from '@/components/admin/AdminPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useCheckins } from '@/hooks/useCheckins';
+import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
 import { useElapsedSeconds } from '@/hooks/useElapsedSeconds';
 import { useLocationLock } from '@/hooks/useLocationLock';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { cancelCheckoutReminders, stopCheckoutGeofence } from '@/lib/notifications/checkoutReminders';
 import { supabase } from '@/lib/supabase/client';
-import { formatZonedTime12h, formatElapsedClock } from '@/lib/domain/dateUtils';
+import { formatZonedTime12h, formatElapsedClock, toZonedDateString } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 export default function CheckinCameraScreen() {
   const { session } = useAuth();
   const { group, membership, isLoading: groupLoading } = useActiveGroup();
   const { todayCheckin, isLoading: checkinsLoading, refresh: refreshCheckins } = useCheckins(
+    group?.id ?? null,
+    session?.user.id ?? null,
+    group?.timezone ?? 'America/Bogota'
+  );
+  const { weekOverrides, refresh: refreshOverrides } = useAttendanceOverrides(
     group?.id ?? null,
     session?.user.id ?? null,
     group?.timezone ?? 'America/Bogota'
@@ -40,6 +47,12 @@ export default function CheckinCameraScreen() {
   const needsCheckout = checkoutRequired && !!todayCheckin && !todayCheckin.checkout_captured_at;
   const isCheckoutFlow = needsCheckout && checkoutRequested;
   const elapsedSeconds = useElapsedSeconds(needsCheckout && todayCheckin ? todayCheckin.captured_at : null);
+  const todayString = toZonedDateString(new Date(), group?.timezone ?? 'America/Bogota');
+  // A day invalidated (photo challenge vote, or the admin directly) can
+  // still be retaken — submit_checkin clears the invalidation itself once a
+  // new photo is in place, so this is purely to explain *why* a retake is
+  // being asked for here instead of the usual "quieres reemplazarla" copy.
+  const todayWasInvalidated = todayCheckin && weekOverrides.some((o) => o.override_date === todayString && o.status === 'failed');
 
   // This tab stays mounted across switches, so simply returning to it after
   // taking a photo elsewhere (or having the admin change something) would
@@ -47,7 +60,8 @@ export default function CheckinCameraScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshCheckins();
-    }, [refreshCheckins])
+      refreshOverrides();
+    }, [refreshCheckins, refreshOverrides])
   );
 
   // Same "stays mounted" issue applies to location: a lock taken the last
@@ -167,6 +181,13 @@ export default function CheckinCameraScreen() {
     );
   }
 
+  // Not a participating member — nothing to check in for. This tab becomes
+  // the group admin panel instead, so the space isn't dead for someone who
+  // never trains but opens the app daily to keep an eye on the group.
+  if (membership?.status === 'admin_only') {
+    return <AdminPanel />;
+  }
+
   if (todayCheckin && needsCheckout && !checkoutRequested) {
     return (
       <View style={styles.center}>
@@ -199,14 +220,20 @@ export default function CheckinCameraScreen() {
     return (
       <View style={styles.center}>
         <EmptyState
-          title="Ya hiciste check-in hoy 💪"
+          title={todayWasInvalidated ? 'Tu registro de hoy fue invalidado' : 'Ya hiciste check-in hoy 💪'}
           description={
-            checkoutRequired
-              ? 'Ya registraste tu foto inicial y tu foto final hoy. Puedes volver a tomar la foto inicial si quieres reemplazarla.'
-              : 'Puedes volver a tomar la foto de hoy si quieres reemplazarla.'
+            todayWasInvalidated
+              ? `El grupo${checkoutRequired ? ' (o el administrador)' : ''} marcó tu foto de hoy como no válida. Sube una foto nueva${checkoutRequired ? ' — inicial y final' : ''} y, si es válida, este día vuelve a contar.`
+              : checkoutRequired
+                ? 'Ya registraste tu foto inicial y tu foto final hoy. Puedes volver a tomar la foto inicial si quieres reemplazarla.'
+                : 'Puedes volver a tomar la foto de hoy si quieres reemplazarla.'
           }
         />
-        <Button label="Volver a tomar la foto" variant="secondary" onPress={() => setRetakeRequested(true)} />
+        <Button
+          label={todayWasInvalidated ? 'Subir foto nueva' : 'Volver a tomar la foto'}
+          variant="secondary"
+          onPress={() => setRetakeRequested(true)}
+        />
         <Button label="Eliminar registro de hoy" variant="danger" onPress={confirmDeleteToday} loading={isDeleting} />
       </View>
     );

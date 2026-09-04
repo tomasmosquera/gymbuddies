@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/state/authStore';
 import { registerForPushNotificationsAsync, unregisterCurrentDeviceToken } from '@/lib/notifications/pushToken';
+import { stopArrivalGeofence } from '@/lib/notifications/checkinArrivalReminders';
 import type { Profile } from '@/lib/supabase/types';
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -31,8 +32,21 @@ export function useAuthBootstrap() {
       setInitializing(false);
     });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
+      // A fresh interactive sign-in only — never on cold-start session
+      // restore (that's getSession() above, not this listener) or a token
+      // refresh. app/index.tsx reacts to the session becoming truthy with
+      // an immediate <Redirect>, which tears the sign-in screen (and its
+      // textContentType-tagged credential fields) out of the view hierarchy
+      // within milliseconds — too fast for iOS's "Save Password?" prompt to
+      // ever get a chance to attach to the still-visible fields. This delay
+      // is the standard workaround: it buys iOS's Keychain heuristic the
+      // brief window it needs before the screen disappears.
+      if (event === 'SIGNED_IN') {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        if (!isMounted) return;
+      }
       setSession(session);
       setProfile(session ? await fetchProfile(session.user.id) : null);
     });
@@ -72,6 +86,11 @@ export function useAuth() {
 
   const signOut = useCallback(async () => {
     await unregisterCurrentDeviceToken();
+    // Unlike the checkout reminder (which lasts a few hours and cancels
+    // itself), the arrival geofence runs indefinitely in the background —
+    // has to be stopped explicitly or it'd keep watching for a signed-out
+    // account.
+    await stopArrivalGeofence().catch(() => {});
     const { error } = await supabase.auth.signOut();
     if (error) throw new Error(error.message);
   }, []);

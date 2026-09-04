@@ -3,14 +3,21 @@ import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { useAuth } from '@/hooks/useAuth';
 import { useMyMemberships, type MembershipWithGroup } from '@/hooks/useMyMemberships';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
 import { colors, spacing, typography } from '@/constants/theme';
 
+const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
+
 export default function GroupSelectScreen() {
   const { memberships, isLoading } = useMyMemberships();
+  const { session, profile } = useAuth();
   const activeGroupId = useActiveGroupStore((s) => s.activeGroupId);
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
+  const isPlatformAdmin = session?.user.email === PLATFORM_ADMIN_EMAIL;
+  const credits = profile?.group_creation_credits ?? 0;
+  const canCreateGroup = isPlatformAdmin || credits > 0;
 
   const handleSelect = (membership: MembershipWithGroup) => {
     setActiveGroupId(membership.group_id);
@@ -54,17 +61,27 @@ export default function GroupSelectScreen() {
             </View>
             {item.status === 'pending_deposit' ? <Badge label="Falta depósito" tone="warning" /> : null}
             {item.status === 'needs_recharge' ? <Badge label="Necesita recarga" tone="danger" /> : null}
+            {item.status === 'admin_only' ? <Badge label="Solo administras" /> : null}
           </Card>
         </Pressable>
       )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       ListFooterComponent={
         <View style={styles.footer}>
+          <Text style={styles.creditsText}>
+            {isPlatformAdmin ? 'Créditos ilimitados (admin de la plataforma)' : `Créditos disponibles: ${credits}`}
+          </Text>
           <Button
             label={memberships.length === 0 ? 'Crear un grupo nuevo' : 'Crear otro grupo'}
             variant="secondary"
             onPress={() => router.push('/create-group')}
+            disabled={!canCreateGroup}
           />
+          {!canCreateGroup ? (
+            <Text style={styles.creditsHint}>
+              No te quedan créditos para crear un grupo — contacta al administrador de la app.
+            </Text>
+          ) : null}
           <Button label="Unirme con un código" variant="secondary" onPress={() => router.push('/join-group')} />
           <Button
             label="Unirme a un grupo público"
@@ -85,6 +102,8 @@ const styles = StyleSheet.create({
   groupName: { color: colors.text, fontWeight: '700', fontSize: 16 },
   role: { color: colors.textMuted, marginTop: 2 },
   footer: { gap: spacing.sm, marginTop: spacing.lg },
+  creditsText: { color: colors.primary, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  creditsHint: { color: colors.danger, fontSize: 12, textAlign: 'center' },
   welcome: { gap: spacing.sm, marginBottom: spacing.lg },
   welcomeTitle: { ...typography.title, fontSize: 22, color: colors.text },
   welcomeText: { color: colors.textMuted, fontSize: 15 },

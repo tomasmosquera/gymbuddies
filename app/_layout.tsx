@@ -13,6 +13,7 @@ import { useAppUpdateCheck } from '@/hooks/useAppUpdateCheck';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { colors } from '@/constants/theme';
 import '@/lib/notifications/checkoutGeofenceTask';
+import '@/lib/notifications/checkinArrivalGeofenceTask';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

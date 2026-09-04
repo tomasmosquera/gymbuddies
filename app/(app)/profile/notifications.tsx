@@ -6,35 +6,10 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { getNotificationRoute } from '@/lib/notifications/notificationRouting';
+import { iconFor, formatRelativeTime } from '@/lib/notifications/notificationDisplay';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
-import type { AppNotification, NotificationCategory } from '@/lib/supabase/types';
+import type { AppNotification } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-
-const CATEGORY_ICONS: Record<NotificationCategory, keyof typeof Ionicons.glyphMap> = {
-  group_activity: 'people-outline',
-  money: 'cash-outline',
-  votes: 'checkmark-done-outline',
-  reminders: 'alarm-outline',
-  admin_actions: 'shield-checkmark-outline',
-  achievements: 'trophy-outline',
-};
-
-function iconFor(category: NotificationCategory | null): keyof typeof Ionicons.glyphMap {
-  return category ? CATEGORY_ICONS[category] ?? 'notifications-outline' : 'notifications-outline';
-}
-
-function formatRelativeTime(isoDate: string): string {
-  const diffMs = Date.now() - new Date(isoDate).getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return 'Justo ahora';
-  if (minutes < 60) return `Hace ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Hace ${hours} ${hours === 1 ? 'hora' : 'horas'}`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `Hace ${days} ${days === 1 ? 'día' : 'días'}`;
-  const date = new Date(isoDate);
-  return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-}
 
 function handlePressNotification(n: AppNotification) {
   const route = getNotificationRoute(n);

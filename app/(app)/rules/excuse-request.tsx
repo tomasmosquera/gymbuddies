@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { TextField } from '@/components/ui/TextField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { InlineDatePicker } from '@/components/ui/InlineDatePicker';
@@ -26,7 +27,7 @@ const MAX_PROOF_PHOTOS = 8;
 
 export default function ExcuseRequestScreen() {
   const { session } = useAuth();
-  const { group, isLoading: groupLoading } = useActiveGroup();
+  const { group, membership, isLoading: groupLoading } = useActiveGroup();
   const { createExcuseRequest } = useExcuseRequests(group?.id ?? null, session?.user.id ?? null);
 
   const [excuseType, setExcuseType] = useState<ExcuseType>('travel');
@@ -41,6 +42,18 @@ export default function ExcuseRequestScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  // No participas en este grupo — no hay días que excusar.
+  if (membership?.status === 'admin_only') {
+    return (
+      <View style={styles.center}>
+        <EmptyState
+          title="No participas en este grupo"
+          description="Elegiste solo administrar este grupo, así que no tienes días de entreno que excusar."
+        />
       </View>
     );
   }

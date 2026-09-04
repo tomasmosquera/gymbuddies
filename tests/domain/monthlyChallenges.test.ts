@@ -17,9 +17,9 @@ function days(spec: [string, MonthlyDayRecord['status']][]): MonthlyDayRecord[] 
 }
 
 describe('monthly challenge catalog', () => {
-  it('has exactly 28 challenges with unique ids', () => {
-    expect(MONTHLY_CHALLENGES.length).toBe(28);
-    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(28);
+  it('has exactly 30 challenges with unique ids', () => {
+    expect(MONTHLY_CHALLENGES.length).toBe(30);
+    expect(new Set(MONTHLY_CHALLENGES.map((c) => c.id)).size).toBe(30);
   });
 });
 
@@ -185,6 +185,7 @@ function baseContext(overrides: Partial<MonthlyMemberContext> = {}): MonthlyMemb
     kothClaimedExerciseIdsThisMonth: [],
     kothDefendedThisMonth: false,
     isKothKingThisMonth: false,
+    buddyCheckinsInMonth: 0,
     ...overrides,
   };
 }

@@ -39,6 +39,7 @@ export const createGroupSchema = z.object({
   penaltyAmount: z.number().min(0),
   weeklyPenaltyCap: z.number().min(0),
   exitFeeAmount: z.number().min(0).default(0),
+  enrollmentFeeAmount: z.number().min(0).default(0),
   exitNoticeDays: z.number().int().min(0).default(0),
   requireCheckoutPhoto: z.boolean().default(false),
   minWorkoutMinutes: z.number().int().min(0).default(0),
@@ -53,6 +54,8 @@ export const createGroupSchema = z.object({
       message: 'La suma de los porcentajes no puede superar 100%',
     }),
   mixedLeagueSharePercent: z.number().min(0).max(100).default(50),
+  descensoRankCount: z.number().int().min(0).max(20).default(0),
+  descensoPenaltyAmount: z.number().min(0).default(0),
   gameStartsAt: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
@@ -95,6 +98,9 @@ export const ruleProposalSchema = z
       }),
     mixedLeagueSharePercent: z.number().min(0).max(100).optional(),
     leagueCycleStartedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida').optional(),
+    descensoRankCount: z.number().int().min(0).max(20).optional(),
+    descensoPenaltyAmount: z.number().min(0).optional(),
+    enrollmentFeeAmount: z.number().min(0).optional(),
   })
   .refine((changes) => Object.values(changes).some((v) => v !== undefined), {
     message: 'Propón al menos un cambio',

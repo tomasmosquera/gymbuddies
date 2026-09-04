@@ -8,13 +8,21 @@ interface AvatarWithLevelProps {
   size?: number;
   /** Should match whatever surface this avatar sits on, so the badge's cutout border blends in. */
   borderColor?: string;
+  /** The avatar circle's own fill — defaults to surfaceAlt (the look everywhere it's used today: Leaderboard, Dashboard, ...). Pass the exact background of whatever it sits on to make the circle itself disappear, leaving only the initials + level badge — e.g. a hero card whose own background already IS surfaceAlt. */
+  backgroundColor?: string;
 }
 
 /** A small initials avatar with the member's XP level overlapping its bottom-right corner (see useGroupBadges). */
-export function AvatarWithLevel({ initials, level, size = 32, borderColor = colors.surface }: AvatarWithLevelProps) {
+export function AvatarWithLevel({
+  initials,
+  level,
+  size = 32,
+  borderColor = colors.surface,
+  backgroundColor = colors.surfaceAlt,
+}: AvatarWithLevelProps) {
   return (
     <View style={{ width: size, height: size }}>
-      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
+      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor }]}>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
       {level !== undefined ? (
