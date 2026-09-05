@@ -7,7 +7,8 @@ import { getRemindersEnabledCache } from './reminderPreference';
 
 /** Falls back to this if a caller doesn't have the member's profile loaded yet — matches profiles.checkout_reminder_minutes' own DB default. */
 const DEFAULT_REMINDER_MINUTES = 20;
-const GEOFENCE_RADIUS_METERS = 100;
+/** Falls back to this if a caller doesn't have the member's profile loaded yet — matches profiles.checkout_geofence_radius_meters' own DB default. */
+const DEFAULT_GEOFENCE_RADIUS_METERS = 100;
 const FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS = 20;
 
 // Module-level singleton state for the foreground fallback watch — there is
@@ -15,17 +16,17 @@ const FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS = 20;
 // geofence task already makes with its single fixed task name.
 let foregroundSubscription: Location.LocationSubscription | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
-let pendingWatch: { checkinId: string; latitude: number; longitude: number } | null = null;
+let pendingWatch: { checkinId: string; latitude: number; longitude: number; radiusMeters: number } | null = null;
 
 async function runForegroundWatchIfActive(): Promise<void> {
   if (!pendingWatch || AppState.currentState !== 'active' || foregroundSubscription) return;
-  const { checkinId, latitude, longitude } = pendingWatch;
+  const { checkinId, latitude, longitude, radiusMeters } = pendingWatch;
   try {
     foregroundSubscription = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.Balanced, distanceInterval: FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS },
       (position) => {
         const distance = distanceMeters(latitude, longitude, position.coords.latitude, position.coords.longitude);
-        if (distance > GEOFENCE_RADIUS_METERS) {
+        if (distance > radiusMeters) {
           stopForegroundWatchSubscription();
           getRemindersEnabledCache().then((enabled) => {
             if (!enabled) return;
@@ -60,8 +61,8 @@ function stopForegroundWatchSubscription(): void {
  * anyway — and restarts if the app comes back to the foreground with a
  * checkout still pending.
  */
-function startForegroundDistanceWatch(checkinId: string, latitude: number, longitude: number): void {
-  pendingWatch = { checkinId, latitude, longitude };
+function startForegroundDistanceWatch(checkinId: string, latitude: number, longitude: number, radiusMeters: number): void {
+  pendingWatch = { checkinId, latitude, longitude, radiusMeters };
   if (!appStateSubscription) {
     appStateSubscription = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') runForegroundWatchIfActive();
@@ -92,7 +93,8 @@ export async function scheduleCheckoutReminders(
   checkinId: string,
   latitude: number,
   longitude: number,
-  reminderMinutes: number = DEFAULT_REMINDER_MINUTES
+  reminderMinutes: number = DEFAULT_REMINDER_MINUTES,
+  geofenceRadiusMeters: number = DEFAULT_GEOFENCE_RADIUS_METERS
 ): Promise<void> {
   if (!(await getRemindersEnabledCache())) return;
 
@@ -112,7 +114,7 @@ export async function scheduleCheckoutReminders(
     // best-effort — never block the check-in flow over a reminder
   }
 
-  startForegroundDistanceWatch(checkinId, latitude, longitude);
+  startForegroundDistanceWatch(checkinId, latitude, longitude, geofenceRadiusMeters);
 
   try {
     const { status } = await Location.requestBackgroundPermissionsAsync();
@@ -137,7 +139,7 @@ export async function scheduleCheckoutReminders(
         identifier: checkinId,
         latitude,
         longitude,
-        radius: GEOFENCE_RADIUS_METERS,
+        radius: geofenceRadiusMeters,
         notifyOnEnter: false,
         notifyOnExit: true,
       },

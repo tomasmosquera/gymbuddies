@@ -100,7 +100,8 @@
       "Bash(git mv *)",
       "Bash(node -e \"const j=require\\('./app.json'\\); console.log\\(JSON.stringify\\({version: j.expo.version, runtimeVersion: j.expo.runtimeVersion}, null, 2\\)\\)\")",
       "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" https://docs.expo.dev/versions/v54.0.0/sdk/video/)",
-      "Read(//c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/e29301fe-f3b4-4062-b55f-a5be21b2346f/scratchpad/**)"
+      "Read(//c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Documents-Gym-Buddies/e29301fe-f3b4-4062-b55f-a5be21b2346f/scratchpad/**)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies.expo\\)\")"
     ],
     "additionalDirectories": [
       "\\tmp",

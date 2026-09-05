@@ -53,11 +53,18 @@ export default function NotificationPreferencesScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [reminderMinutesInput, setReminderMinutesInput] = useState('20');
   const [isSavingReminderMinutes, setIsSavingReminderMinutes] = useState(false);
+  const [geofenceRadiusInput, setGeofenceRadiusInput] = useState('100');
+  const [isSavingGeofenceRadius, setIsSavingGeofenceRadius] = useState(false);
 
   useEffect(() => {
     if (profile) setReminderMinutesInput(String(profile.checkout_reminder_minutes));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-sync when this specific field changes, not on every profile refresh (which would clobber an unsaved edit)
   }, [profile?.checkout_reminder_minutes]);
+
+  useEffect(() => {
+    if (profile) setGeofenceRadiusInput(String(profile.checkout_geofence_radius_meters));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-sync when this specific field changes, not on every profile refresh (which would clobber an unsaved edit)
+  }, [profile?.checkout_geofence_radius_meters]);
 
   const refreshPermissionStatus = useCallback(async () => {
     const notif = await Notifications.getPermissionsAsync();
@@ -133,10 +140,30 @@ export default function NotificationPreferencesScreen() {
       const { error } = await supabase.rpc('set_checkout_reminder_minutes', { p_minutes: minutes });
       if (error) throw error;
       await refreshProfile();
+      Alert.alert('Guardado', 'Se actualizó el tiempo del recordatorio de foto final.');
     } catch (err) {
       Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {
       setIsSavingReminderMinutes(false);
+    }
+  };
+
+  const handleSaveGeofenceRadius = async () => {
+    const meters = Number(geofenceRadiusInput);
+    if (!geofenceRadiusInput || !Number.isInteger(meters) || meters < 20 || meters > 500) {
+      Alert.alert('Valor inválido', 'Ingresa una distancia en metros entre 20 y 500.');
+      return;
+    }
+    setIsSavingGeofenceRadius(true);
+    try {
+      const { error } = await supabase.rpc('set_checkout_geofence_radius_meters', { p_meters: meters });
+      if (error) throw error;
+      await refreshProfile();
+      Alert.alert('Guardado', 'Se actualizó la distancia del geofence de checkout.');
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingGeofenceRadius(false);
     }
   };
 
@@ -208,6 +235,24 @@ export default function NotificationPreferencesScreen() {
                   variant="secondary"
                   onPress={handleSaveReminderMinutes}
                   loading={isSavingReminderMinutes}
+                />
+              </View>
+            ) : null}
+            {prefs.reminders ? (
+              <View style={styles.reminderMinutesField}>
+                <TextField
+                  label="Distancia para avisar que te alejaste del gimnasio (metros)"
+                  hint="Qué tan lejos tienes que estar del gimnasio para que te lleguen el aviso — entre 20 y 500 metros."
+                  value={geofenceRadiusInput}
+                  onChangeText={(v) => setGeofenceRadiusInput(v.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                />
+                <Button
+                  label="Guardar"
+                  variant="secondary"
+                  onPress={handleSaveGeofenceRadius}
+                  loading={isSavingGeofenceRadius}
                 />
               </View>
             ) : null}

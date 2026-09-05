@@ -42,6 +42,8 @@ export type Profile = {
   auto_checkin_other_groups: boolean;
   /** Minutes after check-in before the "no olvides tu foto de salida" reminder fires — see set_checkout_reminder_minutes. Global per user, unlike the reminders on/off toggle which is per group. */
   checkout_reminder_minutes: number;
+  /** Geofence radius (meters) the member has to drift past their check-in spot before the checkout reminder fires — see set_checkout_geofence_radius_meters. Global per user, 20-500, default 100. */
+  checkout_geofence_radius_meters: number;
   /** Grants the ability to create/mark groups public — set once via a one-off migration, not client-settable. See list_public_groups/create_group/admin_set_group_public. */
   is_platform_admin: boolean;
   /** Consumed by create_group (1 per group), free to start (default 1, including a one-time backfill for every pre-existing profile). The platform admin never spends this. See admin_grant_group_creation_credits for the platform admin's manual top-up tool — in-app purchase isn't built yet. */
@@ -682,6 +684,7 @@ export type Database = {
       set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
       set_auto_checkin_other_groups: { Args: { p_enabled: boolean }; Returns: void };
       set_checkout_reminder_minutes: { Args: { p_minutes: number }; Returns: void };
+      set_checkout_geofence_radius_meters: { Args: { p_meters: number }; Returns: void };
       admin_find_user_by_email: {
         Args: { p_email: string };
         Returns: { id: string; full_name: string; group_creation_credits: number }[];

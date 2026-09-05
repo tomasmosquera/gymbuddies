@@ -30,6 +30,8 @@ interface FanOutParams {
   locationMocked: boolean;
   /** Only meaningful for the check-in side (fanOutCheckoutToOtherGroups never reads it) — omitted falls back to scheduleCheckoutReminders' own default. */
   reminderMinutes?: number;
+  /** Same as reminderMinutes above — omitted falls back to scheduleCheckoutReminders' own default. */
+  radiusMeters?: number;
 }
 
 /**
@@ -61,6 +63,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
     accuracyMeters,
     locationMocked,
     reminderMinutes,
+    radiusMeters,
   } = params;
   await Promise.all(
     otherGroups.map(async (m) => {
@@ -81,7 +84,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
         // data is null when a genuinely separate manual check-in already
         // existed that day in this group — respected as-is, nothing to do.
         if (data && m.group.require_checkout_photo) {
-          await scheduleCheckoutReminders(data.id, latitude, longitude, reminderMinutes);
+          await scheduleCheckoutReminders(data.id, latitude, longitude, reminderMinutes, radiusMeters);
         }
       } catch {
         // Best-effort — see function doc.
@@ -328,6 +331,7 @@ export default function CheckinPreviewScreen() {
           capturedAtDate,
           capturedAtIso: draft.capturedAt,
           reminderMinutes: profile?.checkout_reminder_minutes,
+          radiusMeters: profile?.checkout_geofence_radius_meters,
           latitude: draft.latitude,
           longitude: draft.longitude,
           accuracyMeters: draft.accuracyMeters,
@@ -336,7 +340,13 @@ export default function CheckinPreviewScreen() {
       }
 
       if (group.require_checkout_photo) {
-        await scheduleCheckoutReminders(checkinRow.id, draft.latitude, draft.longitude, profile?.checkout_reminder_minutes);
+        await scheduleCheckoutReminders(
+          checkinRow.id,
+          draft.latitude,
+          draft.longitude,
+          profile?.checkout_reminder_minutes,
+          profile?.checkout_geofence_radius_meters
+        );
       }
 
       // Buddy check-in: best-effort only, same spirit as the fan-out's own
