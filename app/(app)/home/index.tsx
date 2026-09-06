@@ -18,6 +18,7 @@ import { useLeaderboard } from '@/hooks/useLeaderboard';
 import { useLeaguePayoutPreview } from '@/hooks/useLeaguePayoutPreview';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useGroupDayAttendance, type MemberAttendance } from '@/hooks/useGroupDayAttendance';
+import { supabase } from '@/lib/supabase/client';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { useArrivalReminderSync } from '@/hooks/useArrivalReminderSync';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
@@ -252,6 +253,29 @@ export default function HomeScreen() {
     }
   };
 
+  // ✅ — the admin_only quick-validate column. Reuses the same
+  // set_attendance_override RPC as "Asignar día válido/fallado" in
+  // Administrar Miembros, just for today and with one tap, no evidence
+  // required. If the player later uploads a real check-in for today, the
+  // Dashboard shows their real photo/location/duration instead — see
+  // adminValidatedByDate in useGroupDayAttendance.
+  const handleValidate = async (memberId: string, memberName: string) => {
+    if (!group) return;
+    try {
+      const { error } = await supabase.rpc('set_attendance_override', {
+        p_group_id: group.id,
+        p_user_id: memberId,
+        p_date: todayString,
+        p_status: 'valid',
+      });
+      if (error) throw new Error(error.message);
+      await refreshTeamWeek();
+      Alert.alert('Día validado', `Se validó el día de ${memberName} sin necesidad de foto.`);
+    } catch (err) {
+      Alert.alert('No se pudo validar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
   const validOverrideDates = useMemo(
     () => new Set(weekOverrides.filter((o) => o.status === 'valid').map((o) => o.override_date)),
     [weekOverrides]
@@ -384,6 +408,8 @@ export default function HomeScreen() {
             isCurrentWeek={isCurrentWeek}
             canNudge={canNudge}
             onNudge={handleNudge}
+            canValidate={isAdminOnly}
+            onValidate={handleValidate}
           />
         ) : (
           <>
@@ -459,6 +485,8 @@ export default function HomeScreen() {
                   isCurrentWeek={isCurrentWeek}
                   canNudge={canNudge}
                   onNudge={handleNudge}
+                  canValidate={false}
+                  onValidate={handleValidate}
                 />
               </View>
             ) : null}
@@ -590,6 +618,8 @@ function TeamWeekRows({
   isCurrentWeek,
   canNudge,
   onNudge,
+  canValidate,
+  onValidate,
 }: {
   days: string[];
   todayString: string;
@@ -603,6 +633,9 @@ function TeamWeekRows({
   /** "Bud" — whether Bud would actually let me nudge this person right now (see useBuddyNudges). */
   canNudge: (recipientId: string) => boolean;
   onNudge: (recipientId: string, recipientName: string) => void;
+  /** ✅ — only an admin_only viewer gets this column at all (a playing member looking at "Ver todos" never sees it, even if they're the group's admin). */
+  canValidate: boolean;
+  onValidate: (memberId: string, memberName: string) => void;
 }) {
   // Me first (so I don't have to hunt for my own row), then everyone else
   // alphabetically — the emerald name color below is the only thing that
@@ -622,6 +655,7 @@ function TeamWeekRows({
             {label}
           </Text>
         ))}
+        {canValidate ? <Text style={[styles.dayLabel, styles.nudgeHeaderLabel]}>✅</Text> : null}
         <Text style={[styles.dayLabel, styles.nudgeHeaderLabel]}>Bud</Text>
       </View>
       {isLoading ? (
@@ -659,6 +693,31 @@ function TeamWeekRows({
                 </Pressable>
               );
             })}
+            {canValidate ? (
+              (() => {
+                // ✅ — same eligibility shape as "Bud" below: only today,
+                // never for my own row (admin_only never plays), and only
+                // while the member hasn't already decided today (no
+                // check-in, no override, not excused) — once validated,
+                // dailyStatus[todayString] flips to 'completed' and this
+                // slot goes back to a blank spacer.
+                const eligible =
+                  isCurrentWeek && member.user_id !== currentUserId && !member.dailyStatus[todayString];
+                if (!eligible) {
+                  return <View style={styles.nudgeSlot} />;
+                }
+                return (
+                  <Pressable
+                    key="validate"
+                    onPress={() => onValidate(member.user_id, member.full_name)}
+                    hitSlop={4}
+                    style={styles.nudgeSlot}
+                  >
+                    <Text style={styles.nudgeButtonText}>✅</Text>
+                  </Pressable>
+                );
+              })()
+            ) : null}
             {(() => {
               // "Bud" — only while viewing the current week (nudging someone
               // about a day that's already over is meaningless — this whole

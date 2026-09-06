@@ -25,6 +25,21 @@ export interface MemberAttendance {
   gbScore: number | null;
 }
 
+/**
+ * A day an admin marked 'valid' via set_attendance_override with no evidence
+ * attached (no checkins row at all) — e.g. the one-tap ✅ from Home's team
+ * table for an admin_only group. Dashboard renders this as "Validado por
+ * Admin" instead of the usual photo columns. If the member later submits a
+ * real check-in for the same date, that checkin (with its own photos/
+ * location/duration) takes precedence at render time — see checkinsByDate
+ * filtering at every call site — this record is never deleted, just shadowed.
+ */
+export interface AdminValidatedMember {
+  user_id: string;
+  full_name: string;
+  validated_at: string;
+}
+
 function addOneDay(dateString: string): string {
   const d = new Date(`${dateString}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -46,6 +61,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
   const [excusedMembersByDate, setExcusedMembersByDate] = useState<Map<string, { user_id: string; full_name: string }[]>>(
     new Map()
   );
+  const [adminValidatedByDate, setAdminValidatedByDate] = useState<Map<string, AdminValidatedMember[]>>(new Map());
   const [reactionsByCheckinId, setReactionsByCheckinId] = useState<Map<string, CheckinReaction[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   // Separate from isLoading: only a manual pull-to-refresh gesture should
@@ -62,6 +78,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         setMembers([]);
         setCheckinsByDate(new Map());
         setExcusedMembersByDate(new Map());
+        setAdminValidatedByDate(new Map());
         setReactionsByCheckinId(new Map());
         setIsLoading(false);
         setIsRefreshing(false);
@@ -103,7 +120,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
         .gte('requested_end_date', rangeStart),
       supabase
         .from('attendance_overrides')
-        .select('user_id, override_date, status')
+        .select('user_id, override_date, status, created_at')
         .eq('group_id', groupId)
         .gte('override_date', rangeStart)
         .lte('override_date', rangeEnd),
@@ -182,6 +199,20 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
       const entry = overridesByDate.get(o.override_date)!;
       if (o.status === 'valid') entry.valid.add(o.user_id);
       else entry.failed.add(o.user_id);
+    }
+
+    // 'valid' overrides with no evidence attached (no checkins row) — every
+    // consumer renders these as "Validado por Admin" instead of photos, and
+    // shows real check-in data instead whenever one exists for the same
+    // (user, date) — see checkinsByDate filtering at each call site.
+    const nextAdminValidatedByDate = new Map<string, AdminValidatedMember[]>();
+    for (const o of overridesRes.data ?? []) {
+      if (o.status !== 'valid') continue;
+      const fullName = fullNameByUserId.get(o.user_id);
+      if (!fullName) continue;
+      const list = nextAdminValidatedByDate.get(o.override_date) ?? [];
+      list.push({ user_id: o.user_id, full_name: fullName, validated_at: o.created_at });
+      nextAdminValidatedByDate.set(o.override_date, list);
     }
 
     const todayString = toZonedDateString(new Date(), timezone);
@@ -327,6 +358,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     setMembers(memberStats);
     setCheckinsByDate(visibleByDate);
     setExcusedMembersByDate(nextExcusedMembersByDate);
+    setAdminValidatedByDate(nextAdminValidatedByDate);
     setIsLoading(false);
     setIsRefreshing(false);
     },
@@ -375,6 +407,7 @@ export function useGroupDayAttendance(groupId: string | null, rangeStart: string
     members,
     checkinsByDate,
     excusedMembersByDate,
+    adminValidatedByDate,
     reactionsByCheckinId,
     isLoading,
     isRefreshing,

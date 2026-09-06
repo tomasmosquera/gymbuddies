@@ -12,11 +12,16 @@ import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
-import { useGroupDayAttendance, type DayAttendance, type MemberAttendance } from '@/hooks/useGroupDayAttendance';
+import {
+  useGroupDayAttendance,
+  type AdminValidatedMember,
+  type DayAttendance,
+  type MemberAttendance,
+} from '@/hooks/useGroupDayAttendance';
 import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
-import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
+import { formatZonedDateTime12h, getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
 import { GB_SCORE_EXPLANATION_BODY, GB_SCORE_EXPLANATION_TITLE } from '@/lib/domain/attendance';
 import { CHECKIN_LOCATION_MISMATCH_METERS, distanceMeters } from '@/lib/domain/geo';
 import { REACTION_EMOJIS, aggregateReactionCounts } from '@/lib/domain/reactions';
@@ -307,11 +312,46 @@ function DayCheckinRow({
   );
 }
 
+/**
+ * A day an admin validated with the ✅ one-tap from Home (or "Marcar válido"
+ * in Administrar Miembros) without attaching any evidence — no checkins row
+ * exists, so there's no photo/location/duration to show. Rendered instead of
+ * DayCheckinRow for that member/day; the moment a real check-in exists for
+ * the same date, every call site prefers it and this never renders alongside it.
+ */
+function AdminValidatedRow({
+  member,
+  timezone,
+  level,
+}: {
+  member: AdminValidatedMember;
+  timezone: string;
+  level?: number;
+}) {
+  return (
+    <View style={styles.checkinRow}>
+      <View style={styles.checkinNameRow}>
+        <View style={styles.checkinNameGroup}>
+          <AvatarWithLevel initials={getInitials(member.full_name)} level={level} size={28} />
+          <Text style={styles.checkinName} numberOfLines={1}>
+            {member.full_name}
+          </Text>
+        </View>
+        <Badge label="Validado por Admin ✅" tone="success" />
+      </View>
+      <Text style={styles.adminValidatedHint}>
+        Sin foto — validado el {formatZonedDateTime12h(new Date(member.validated_at), timezone)}.
+      </Text>
+    </View>
+  );
+}
+
 function DayRow({
   day,
   todayString,
   isExpanded,
   checkins,
+  adminValidatedMembers,
   minWorkoutMinutes,
   currentUserId,
   challengedCheckinIds,
@@ -328,6 +368,8 @@ function DayRow({
   todayString: string;
   isExpanded: boolean;
   checkins: GroupCheckinWithProfile[];
+  /** Already filtered to exclude anyone who also has a real checkin that day — see the "days" renderItem call site. */
+  adminValidatedMembers: AdminValidatedMember[];
   minWorkoutMinutes: number;
   currentUserId: string | null;
   challengedCheckinIds: Set<string>;
@@ -352,7 +394,7 @@ function DayRow({
         </View>
       </Pressable>
       {isExpanded ? (
-        checkins.length > 0 ? (
+        checkins.length > 0 || adminValidatedMembers.length > 0 ? (
           <View style={styles.checkinsList}>
             {checkins.map((c) => (
               <DayCheckinRow
@@ -371,6 +413,9 @@ function DayRow({
                 onRemoveReaction={() => onRemoveReaction(c.id)}
               />
             ))}
+            {adminValidatedMembers.map((m) => (
+              <AdminValidatedRow key={m.user_id} member={m} timezone={timezone} level={levelByUserId[m.user_id]} />
+            ))}
           </View>
         ) : (
           <Text style={styles.emptyDayText}>Nadie entrenó este día.</Text>
@@ -385,6 +430,7 @@ function MemberRow({
   isExpanded,
   days,
   checkinsByDate,
+  adminValidatedByDate,
   minWorkoutMinutes,
   currentUserId,
   challengedCheckinIds,
@@ -402,6 +448,7 @@ function MemberRow({
   isExpanded: boolean;
   days: DayAttendance[];
   checkinsByDate: Map<string, GroupCheckinWithProfile[]>;
+  adminValidatedByDate: Map<string, AdminValidatedMember[]>;
   minWorkoutMinutes: number;
   currentUserId: string | null;
   challengedCheckinIds: Set<string>;
@@ -445,24 +492,35 @@ function MemberRow({
 
             if (status === 'completed') {
               const checkin = checkinsByDate.get(day.date)?.find((c) => c.user_id === member.user_id);
-              if (!checkin) return null;
+              if (checkin) {
+                return (
+                  <View key={day.date}>
+                    <Text style={styles.memberDayLabel}>{formatDayLabel(day.date, todayString)}</Text>
+                    <DayCheckinRow
+                      checkin={checkin}
+                      minWorkoutMinutes={minWorkoutMinutes}
+                      timezone={timezone}
+                      isOwnCheckin={member.user_id === currentUserId}
+                      isChallenged={challengedCheckinIds.has(checkin.id)}
+                      reactions={reactionsByCheckinId.get(checkin.id) ?? []}
+                      currentUserId={currentUserId}
+                      level={levelByUserId[member.user_id]}
+                      onPressPhoto={onPressPhoto}
+                      onChallenge={() => onChallenge(checkin)}
+                      onReact={(emoji) => onReact(checkin.id, emoji)}
+                      onRemoveReaction={() => onRemoveReaction(checkin.id)}
+                    />
+                  </View>
+                );
+              }
+              // Completed with no real checkin row — an admin validated it
+              // (see adminValidatedByDate in useGroupDayAttendance).
+              const validated = adminValidatedByDate.get(day.date)?.find((m) => m.user_id === member.user_id);
+              if (!validated) return null;
               return (
                 <View key={day.date}>
                   <Text style={styles.memberDayLabel}>{formatDayLabel(day.date, todayString)}</Text>
-                  <DayCheckinRow
-                    checkin={checkin}
-                    minWorkoutMinutes={minWorkoutMinutes}
-                    timezone={timezone}
-                    isOwnCheckin={member.user_id === currentUserId}
-                    isChallenged={challengedCheckinIds.has(checkin.id)}
-                    reactions={reactionsByCheckinId.get(checkin.id) ?? []}
-                    currentUserId={currentUserId}
-                    level={levelByUserId[member.user_id]}
-                    onPressPhoto={onPressPhoto}
-                    onChallenge={() => onChallenge(checkin)}
-                    onReact={(emoji) => onReact(checkin.id, emoji)}
-                    onRemoveReaction={() => onRemoveReaction(checkin.id)}
-                  />
+                  <AdminValidatedRow member={validated} timezone={timezone} level={levelByUserId[member.user_id]} />
                 </View>
               );
             }
@@ -535,8 +593,18 @@ export default function DashboardScreen() {
     return { rangeStart: start, rangeEnd: todayString };
   }, [viewMode, calendarMonth, period, group?.created_at, todayString, timezone]);
 
-  const { days, members, checkinsByDate, excusedMembersByDate, reactionsByCheckinId, isRefreshing, refresh, react, removeReaction } =
-    useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd, timezone);
+  const {
+    days,
+    members,
+    checkinsByDate,
+    excusedMembersByDate,
+    adminValidatedByDate,
+    reactionsByCheckinId,
+    isRefreshing,
+    refresh,
+    react,
+    removeReaction,
+  } = useGroupDayAttendance(group?.id ?? null, rangeStart, rangeEnd, timezone);
   const { membersBadges } = useGroupBadges(group?.id ?? null, timezone);
   const levelByUserId = useMemo(
     () => Object.fromEntries(membersBadges.map((m) => [m.userId, m.level.level])),
@@ -680,6 +748,9 @@ export default function DashboardScreen() {
               todayString={todayString}
               isExpanded={expandedDate === item.date}
               checkins={checkinsByDate.get(item.date) ?? []}
+              adminValidatedMembers={(adminValidatedByDate.get(item.date) ?? []).filter(
+                (m) => !(checkinsByDate.get(item.date) ?? []).some((c) => c.user_id === m.user_id)
+              )}
               minWorkoutMinutes={group.min_workout_minutes}
               timezone={group.timezone}
               currentUserId={session?.user.id ?? null}
@@ -709,6 +780,7 @@ export default function DashboardScreen() {
               member={item}
               days={days}
               checkinsByDate={checkinsByDate}
+              adminValidatedByDate={adminValidatedByDate}
               isExpanded={expandedMemberId === item.user_id}
               minWorkoutMinutes={group.min_workout_minutes}
               currentUserId={session?.user.id ?? null}
@@ -760,29 +832,41 @@ export default function DashboardScreen() {
               </Pressable>
             </View>
             <ScrollView style={styles.modalScroll}>
-              {expandedCalendarDate && (checkinsByDate.get(expandedCalendarDate)?.length ?? 0) > 0 ? (
-                <View style={styles.checkinsList}>
-                  {checkinsByDate.get(expandedCalendarDate)!.map((c) => (
-                    <DayCheckinRow
-                      key={c.id}
-                      checkin={c}
-                      minWorkoutMinutes={group.min_workout_minutes}
-                      timezone={group.timezone}
-                      isOwnCheckin={c.user_id === session?.user.id}
-                      isChallenged={challengedCheckinIds.has(c.id)}
-                      reactions={reactionsByCheckinId.get(c.id) ?? []}
-                      currentUserId={session?.user.id ?? null}
-                      level={levelByUserId[c.user_id]}
-                      onPressPhoto={setViewingPhotoPath}
-                      onChallenge={() => handleChallenge(c)}
-                      onReact={(emoji) => handleReact(c.id, emoji)}
-                      onRemoveReaction={() => handleRemoveReaction(c.id)}
-                    />
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.emptyDayText}>Nadie entrenó este día.</Text>
-              )}
+              {(() => {
+                const dayCheckins = expandedCalendarDate ? checkinsByDate.get(expandedCalendarDate) ?? [] : [];
+                const dayValidated = expandedCalendarDate
+                  ? (adminValidatedByDate.get(expandedCalendarDate) ?? []).filter(
+                      (m) => !dayCheckins.some((c) => c.user_id === m.user_id)
+                    )
+                  : [];
+                if (dayCheckins.length === 0 && dayValidated.length === 0) {
+                  return <Text style={styles.emptyDayText}>Nadie entrenó este día.</Text>;
+                }
+                return (
+                  <View style={styles.checkinsList}>
+                    {dayCheckins.map((c) => (
+                      <DayCheckinRow
+                        key={c.id}
+                        checkin={c}
+                        minWorkoutMinutes={group.min_workout_minutes}
+                        timezone={group.timezone}
+                        isOwnCheckin={c.user_id === session?.user.id}
+                        isChallenged={challengedCheckinIds.has(c.id)}
+                        reactions={reactionsByCheckinId.get(c.id) ?? []}
+                        currentUserId={session?.user.id ?? null}
+                        level={levelByUserId[c.user_id]}
+                        onPressPhoto={setViewingPhotoPath}
+                        onChallenge={() => handleChallenge(c)}
+                        onReact={(emoji) => handleReact(c.id, emoji)}
+                        onRemoveReaction={() => handleRemoveReaction(c.id)}
+                      />
+                    ))}
+                    {dayValidated.map((m) => (
+                      <AdminValidatedRow key={m.user_id} member={m} timezone={group.timezone} level={levelByUserId[m.user_id]} />
+                    ))}
+                  </View>
+                );
+              })()}
             </ScrollView>
           </Card>
         </View>
@@ -913,6 +997,7 @@ const styles = StyleSheet.create({
   checkinNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   checkinNameGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   checkinName: { color: colors.text, fontWeight: '700', fontSize: 14, flexShrink: 1 },
+  adminValidatedHint: { color: colors.textMuted, fontSize: 13 },
   photosRow: { flexDirection: 'row', gap: spacing.md },
   durationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   duration: { color: colors.text, fontWeight: '600', fontSize: 13 },
