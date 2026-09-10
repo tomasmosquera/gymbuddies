@@ -3,8 +3,8 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.gymbuddies.app",
-      "sha256_cert_fingerprints": ["SHA256_FINGERPRINT_PLACEHOLDER"]
+      "package_name": "com.gymbuddiestm.app",
+      "sha256_cert_fingerprints": ["B6:AC:87:69:6C:E4:4E:59:51:50:10:F4:1D:0D:E9:4A:6B:36:59:42:DE:9E:E6:95:B7:56:C9:5C:DC:4E:B4:33"]
     }
   }
 ]
