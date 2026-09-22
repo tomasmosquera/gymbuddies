@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Alert, AppState, Platform, type AppStateStatus } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase/client';
-import { getActiveEnergyBurnedKcal, requestAppleHealthAuthorization } from '@/lib/health/appleHealth';
+import { getActiveEnergyBurnedKcal, requestHealthAuthorization } from '@/lib/health';
 
 const SYNC_LOOKBACK_HOURS = 72;
 
@@ -17,13 +17,16 @@ export function useAppleHealthOnboardingPrompt() {
   const hasPromptedRef = useRef(false);
 
   useEffect(() => {
-    if (Platform.OS !== 'ios' || !session || !profile || hasPromptedRef.current) return;
+    if ((Platform.OS !== 'ios' && Platform.OS !== 'android') || !session || !profile || hasPromptedRef.current) return;
     if (profile.apple_health_prompted_at !== null) return;
     hasPromptedRef.current = true;
 
+    const isIOS = Platform.OS === 'ios';
     Alert.alert(
-      'Conectar Apple Health',
-      'Gym Buddies puede leer las calorías activas que quemaste durante tus entrenos desde Apple Health (si usas un Apple Watch u otro dispositivo conectado) y mostrarlas junto a tus check-ins.',
+      isIOS ? 'Conectar Apple Health' : 'Conectar Health Connect',
+      isIOS
+        ? 'Gym Buddies puede leer las calorías activas que quemaste durante tus entrenos desde Apple Health (si usas un Apple Watch u otro dispositivo conectado) y mostrarlas junto a tus check-ins.'
+        : 'Gym Buddies puede leer las calorías activas que quemaste durante tus entrenos desde Health Connect (Samsung Health, Fitbit, Garmin u otras apps conectadas) y mostrarlas junto a tus check-ins.',
       [
         {
           text: 'Ahora no',
@@ -41,7 +44,7 @@ export function useAppleHealthOnboardingPrompt() {
           text: 'Conectar',
           onPress: async () => {
             try {
-              await requestAppleHealthAuthorization();
+              await requestHealthAuthorization();
               await supabase.rpc('set_apple_health_enabled', { p_enabled: true });
               await refreshProfile();
             } catch {
@@ -55,23 +58,23 @@ export function useAppleHealthOnboardingPrompt() {
 }
 
 /**
- * iOS has no reliable "run this in exactly N minutes" background scheduling,
- * so instead of trying to time the calorie fetch precisely after checkout,
- * this retries it opportunistically: once on mount and again every time the
- * app comes back to the foreground, re-checking EVERY checkout from the
- * last 72h (not just ones still missing a value) — Health can take a while
- * to fully sync from a Watch, so an earlier attempt may have saved an
- * undercounted partial sum. set_checkin_active_energy only ever raises the
- * stored value, never lowers it, so re-querying an already-filled checkin
- * is safe: a later, more complete read corrects it upward; a same-or-lower
- * read is silently ignored server-side.
+ * Neither platform has reliable "run this in exactly N minutes" background
+ * scheduling, so instead of trying to time the calorie fetch precisely after
+ * checkout, this retries it opportunistically: once on mount and again every
+ * time the app comes back to the foreground, re-checking EVERY checkout from
+ * the last 72h (not just ones still missing a value) — Health/Health Connect
+ * can take a while to fully sync from a Watch/wearable, so an earlier attempt
+ * may have saved an undercounted partial sum. set_checkin_active_energy only
+ * ever raises the stored value, never lowers it, so re-querying an
+ * already-filled checkin is safe: a later, more complete read corrects it
+ * upward; a same-or-lower read is silently ignored server-side.
  */
 export function useAppleHealthForegroundSync() {
   const { session, profile } = useAuth();
   const isSyncingRef = useRef(false);
 
   const syncPendingCheckouts = useCallback(async () => {
-    if (Platform.OS !== 'ios' || !session || !profile?.apple_health_enabled) return;
+    if ((Platform.OS !== 'ios' && Platform.OS !== 'android') || !session || !profile?.apple_health_enabled) return;
     if (isSyncingRef.current) return;
     isSyncingRef.current = true;
     try {

@@ -37,7 +37,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED"
       ],
       "intentFilters": [
         {
@@ -96,6 +98,17 @@
         "@kingstinct/react-native-healthkit",
         {
           "NSHealthShareUsageDescription": "Gym Buddies puede leer las calorías activas quemadas durante tu entreno desde Apple Health, si lo conectas."
+        }
+      ],
+      "react-native-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 26
+          }
         }
       ],
       "expo-video",

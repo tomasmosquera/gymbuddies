@@ -14,7 +14,7 @@ import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtil
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
 import { setLastCheckinDateCache } from '@/lib/notifications/checkinArrivalCache';
 import { todayLocalDateString } from '@/lib/domain/checkinReminders';
-import { getActiveEnergyBurnedKcal } from '@/lib/health/appleHealth';
+import { getActiveEnergyBurnedKcal } from '@/lib/health';
 import { findBuddyPartner } from '@/lib/domain/geo';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
