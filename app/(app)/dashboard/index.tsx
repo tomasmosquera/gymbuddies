@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -877,27 +877,32 @@ export default function DashboardScreen() {
         onClose={() => setViewingPhotoPath(null)}
       />
       <Modal visible={challengeTarget !== null} transparent animationType="fade" onRequestClose={() => setChallengeTarget(null)}>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Pedir votación</Text>
-            <Text style={styles.modalBody}>
-              ¿Por qué crees que el check-in de {challengeTarget?.profile.full_name} no debería ser válido? El grupo
-              podrá leer este motivo para votar. Si la mayoría (o el admin) decide que no es válida, ese día contará
-              como fallado para esa persona.
-            </Text>
-            <TextField
-              label="Motivo (obligatorio)"
-              value={challengeReason}
-              onChangeText={setChallengeReason}
-              multiline
-              placeholder="Ej: la foto no muestra el gimnasio, la fecha no cuadra..."
-            />
-            <View style={styles.modalActions}>
-              <Button label="Cancelar" variant="secondary" onPress={() => setChallengeTarget(null)} disabled={isSubmittingChallenge} />
-              <Button label="Pedir votación" onPress={handleSubmitChallenge} loading={isSubmittingChallenge} />
-            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalCardScrollContent}>
+              <Text style={styles.modalTitle}>Pedir votación</Text>
+              <Text style={styles.modalBody}>
+                ¿Por qué crees que el check-in de {challengeTarget?.profile.full_name} no debería ser válido? El grupo
+                podrá leer este motivo para votar. Si la mayoría (o el admin) decide que no es válida, ese día contará
+                como fallado para esa persona.
+              </Text>
+              <TextField
+                label="Motivo (obligatorio)"
+                value={challengeReason}
+                onChangeText={setChallengeReason}
+                multiline
+                placeholder="Ej: la foto no muestra el gimnasio, la fecha no cuadra..."
+              />
+              <View style={styles.modalActions}>
+                <Button label="Cancelar" variant="secondary" onPress={() => setChallengeTarget(null)} disabled={isSubmittingChallenge} />
+                <Button label="Pedir votación" onPress={handleSubmitChallenge} loading={isSubmittingChallenge} />
+              </View>
+            </ScrollView>
           </Card>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -913,7 +918,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
-  modalCard: { width: '100%', gap: spacing.md, maxHeight: '80%' },
+  modalCard: { width: '100%', maxHeight: '80%' },
+  modalCardScrollContent: { gap: spacing.md },
   modalTitle: { ...typography.heading, color: colors.text },
   modalBody: { color: colors.textMuted, fontSize: 13 },
   modalActions: { flexDirection: 'row', gap: spacing.sm },
