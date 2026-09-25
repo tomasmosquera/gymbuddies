@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1080, height=1920">
+    <title>Gym Buddies — brag</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/audio-data.js"></script>
+    <style>
+      @font-face { font-family: "Inter"; font-weight: 400; src: url("assets/fonts/inter-400.woff2") format("woff2"); }
+      @font-face { font-family: "Inter"; font-weight: 600; src: url("assets/fonts/inter-600.woff2") format("woff2"); }
+      @font-face { font-family: "Inter"; font-weight: 700; src: url("assets/fonts/inter-700.woff2") format("woff2"); }
+      @font-face { font-family: "Inter"; font-weight: 800; src: url("assets/fonts/inter-800.woff2") format("woff2"); }
+
+      :root {
+        --bg: #0b0f14;
+        --surface: #161c24;
+        --surface-alt: #1f2733;
+        --border: #2a3441;
+        --text: #f5f7fa;
+        --muted: #9aa7b5;
+        --mint: #3ddc97;
+        --on-mint: #04140d;
+        --danger: #ff6b6b;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: var(--bg); }
+      body { font-family: "Inter", system-ui, sans-serif; color: var(--text); }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+
+      /* ---------- persistent background ---------- */
+      #grid {
+        position: absolute; left: 0; top: 0; width: 100%; height: 2100px; opacity: 0.45;
+        background-image:
+          linear-gradient(to right, rgba(42, 52, 65, 0.6) 2px, transparent 2px),
+          linear-gradient(to bottom, rgba(42, 52, 65, 0.6) 2px, transparent 2px);
+        background-size: 90px 90px;
+      }
+      #glow-a {
+        position: absolute; left: -380px; top: -320px; width: 1400px; height: 1400px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(61, 220, 151, 0.2) 0%, rgba(61, 220, 151, 0) 62%);
+      }
+      #glow-b {
+        position: absolute; right: -520px; bottom: -520px; width: 1500px; height: 1500px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(61, 220, 151, 0.12) 0%, rgba(61, 220, 151, 0) 62%);
+      }
+      #wipe { position: absolute; left: 0; top: 0; width: 100%; height: 1920px; background: var(--mint); z-index: 50; }
+
+      .scene { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+      .inner { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+
+      .title { margin: 0; max-width: 900px; font-weight: 800; font-size: 76px; line-height: 1.1; letter-spacing: -0.02em; }
+      .eyebrow { font-weight: 600; font-size: 30px; letter-spacing: 0.1em; color: var(--mint); }
+
+      /* ---------- scene 1 ---------- */
+      #notif {
+        position: absolute; left: 90px; right: 90px; top: 250px; height: 190px; padding: 0 34px;
+        display: flex; align-items: center; gap: 28px;
+        background: rgba(22, 28, 36, 0.96); border: 2px solid var(--border); border-radius: 44px;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+      }
+      .notif-icon { width: 112px; height: 112px; border-radius: 28px; object-fit: cover; flex: none; }
+      .notif-body { flex: 1; }
+      .notif-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+      .notif-app { font-weight: 600; font-size: 30px; color: var(--muted); }
+      .notif-time { font-weight: 400; font-size: 28px; color: var(--muted); }
+      .notif-text { font-weight: 700; font-size: 46px; line-height: 1.1; }
+      .hook { position: absolute; left: 90px; top: 830px; display: flex; flex-direction: column; gap: 8px; }
+      .hook span { display: block; font-weight: 800; letter-spacing: -0.025em; }
+      #h1 { font-size: 104px; line-height: 1.05; }
+      #h2 { font-size: 144px; line-height: 1.05; }
+      #h3 { font-size: 144px; line-height: 1.05; color: var(--danger); }
+      #ghost1 {
+        position: absolute; left: 60px; top: 1490px; font-weight: 800; font-size: 200px; line-height: 1;
+        letter-spacing: -0.04em; color: var(--danger); opacity: 0.14; white-space: nowrap;
+      }
+
+      /* ---------- scene 2 ---------- */
+      #phone {
+        position: absolute; left: 210px; top: 170px; width: 660px; height: 1240px; padding: 26px;
+        background: var(--bg); border: 6px solid var(--border); border-radius: 80px;
+        box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(61, 220, 151, 0.18);
+        display: flex; flex-direction: column;
+      }
+      .steps { height: 92px; margin-top: 26px; display: flex; gap: 14px; align-items: center; justify-content: center; }
+      .pill {
+        display: inline-grid; padding: 0 26px; height: 70px; align-items: center; justify-items: center;
+        border: 2px solid var(--border); border-radius: 999px; background: var(--surface);
+        font-weight: 700; font-size: 30px;
+      }
+      .pill span { grid-area: 1 / 1; white-space: nowrap; }
+      .pill .off { color: var(--muted); }
+      .pill .on { color: var(--on-mint); }
+      #pill1-on { opacity: 0; }
+      .cam {
+        position: relative; height: 810px; border-radius: 44px; overflow: hidden;
+        background: var(--surface); border: 2px solid var(--border);
+      }
+      .cam-grid {
+        position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+        background-image:
+          linear-gradient(to right, transparent 33%, rgba(245, 247, 250, 0.14) 33%, rgba(245, 247, 250, 0.14) calc(33% + 2px), transparent calc(33% + 2px), transparent 66%, rgba(245, 247, 250, 0.14) 66%, rgba(245, 247, 250, 0.14) calc(66% + 2px), transparent calc(66% + 2px)),
+          linear-gradient(to bottom, transparent 33%, rgba(245, 247, 250, 0.14) 33%, rgba(245, 247, 250, 0.14) calc(33% + 2px), transparent calc(33% + 2px), transparent 66%, rgba(245, 247, 250, 0.14) 66%, rgba(245, 247, 250, 0.14) calc(66% + 2px), transparent calc(66% + 2px));
+      }
+      .barbell { position: absolute; left: 100px; top: 250px; width: 420px; height: 168px; }
+      #loc {
+        position: absolute; left: 24px; top: 24px; padding: 14px 24px; border-radius: 999px;
+        background: var(--mint); color: var(--on-mint); font-weight: 700; font-size: 30px;
+      }
+      #flash { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: #fff; opacity: 0; }
+      #wm {
+        position: absolute; left: 24px; bottom: 24px; padding: 12px 22px; border-radius: 16px;
+        background: rgba(11, 15, 20, 0.78); font-weight: 600; font-size: 28px; color: var(--text);
+      }
+      .shutter-row { position: relative; height: 176px; display: flex; align-items: center; justify-content: center; }
+      .shutter { width: 128px; height: 128px; border-radius: 50%; border: 8px solid var(--text); display: flex; align-items: center; justify-content: center; }
+      #shutter-in { width: 92px; height: 92px; border-radius: 50%; background: var(--text); }
+      #tap { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+      #tap-dot { width: 104px; height: 104px; border-radius: 50%; border: 6px solid rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.2); }
+      #done {
+        height: 84px; display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 36px; color: var(--mint);
+      }
+      .cap { position: absolute; left: 90px; right: 90px; top: 1490px; }
+      .cap span { display: block; font-weight: 800; font-size: 60px; line-height: 1.12; letter-spacing: -0.02em; }
+      #cap2 { color: var(--mint); }
+
+      /* ---------- scene 5 ---------- */
+      #s5-eyebrow { position: absolute; left: 90px; top: 170px; }
+      #s5-title { position: absolute; left: 90px; top: 232px; }
+      #s5-rule {
+        position: absolute; left: 90px; top: 470px; padding: 14px 28px; border-radius: 999px;
+        border: 2px solid var(--border); background: var(--surface); font-weight: 600; font-size: 34px; color: var(--muted);
+      }
+      #s5-rule b { color: var(--text); font-weight: 700; }
+      #board {
+        position: absolute; left: 90px; top: 590px; width: 900px; border-radius: 48px; overflow: hidden;
+        background: var(--surface); border: 2px solid var(--border); box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+      .board-head { height: 84px; padding: 0 44px; display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 30px; color: var(--muted); letter-spacing: 0.06em; }
+      .row { position: relative; height: 240px; padding: 0 44px; display: flex; align-items: center; gap: 32px; border-top: 2px solid var(--border); }
+      .avatar {
+        width: 124px; height: 124px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+        background: var(--surface-alt); color: var(--mint); font-weight: 800; font-size: 46px;
+      }
+      .who { flex: 1; }
+      .name { font-weight: 800; font-size: 56px; line-height: 1.1; }
+      .sub { margin-top: 6px; font-weight: 600; font-size: 34px; color: var(--muted); }
+      .ok { padding: 12px 26px; border-radius: 999px; background: rgba(61, 220, 151, 0.16); color: var(--mint); font-weight: 700; font-size: 38px; }
+      .miss { font-weight: 800; font-size: 68px; letter-spacing: -0.02em; color: var(--danger); display: block; }
+      #row-c { background: rgba(255, 107, 107, 0.12); }
+      #row-c .avatar { color: var(--danger); background: rgba(255, 107, 107, 0.18); }
+      #row-c .sub { color: var(--danger); }
+      .board-foot { height: 110px; padding: 0 44px; display: flex; align-items: center; justify-content: space-between; border-top: 2px solid var(--border); font-weight: 600; font-size: 34px; color: var(--muted); }
+      .board-foot b { color: var(--text); font-weight: 800; font-size: 44px; }
+
+      /* ---------- scene 6 ---------- */
+      #s6-title { position: absolute; left: 90px; top: 200px; }
+      #payout {
+        position: absolute; left: 90px; top: 590px; width: 900px; border-radius: 48px; overflow: hidden;
+        background: var(--surface); border: 2px solid var(--border); box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+      .payout-head { height: 104px; padding: 0 44px; display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 44px; }
+      .payout-head span:last-child { font-weight: 600; font-size: 32px; color: var(--muted); }
+      .prow { position: relative; height: 236px; padding: 0 44px; display: flex; align-items: center; gap: 28px; border-top: 2px solid var(--border); overflow: hidden; }
+      .winner-glow { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+      .winner-glow-audio { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: radial-gradient(circle at 78% 50%, rgba(61, 220, 151, 0.24) 0%, rgba(61, 220, 151, 0) 60%); }
+      .rank { width: 84px; flex: none; text-align: center; font-weight: 800; font-size: 56px; color: var(--muted); position: relative; }
+      .pwho { flex: 1; position: relative; }
+      .pamt { position: relative; text-align: right; }
+      .amt { display: block; font-weight: 800; font-size: 60px; letter-spacing: -0.02em; }
+      .delta { display: block; margin-top: 4px; font-weight: 700; font-size: 32px; }
+      .delta.up { color: var(--mint); }
+      .delta.down { color: var(--danger); }
+      #liquidar {
+        height: 128px; margin: 0 44px 44px; border-radius: 24px; background: var(--mint); color: var(--on-mint);
+        display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 44px;
+      }
+      .liq-wrap { padding-top: 10px; border-top: 2px solid var(--border); padding-top: 44px; }
+
+      /* ---------- scene 7 ---------- */
+      #glow5 { position: absolute; left: 40px; top: 300px; width: 1000px; height: 1000px; }
+      #glow5-audio { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, rgba(61, 220, 151, 0.26) 0%, rgba(61, 220, 151, 0) 62%); }
+      #logo5 { position: absolute; left: 110px; top: 640px; width: 860px; height: 277px; mix-blend-mode: lighten; }
+      #brand5 { position: absolute; left: 0; top: 960px; width: 100%; text-align: center; font-weight: 800; font-size: 104px; letter-spacing: -0.03em; color: var(--mint); }
+      .tag5 { position: absolute; left: 0; top: 1200px; width: 100%; text-align: center; }
+      .tag5 span { display: block; font-weight: 800; letter-spacing: -0.025em; }
+      #t5a { font-size: 100px; line-height: 1.05; }
+      #t5b { margin-top: 14px; font-size: 112px; line-height: 1.05; color: var(--mint); }
+
+      /* ---------- scene 3: reacciones ---------- */
+      #s3-title { position: absolute; left: 90px; top: 200px; }
+      #s3-title span { display: block; }
+      #s3-t2 { color: var(--mint); }
+      #rx-card {
+        position: absolute; left: 90px; top: 560px; width: 900px; border-radius: 48px; overflow: hidden;
+        background: var(--surface); border: 2px solid var(--border); box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+      .rx-head { height: 150px; padding: 0 40px; display: flex; align-items: center; gap: 24px; }
+      .rx-head .avatar { width: 96px; height: 96px; font-size: 38px; }
+      .rx-who { flex: 1; }
+      .rx-who .name { font-size: 48px; }
+      .rx-tag { padding: 10px 24px; border-radius: 999px; background: var(--surface-alt); border: 2px solid var(--border); font-weight: 700; font-size: 30px; color: var(--muted); }
+      .rx-photo { position: relative; height: 640px; background: var(--surface-alt); border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); overflow: hidden; }
+      .rx-photo svg { position: absolute; left: 168px; top: 208px; width: 560px; height: 224px; }
+      .rx-wm { position: absolute; left: 28px; bottom: 28px; padding: 12px 22px; border-radius: 16px; background: rgba(11, 15, 20, 0.78); font-weight: 600; font-size: 28px; color: var(--text); }
+      .rx-bar { height: 168px; padding: 0 40px; display: flex; align-items: center; gap: 20px; }
+      .chip { display: flex; align-items: center; gap: 14px; height: 100px; padding: 0 32px; border-radius: 999px; background: var(--surface-alt); border: 2px solid var(--border); font-size: 50px; }
+      .chip b { font-weight: 800; font-size: 44px; color: var(--text); }
+      #chip2 { border-color: var(--mint); background: rgba(61, 220, 151, 0.14); }
+
+      /* ---------- scene 4: votacion de reglas ---------- */
+      #s4-title { position: absolute; left: 90px; top: 200px; }
+      #vote-card {
+        position: absolute; left: 90px; top: 560px; width: 900px; border-radius: 48px; overflow: hidden;
+        background: var(--surface); border: 2px solid var(--border); box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+      .vote-head { display: grid; height: 112px; padding: 0 44px; align-items: center; font-weight: 800; font-size: 42px; border-bottom: 2px solid var(--border); }
+      .vote-head span { grid-area: 1 / 1; }
+      #vh-b { color: var(--mint); opacity: 0; }
+      .vote-prop { height: 380px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+      .prop-label { font-weight: 600; font-size: 36px; color: var(--muted); }
+      .prop-change { display: flex; align-items: center; gap: 44px; font-weight: 800; font-size: 190px; line-height: 1; letter-spacing: -0.03em; }
+      .prop-change .old { color: var(--muted); }
+      .prop-change .arrow { font-size: 110px; color: var(--muted); }
+      .prop-change .new { color: var(--mint); }
+      .vrow { height: 130px; padding: 0 44px; display: flex; align-items: center; gap: 28px; border-top: 2px solid var(--border); }
+      .vrow .avatar { width: 84px; height: 84px; font-size: 34px; }
+      .vrow .name { flex: 1; font-size: 46px; }
+      .vstat { display: inline-grid; justify-items: end; font-weight: 700; font-size: 38px; }
+      .vstat span { grid-area: 1 / 1; white-space: nowrap; }
+      .vstat .p { color: var(--muted); }
+      .vstat .y { color: var(--mint); opacity: 0; }
+      .vote-foot { display: grid; height: 100px; padding: 0 44px; align-items: center; border-top: 2px solid var(--border); font-weight: 700; font-size: 36px; color: var(--muted); }
+      .vote-foot span { grid-area: 1 / 1; }
+      #vf-b { color: var(--mint); opacity: 0; }
+      #vote-note { position: absolute; left: 90px; top: 1590px; font-weight: 700; font-size: 44px; color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-s2p6" id="root" data-composition-id="brag" data-start="0" data-width="1080" data-height="1920" data-duration="30">
+      <div data-hf-id="hf-gs5t" id="grid"></div>
+      <div data-hf-id="hf-km24" id="glow-a"></div>
+      <div data-hf-id="hf-vhjr" id="glow-b"></div>
+
+      <!-- Scene 1: Hook 0-4 -->
+      <section data-hf-id="hf-iimh" id="s1" class="clip scene" data-start="0" data-duration="4" data-track-index="1">
+        <div data-hf-id="hf-lm34" class="inner">
+          <div data-hf-id="hf-bfrx" id="notif">
+            <img data-hf-id="hf-tkyd" class="notif-icon" src="assets/app-icon.png" alt="">
+            <div data-hf-id="hf-29en" class="notif-body">
+              <div data-hf-id="hf-1nnl" class="notif-head"><span data-hf-id="hf-axry" class="notif-app">Gym Buddies</span><span data-hf-id="hf-tm7c" class="notif-time">ahora</span></div>
+              <div data-hf-id="hf-y8x6" class="notif-text">No olvides tu check-in</div>
+            </div>
+          </div>
+          <div data-hf-id="hf-7sj9" class="hook">
+            <span data-hf-id="hf-4t5q" id="h1">Faltas al gym.</span>
+            <span data-hf-id="hf-2yx4" id="h2">Tus amigos</span>
+            <span data-hf-id="hf-5jpi" id="h3">cobran.</span>
+          </div>
+          <div data-hf-id="hf-7dz5" id="ghost1">−$20.000</div>
+        </div>
+      </section>
+
+      <!-- Scene 2: La prueba 4-8.5 -->
+      <section data-hf-id="hf-b7ii" id="s2" class="clip scene" data-start="4" data-duration="4.5" data-track-index="2">
+        <div data-hf-id="hf-0mm6" id="s2-inner" class="inner">
+          <div data-hf-id="hf-5iuv" id="phone">
+            <div data-hf-id="hf-70xd" class="steps">
+              <span data-hf-id="hf-or40" id="pill1" class="pill"><span data-hf-id="hf-l2vk" id="pill1-off" class="off">1. Foto Inicial</span><span data-hf-id="hf-n8f9" id="pill1-on" class="on">1. Foto Inicial ✓</span></span>
+              <span data-hf-id="hf-xezv" id="pill2" class="pill"><span data-hf-id="hf-tr3i" class="off">2. Foto Final</span></span>
+            </div>
+            <div data-hf-id="hf-for8" id="cam" class="cam">
+              <div data-hf-id="hf-j5ua" class="cam-grid"></div>
+              <svg data-hf-id="hf-2l30" class="barbell" viewBox="0 0 400 160" aria-hidden="true">
+                <rect data-hf-id="hf-snb9" x="10" y="74" width="380" height="12" rx="6" fill="#9aa7b5" />
+                <rect data-hf-id="hf-01nv" x="62" y="16" width="28" height="128" rx="7" fill="#3ddc97" />
+                <rect data-hf-id="hf-ghdf" x="98" y="32" width="24" height="96" rx="7" fill="#f5f7fa" />
+                <rect data-hf-id="hf-jqb9" x="278" y="32" width="24" height="96" rx="7" fill="#f5f7fa" />
+                <rect data-hf-id="hf-bt9f" x="310" y="16" width="28" height="128" rx="7" fill="#3ddc97" />
+              </svg>
+              <div data-hf-id="hf-trgz" id="loc">📍 Ubicación lista</div>
+              <div data-hf-id="hf-mdyt" id="wm">📍 Bogotá · 18:02</div>
+              <div data-hf-id="hf-hmg5" id="flash"></div>
+            </div>
+            <div data-hf-id="hf-5kd8" class="shutter-row">
+              <div data-hf-id="hf-7xes" id="shutter" class="shutter"><div data-hf-id="hf-jx8k" id="shutter-in"></div></div>
+              <div data-hf-id="hf-u8x4" id="tap"><div data-hf-id="hf-qa32" id="tap-dot"></div></div>
+            </div>
+            <div data-hf-id="hf-dmxd" id="done">Ya hiciste check-in hoy ✓</div>
+          </div>
+          <div data-hf-id="hf-2mgg" class="cap">
+            <span data-hf-id="hf-kudu" id="cap1">Foto desde la cámara.</span>
+            <span data-hf-id="hf-30l2" id="cap2">Nada de galería.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 3: Reacciones 8.5-13 -->
+      <section data-hf-id="hf-az03" id="s3" class="clip scene" data-start="8.5" data-duration="4.5" data-track-index="3">
+        <div data-hf-id="hf-ougz" id="s3-inner" class="inner">
+          <h2 data-hf-id="hf-up2q" id="s3-title" class="title"><span data-hf-id="hf-z3h4" id="s3-t1">Tus amigos ven tu foto.</span><span data-hf-id="hf-eool" id="s3-t2">Y reaccionan.</span></h2>
+          <div data-hf-id="hf-7j9u" id="rx-card">
+            <div data-hf-id="hf-pf15" class="rx-head">
+              <div data-hf-id="hf-iqcr" class="avatar">SA</div>
+              <div data-hf-id="hf-3931" class="rx-who"><div data-hf-id="hf-d9nn" class="name">Santi</div><div data-hf-id="hf-6e88" class="sub">Hoy · 18:02</div></div>
+              <div data-hf-id="hf-qd9s" class="rx-tag">Foto Inicial</div>
+            </div>
+            <div data-hf-id="hf-qb3d" class="rx-photo">
+              <div data-hf-id="hf-9jfa" class="cam-grid"></div>
+              <svg data-hf-id="hf-jxlz" viewBox="0 0 400 160" aria-hidden="true">
+                <rect data-hf-id="hf-yee1" x="10" y="74" width="380" height="12" rx="6" fill="#9aa7b5" />
+                <rect data-hf-id="hf-g9qj" x="62" y="16" width="28" height="128" rx="7" fill="#3ddc97" />
+                <rect data-hf-id="hf-m0yb" x="98" y="32" width="24" height="96" rx="7" fill="#f5f7fa" />
+                <rect data-hf-id="hf-f2g9" x="278" y="32" width="24" height="96" rx="7" fill="#f5f7fa" />
+                <rect data-hf-id="hf-qqxv" x="310" y="16" width="28" height="128" rx="7" fill="#3ddc97" />
+              </svg>
+              <div data-hf-id="hf-jsjf" class="rx-wm">📍 Bogotá · 18:02</div>
+            </div>
+            <div data-hf-id="hf-zmdi" class="rx-bar">
+              <div data-hf-id="hf-0p7o" id="chip1" class="chip">💪🏼<b data-hf-id="hf-rxpx">2</b></div>
+              <div data-hf-id="hf-f63m" id="chip2" class="chip">🔥<b data-hf-id="hf-sc0y">3</b></div>
+              <div data-hf-id="hf-s2sm" id="chip3" class="chip">🫃<b data-hf-id="hf-t4n0">1</b></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 4: Votacion de reglas 13-17.22 -->
+      <section data-hf-id="hf-9uf7" id="s4" class="clip scene" data-start="13" data-duration="4.22" data-track-index="4">
+        <div data-hf-id="hf-jkaw" id="s4-inner" class="inner">
+          <h2 data-hf-id="hf-vbza" id="s4-title" class="title">Las reglas las votan todos.</h2>
+          <div data-hf-id="hf-a8ek" id="vote-card">
+            <div data-hf-id="hf-up37" class="vote-head"><span data-hf-id="hf-edtm" id="vh-a">Votación de reglas en curso 🗳️</span><span data-hf-id="hf-ywqo" id="vh-b">Cambio de reglas aprobado ✓</span></div>
+            <div data-hf-id="hf-2wia" class="vote-prop">
+              <div data-hf-id="hf-58fv" class="prop-label">Días mínimos por semana</div>
+              <div data-hf-id="hf-gf6c" class="prop-change"><span data-hf-id="hf-d5zt" class="old">3</span><span data-hf-id="hf-v68i" class="arrow">→</span><span data-hf-id="hf-ysmb" class="new">4</span></div>
+            </div>
+            <div data-hf-id="hf-6whw" id="v-a" class="vrow"><div data-hf-id="hf-ic1q" class="avatar">SA</div><div data-hf-id="hf-dnyo" class="name">Santi</div><div data-hf-id="hf-bp54" class="vstat"><span data-hf-id="hf-zmrl" class="p">Pendiente</span><span data-hf-id="hf-k08g" class="y" id="v-a-y">✓ A favor</span></div></div>
+            <div data-hf-id="hf-fkdr" id="v-b" class="vrow"><div data-hf-id="hf-h6wm" class="avatar">VA</div><div data-hf-id="hf-cm02" class="name">Vale</div><div data-hf-id="hf-d6dc" class="vstat"><span data-hf-id="hf-1251" class="p">Pendiente</span><span data-hf-id="hf-8i1x" class="y" id="v-b-y">✓ A favor</span></div></div>
+            <div data-hf-id="hf-bm9q" id="v-c" class="vrow"><div data-hf-id="hf-nys6" class="avatar">JU</div><div data-hf-id="hf-bjf2" class="name">Juan</div><div data-hf-id="hf-bzg9" class="vstat"><span data-hf-id="hf-2924" class="p">Pendiente</span></div></div>
+            <div data-hf-id="hf-4i1l" class="vote-foot"><span data-hf-id="hf-58kv" id="vf-a">Mayoría necesaria: 2 de 3</span><span data-hf-id="hf-lc1t" id="vf-b">Mayoría alcanzada ✓</span></div>
+          </div>
+          <div data-hf-id="hf-d1mo" id="vote-note">Se aplica el próximo lunes.</div>
+        </div>
+      </section>
+
+      <!-- Scene 5: La cuenta del lunes 17.22-22.22 -->
+      <section data-hf-id="hf-y2lh" id="s5" class="clip scene" data-start="17.22" data-duration="5" data-track-index="5">
+        <div data-hf-id="hf-k7gj" id="s5-inner" class="inner">
+          <div data-hf-id="hf-x14j" id="s5-eyebrow" class="eyebrow">LUNES 00:00 · CORTE SEMANAL</div>
+          <h2 data-hf-id="hf-c9l2" id="s5-title" class="title">Cada lunes se hace la cuenta.</h2>
+          <div data-hf-id="hf-mecf" id="s5-rule">Mínimo <b data-hf-id="hf-58e2">4 días</b> · <b data-hf-id="hf-uhh3">$20.000</b> por falta</div>
+          <div data-hf-id="hf-7y3j" id="board">
+            <div data-hf-id="hf-2fxj" class="board-head"><span data-hf-id="hf-bla2">MIEMBRO</span><span data-hf-id="hf-3g5q">SEMANA</span></div>
+            <div data-hf-id="hf-1nnw" id="row-a" class="row">
+              <div data-hf-id="hf-rukr" class="avatar">SA</div>
+              <div data-hf-id="hf-xhzk" class="who"><div data-hf-id="hf-cqgi" class="name">Santi</div><div data-hf-id="hf-hlmk" class="sub">4/4 días</div></div>
+              <div data-hf-id="hf-e3h8" class="ok">Cumplió ✓</div>
+            </div>
+            <div data-hf-id="hf-abjr" id="row-b" class="row">
+              <div data-hf-id="hf-0uia" class="avatar">VA</div>
+              <div data-hf-id="hf-e2p4" class="who"><div data-hf-id="hf-u4rz" class="name">Vale</div><div data-hf-id="hf-a3hw" class="sub">4/4 días</div></div>
+              <div data-hf-id="hf-nifo" class="ok">Cumplió ✓</div>
+            </div>
+            <div data-hf-id="hf-6dfq" id="row-c" class="row">
+              <div data-hf-id="hf-hitu" class="avatar">JU</div>
+              <div data-hf-id="hf-cvs1" class="who"><div data-hf-id="hf-gxx7" class="name">Juan</div><div data-hf-id="hf-fmy5" class="sub">1/4 días</div></div>
+              <span data-hf-id="hf-qosa" id="row-c-amt" class="miss">−$60.000</span>
+            </div>
+            <div data-hf-id="hf-gfod" class="board-foot"><span data-hf-id="hf-4nds">Saldo total del grupo</span><b data-hf-id="hf-3gop">$600.000</b></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 6: Reparto de hoy 22.22-26.72 -->
+      <section data-hf-id="hf-oapx" id="s6" class="clip scene" data-start="22.22" data-duration="4.5" data-track-index="6">
+        <div data-hf-id="hf-0u5s" id="s6-inner" class="inner">
+          <h2 data-hf-id="hf-ji1u" id="s6-title" class="title">Lo que pierde uno, lo reparten los demás.</h2>
+          <div data-hf-id="hf-u87v" id="payout">
+            <div data-hf-id="hf-j8dl" class="payout-head"><span data-hf-id="hf-5uvt">Reparto de hoy</span><span data-hf-id="hf-fywx">Pozo $600.000</span></div>
+            <div data-hf-id="hf-0xoy" id="p-santi" class="prow">
+              <div data-hf-id="hf-713l" class="winner-glow"><div data-hf-id="hf-glzg" class="winner-glow-audio"></div></div>
+              <div data-hf-id="hf-nsu4" class="rank">🏆</div>
+              <div data-hf-id="hf-c9k8" class="pwho"><div data-hf-id="hf-cvcm" class="name">Santi</div></div>
+              <div data-hf-id="hf-fzpa" class="pamt"><span data-hf-id="hf-itgn" id="amt-santi" class="amt">$200.000</span><span data-hf-id="hf-0n62" class="delta up">+$30.000</span></div>
+            </div>
+            <div data-hf-id="hf-mjch" id="p-vale" class="prow">
+              <div data-hf-id="hf-6hfp" class="winner-glow"><div data-hf-id="hf-b2hw" class="winner-glow-audio"></div></div>
+              <div data-hf-id="hf-7sqc" class="rank">🏆</div>
+              <div data-hf-id="hf-hfts" class="pwho"><div data-hf-id="hf-d0b3" class="name">Vale</div></div>
+              <div data-hf-id="hf-8nky" class="pamt"><span data-hf-id="hf-n11e" id="amt-vale" class="amt">$200.000</span><span data-hf-id="hf-2ia6" class="delta up">+$30.000</span></div>
+            </div>
+            <div data-hf-id="hf-vshp" id="p-juan" class="prow">
+              <div data-hf-id="hf-yocr" class="rank">3</div>
+              <div data-hf-id="hf-g8wp" class="pwho"><div data-hf-id="hf-bxq3" class="name">Juan</div></div>
+              <div data-hf-id="hf-91vz" class="pamt"><span data-hf-id="hf-sp1c" class="amt">$140.000</span><span data-hf-id="hf-4dhd" class="delta down">−$60.000</span></div>
+            </div>
+            <div data-hf-id="hf-z7if" class="liq-wrap"><div data-hf-id="hf-cr8s" id="liquidar">Liquidar ahora</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scene 7: Outro 26.72-30 -->
+      <section data-hf-id="hf-kivl" id="s7" class="clip scene" data-start="26.72" data-duration="3.28" data-track-index="7">
+        <div data-hf-id="hf-bug8" class="inner">
+          <div data-hf-id="hf-e8ev" id="glow5"><div data-hf-id="hf-g0dy" id="glow5-audio"></div></div>
+          <img data-hf-id="hf-nty9" id="logo5" src="assets/icon-header.png" alt="Gym Buddies">
+          <div data-hf-id="hf-u9n0" id="brand5">Gym Buddies</div>
+          <div data-hf-id="hf-58tp" class="tag5"><span data-hf-id="hf-2sqh" id="t5a">Ve al gym</span><span data-hf-id="hf-trsz" id="t5b">Con tus amigos</span></div>
+        </div>
+      </section>
+
+      <div data-hf-id="hf-omfg" id="wipe"></div>
+
+      <!-- Audio -->
+      <audio data-hf-id="hf-2743" id="music" src="assets/music/happy-beats-business-moves-vol-10-by-ende-dot-app.mp3" data-start="0" data-duration="30" data-track-index="10" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:0.4,&quot;v&quot;:0.33},{&quot;t&quot;:28.6,&quot;v&quot;:0.33},{&quot;t&quot;:30,&quot;v&quot;:0}]}]}"></audio>
+      <audio data-hf-id="hf-gdm8" id="sfx-notif" src="assets/sfx/interface/bong_001.ogg" data-start="0.2" data-duration="0.15" data-track-index="11" data-volume="0.55"></audio>
+      <audio data-hf-id="hf-z26n" id="sfx-slam" src="assets/sfx/impact/impactSoft_medium_001.ogg" data-start="2.46" data-duration="0.2" data-track-index="12" data-volume="0.75"></audio>
+      <audio data-hf-id="hf-wa28" id="sfx-shutter" src="assets/sfx/interface/click_003.ogg" data-start="5.85" data-duration="0.05" data-track-index="13" data-volume="0.8"></audio>
+      <audio data-hf-id="hf-56jk" id="sfx-pill" src="assets/sfx/interface/switch_007.ogg" data-start="6.05" data-duration="0.65" data-track-index="14" data-volume="0.6"></audio>
+      <audio data-hf-id="hf-yelv" id="sfx-chip-1" src="assets/sfx/interface/click_005.ogg" data-start="10.93" data-duration="0.05" data-track-index="15" data-volume="0.45"></audio>
+      <audio data-hf-id="hf-1k31" id="sfx-chip-2" src="assets/sfx/interface/click_005.ogg" data-start="11.47" data-duration="0.05" data-track-index="16" data-volume="0.45"></audio>
+      <audio data-hf-id="hf-mht7" id="sfx-chip-3" src="assets/sfx/interface/click_005.ogg" data-start="12.02" data-duration="0.05" data-track-index="17" data-volume="0.45"></audio>
+      <audio data-hf-id="hf-44uf" id="sfx-vote-1" src="assets/sfx/interface/click_002.ogg" data-start="14.73" data-duration="0.05" data-track-index="18" data-volume="0.5"></audio>
+      <audio data-hf-id="hf-306g" id="sfx-vote-2" src="assets/sfx/interface/click_002.ogg" data-start="15.28" data-duration="0.05" data-track-index="19" data-volume="0.5"></audio>
+      <audio data-hf-id="hf-wcmn" id="sfx-approve" src="assets/sfx/interface/bong_001.ogg" data-start="15.82" data-duration="0.15" data-track-index="20" data-volume="0.6"></audio>
+      <audio data-hf-id="hf-2g2j" id="sfx-row-a" src="assets/sfx/casino/card-slide-1.ogg" data-start="18.55" data-duration="0.65" data-track-index="21" data-volume="0.55"></audio>
+      <audio data-hf-id="hf-x8ra" id="sfx-row-b" src="assets/sfx/casino/card-slide-1.ogg" data-start="19.64" data-duration="0.65" data-track-index="22" data-volume="0.55"></audio>
+      <audio data-hf-id="hf-lsfa" id="sfx-row-c" src="assets/sfx/impact/impactSoft_medium_002.ogg" data-start="20.74" data-duration="0.14" data-track-index="23" data-volume="0.7"></audio>
+      <audio data-hf-id="hf-ccm3" id="sfx-tick-1" src="assets/sfx/interface/click_002.ogg" data-start="23.92" data-duration="0.05" data-track-index="24" data-volume="0.35"></audio>
+      <audio data-hf-id="hf-rjx6" id="sfx-tick-2" src="assets/sfx/interface/click_002.ogg" data-start="24.27" data-duration="0.05" data-track-index="25" data-volume="0.35"></audio>
+      <audio data-hf-id="hf-gl4w" id="sfx-payoff" src="assets/sfx/interface/bong_001.ogg" data-start="24.56" data-duration="0.15" data-track-index="26" data-volume="0.6"></audio>
+      <audio data-hf-id="hf-c4gj" id="sfx-logo" src="assets/sfx/impact/impactBell_heavy_000.ogg" data-start="26.74" data-duration="1.5" data-track-index="27" data-volume="0.7"></audio>
+      <audio data-hf-id="hf-58db" id="sfx-tag" src="assets/sfx/impact/impactSoft_medium_004.ogg" data-start="28.92" data-duration="0.15" data-track-index="28" data-volume="0.6"></audio>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      const OUT = "power3.out";
+      const SNAP = "back.out(1.7)";
+
+      // ambient background motion
+      tl.to("#grid", { y: -180, duration: 21, ease: "none" }, 0);
+      tl.to("#glow-a", { x: 120, y: 90, duration: 21, ease: "none" }, 0);
+      tl.to("#glow-b", { x: -100, y: -80, duration: 21, ease: "none" }, 0);
+
+      // ---- Scene 1: hook (0-4) ----
+      tl.from("#notif", { y: -260, opacity: 0, duration: 0.55, ease: OUT }, 0.2);
+      tl.from("#h1", { y: 70, opacity: 0, duration: 0.5, ease: OUT }, 0.9);
+      tl.to("#notif", { opacity: 0.4, duration: 0.4, ease: "power2.out" }, 2.2);
+      tl.from("#h2", { x: -90, opacity: 0, duration: 0.45, ease: OUT }, 1.9); // beat-grid: 1.90s
+      tl.from("#h3", { scale: 1.35, opacity: 0, transformOrigin: "0% 50%", duration: 0.4, ease: SNAP }, 2.46); // beat-grid: 2.46s
+      tl.from("#ghost1", { y: 60, opacity: 0, duration: 0.6, ease: OUT }, 2.5);
+
+      // wipe S1 -> S2 (covers the frame at 4.0s)
+      tl.fromTo("#wipe", { y: 1920 }, { y: -1920, duration: 0.5, ease: "power3.inOut" }, 3.75);
+
+      // ---- Scene 2: la prueba (4-8.5) ----
+      tl.from("#phone", { y: 140, opacity: 0, duration: 0.55, ease: OUT }, 4.1);
+      tl.from("#loc", { scale: 0.7, opacity: 0, transformOrigin: "0% 0%", duration: 0.35, ease: SNAP }, 4.75);
+      tl.fromTo("#tap", { x: 170, y: 130, opacity: 0 }, { x: 0, y: 0, opacity: 1, duration: 0.5, ease: "power2.out" }, 5.25);
+      tl.to("#tap-dot", { scale: 0.78, duration: 0.1, ease: "power2.in" }, 5.85);
+      tl.to("#tap-dot", { scale: 1, duration: 0.15, ease: "power2.out" }, 5.95);
+      tl.to("#shutter-in", { scale: 0.84, duration: 0.1, ease: "power2.in" }, 5.85);
+      tl.to("#shutter-in", { scale: 1, duration: 0.18, ease: "power2.out" }, 5.95);
+      tl.fromTo("#flash", { opacity: 0 }, { opacity: 0.9, duration: 0.06, ease: "none" }, 5.87);
+      tl.to("#flash", { opacity: 0, duration: 0.22, ease: "power2.out" }, 5.93);
+      tl.to("#tap", { opacity: 0, duration: 0.25, ease: "power1.out" }, 6.15);
+      tl.from("#wm", { y: 24, opacity: 0, duration: 0.35, ease: OUT }, 6.0);
+      tl.to("#pill1-off", { opacity: 0, duration: 0.15, ease: "none" }, 6.02);
+      tl.to("#pill1-on", { opacity: 1, duration: 0.15, ease: "none" }, 6.02);
+      tl.to("#pill1", { backgroundColor: "#3ddc97", borderColor: "#3ddc97", duration: 0.2, ease: "power1.out" }, 6.02);
+      tl.from("#cap1", { y: 50, opacity: 0, duration: 0.45, ease: OUT }, 6.1);
+      tl.from("#cap2", { y: 50, opacity: 0, duration: 0.45, ease: OUT }, 6.5);
+      tl.from("#done", { y: 30, opacity: 0, duration: 0.4, ease: OUT }, 7.4);
+      tl.to("#s2-inner", { x: -140, opacity: 0, duration: 0.3, ease: "power2.in" }, 8.2);
+
+      // ---- Scene 3: reacciones (8.5-13) ----
+      tl.from("#s3-inner", { x: 140, opacity: 0, duration: 0.4, ease: OUT }, 8.5);
+      tl.from("#s3-t1", { y: 50, opacity: 0, duration: 0.5, ease: OUT }, 8.68);
+      tl.from("#s3-t2", { y: 50, opacity: 0, duration: 0.5, ease: OUT }, 9.28);
+      tl.from("#rx-card", { y: 40, opacity: 0, duration: 0.45, ease: OUT }, 9.4);
+      // beat-grid: chip 1 at 10.93s, chip 2 at 11.47s, chip 3 at 12.02s
+      tl.from("#chip1", { scale: 0.6, opacity: 0, transformOrigin: "0% 50%", duration: 0.35, ease: SNAP }, 10.93);
+      tl.from("#chip2", { scale: 0.6, opacity: 0, transformOrigin: "0% 50%", duration: 0.35, ease: SNAP }, 11.47);
+      tl.from("#chip3", { scale: 0.6, opacity: 0, transformOrigin: "0% 50%", duration: 0.35, ease: SNAP }, 12.02);
+      tl.to("#s3-inner", { opacity: 0, duration: 0.3, ease: "power2.in" }, 12.7);
+
+      // ---- Scene 4: votacion de reglas (13-17.22) ----
+      tl.from("#s4-inner", { opacity: 0, duration: 0.4, ease: "power1.out" }, 13.0);
+      tl.from("#s4-title", { y: 50, opacity: 0, duration: 0.5, ease: OUT }, 13.2);
+      tl.from("#vote-card", { y: 40, opacity: 0, duration: 0.45, ease: OUT }, 13.5);
+      tl.from(".prop-change", { scale: 0.85, opacity: 0, duration: 0.45, ease: SNAP }, 13.8);
+      tl.from(".vrow", { x: 60, opacity: 0, duration: 0.35, stagger: 0.1, ease: OUT }, 14.0);
+      // beat-grid: vote 1 at 14.73s, vote 2 at 15.28s; beat-locked: approval at 15.82s
+      tl.to("#v-a .p", { opacity: 0, duration: 0.15, ease: "none" }, 14.73);
+      tl.to("#v-a-y", { opacity: 1, duration: 0.15, ease: "none" }, 14.73);
+      tl.to("#v-b .p", { opacity: 0, duration: 0.15, ease: "none" }, 15.28);
+      tl.to("#v-b-y", { opacity: 1, duration: 0.15, ease: "none" }, 15.28);
+      tl.to("#vh-a", { opacity: 0, duration: 0.2, ease: "none" }, 15.82);
+      tl.to("#vh-b", { opacity: 1, duration: 0.2, ease: "none" }, 15.82);
+      tl.to("#vf-a", { opacity: 0, duration: 0.2, ease: "none" }, 15.82);
+      tl.to("#vf-b", { opacity: 1, duration: 0.2, ease: "none" }, 15.82);
+      tl.to("#vote-card", { borderColor: "#3ddc97", duration: 0.25, ease: "power1.out" }, 15.82);
+      tl.from("#vote-note", { y: 30, opacity: 0, duration: 0.4, ease: OUT }, 15.95);
+      tl.to("#s4-inner", { x: -140, opacity: 0, duration: 0.3, ease: "power2.in" }, 16.92);
+
+      // ---- Scene 5: la cuenta del lunes (17.22-22.22) ----
+      const SH = 8.72; // 16 beats: the original tally/payout/outro blocks keep their beat alignment
+      tl.from("#s5-inner", { x: 140, opacity: 0, duration: 0.4, ease: OUT }, 8.5 + SH);
+      tl.from("#s5-eyebrow", { y: 20, opacity: 0, duration: 0.35, ease: OUT }, 8.6 + SH);
+      tl.from("#s5-title", { y: 50, opacity: 0, duration: 0.5, ease: OUT }, 8.68 + SH);
+      tl.from("#s5-rule", { y: 30, opacity: 0, duration: 0.4, ease: OUT }, 9.05 + SH);
+      tl.from("#board", { y: 40, opacity: 0, duration: 0.4, ease: OUT }, 9.3 + SH);
+      // beat-grid (every other beat): row a 18.55s, row b 19.64s, row c 20.74s
+      tl.from("#row-a", { x: 90, opacity: 0, duration: 0.45, ease: OUT }, 18.55);
+      tl.from("#row-b", { x: 90, opacity: 0, duration: 0.45, ease: OUT }, 19.64);
+      tl.from("#row-c", { x: 90, opacity: 0, duration: 0.45, ease: OUT }, 20.74);
+      tl.from("#row-c-amt", { scale: 1.3, transformOrigin: "100% 50%", duration: 0.4, ease: SNAP }, 20.82);
+      tl.to("#s5-inner", { opacity: 0, duration: 0.3, ease: "power2.in" }, 13.2 + SH);
+
+      // ---- Scene 6: reparto de hoy (22.22-26.72) ----
+      tl.from("#s6-inner", { opacity: 0, duration: 0.4, ease: "power1.out" }, 13.5 + SH);
+      tl.from("#s6-title", { y: 50, opacity: 0, duration: 0.5, ease: OUT }, 13.7 + SH);
+      tl.from("#payout", { y: 40, opacity: 0, duration: 0.45, ease: OUT }, 14.0 + SH);
+      tl.from("#p-santi", { x: 80, opacity: 0, duration: 0.35, ease: OUT }, 14.3 + SH);
+      tl.from("#p-vale", { x: 80, opacity: 0, duration: 0.35, ease: OUT }, 14.6 + SH);
+      tl.from("#p-juan", { x: 80, opacity: 0, duration: 0.35, ease: OUT }, 14.9 + SH);
+      const fmt = (n) => "$" + String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      const share = { v: 200000 };
+      const santi = document.getElementById("amt-santi");
+      const vale = document.getElementById("amt-vale");
+      tl.to(share, {
+        v: 230000, duration: 0.82, ease: "power2.out",
+        onUpdate: () => { santi.textContent = fmt(share.v); vale.textContent = fmt(share.v); },
+      }, 23.74); // lands on strong cue 24.56s
+      tl.from(".delta", { y: 16, opacity: 0, duration: 0.3, stagger: 0.08, ease: OUT }, 24.56); // beat-locked: 24.56s
+      tl.from(".winner-glow", { opacity: 0, duration: 0.4, ease: "power1.out" }, 24.56);
+      tl.from("#liquidar", { y: 30, opacity: 0, duration: 0.4, ease: OUT }, 16.4 + SH);
+
+      // ---- Scene 7: outro (26.72-30) ----
+      tl.from("#logo5", { scale: 1.35, opacity: 0, duration: 0.5, ease: "power4.out" }, 26.74); // beat-locked: 26.74s
+      tl.from("#glow5", { scale: 0.8, opacity: 0, duration: 0.7, ease: OUT }, 26.74);
+      tl.from("#brand5", { y: 40, opacity: 0, duration: 0.45, ease: OUT }, 18.55 + SH);
+      tl.from("#t5a", { y: 50, opacity: 0, duration: 0.45, ease: OUT }, 19.1 + SH);
+      tl.from("#t5b", { scale: 1.2, opacity: 0, transformOrigin: "50% 50%", duration: 0.4, ease: SNAP }, 28.92); // beat-locked: 28.92s
+
+      // ---- Audio-reactive (subtle): background glow, logo glow, winner glow ----
+      (function () {
+        if (typeof AUDIO_DATA === "undefined") return;
+        const bgA = document.getElementById("glow-a");
+        const logoGlow = document.getElementById("glow5-audio");
+        const winners = document.querySelectorAll(".winner-glow-audio");
+        const avg = (b, i, j) => { let s = 0; for (let k = i; k <= j; k++) s += b[k]; return s / (j - i + 1); };
+        const total = Math.min(AUDIO_DATA.totalFrames, 30 * AUDIO_DATA.fps);
+        for (let f = 0; f < total; f++) {
+          tl.call(((fr) => () => {
+            const b = fr.bands;
+            const bass = avg(b, 0, 1), all = avg(b, 0, 15), treble = avg(b, 12, 14);
+            gsap.set(bgA, { scale: 1 + 0.06 * bass, opacity: 0.7 + 0.3 * all });
+            gsap.set(logoGlow, { scale: 1 + 0.07 * bass, opacity: 0.6 + 0.4 * treble });
+            gsap.set(winners, { opacity: 0.35 + 0.65 * all });
+          })(AUDIO_DATA.frames[f]), [], f / AUDIO_DATA.fps);
+        }
+      })();
+
+      window.__timelines["brag"] = tl;
+    </script>
+  </body>
+</html>

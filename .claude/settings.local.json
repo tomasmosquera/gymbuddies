@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(git clone *)",
+      "Bash(npx supabase db push:*)",
       "Bash(rm -rf /tmp/gymbuddies_clone && git clone https://github.com/tomasmosquera/gymbuddies.git /tmp/gymbuddies_clone 2>&1)",
       "Bash(node -e ' *)",
       "Bash(npm install *)",
