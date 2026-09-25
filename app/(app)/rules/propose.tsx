@@ -64,7 +64,7 @@ export default function ProposeRuleChangeScreen() {
   const [requireCheckoutPhoto, setRequireCheckoutPhoto] = useState<'no_change' | 'yes' | 'no'>('no_change');
   const [minWorkoutMinutes, setMinWorkoutMinutes] = useState('');
   const [payoutMode, setPayoutMode] = useState<'no_change' | PayoutMode>('no_change');
-  const [leagueDurationMonths, setLeagueDurationMonths] = useState('');
+  const [leagueDurationWeeks, setLeagueDurationWeeks] = useState('');
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>([]);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
   const [descensoRankCount, setDescensoRankCount] = useState('');
@@ -177,7 +177,7 @@ export default function ProposeRuleChangeScreen() {
       requireCheckoutPhoto: requireCheckoutPhoto === 'no_change' ? undefined : requireCheckoutPhoto === 'yes',
       minWorkoutMinutes: minWorkoutMinutes ? Number(minWorkoutMinutes) : undefined,
       payoutMode: payoutMode === 'no_change' ? undefined : payoutMode,
-      leagueDurationMonths: leagueDurationMonths ? Number(leagueDurationMonths) : undefined,
+      leagueDurationWeeks: leagueDurationWeeks ? Number(leagueDurationWeeks) : undefined,
       leaguePrizeSplits: leaguePrizeSplits.length > 0 ? leaguePrizeSplits.map(Number) : undefined,
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
       descensoRankCount: descensoRankCount ? Number(descensoRankCount) : undefined,
@@ -207,8 +207,8 @@ export default function ProposeRuleChangeScreen() {
         }),
         ...(result.data.minWorkoutMinutes !== undefined && { min_workout_minutes: result.data.minWorkoutMinutes }),
         ...(result.data.payoutMode !== undefined && { payout_mode: result.data.payoutMode }),
-        ...(result.data.leagueDurationMonths !== undefined && {
-          league_duration_months: result.data.leagueDurationMonths,
+        ...(result.data.leagueDurationWeeks !== undefined && {
+          league_duration_weeks: result.data.leagueDurationWeeks,
         }),
         ...(result.data.leaguePrizeSplits !== undefined && { league_prize_splits: result.data.leaguePrizeSplits }),
         ...(result.data.mixedLeagueSharePercent !== undefined && {
@@ -271,7 +271,7 @@ export default function ProposeRuleChangeScreen() {
   if (minWorkoutMinutes) changeRows.push({ label: 'Duración mínima del entreno', value: `${minWorkoutMinutes} min` });
   if (exitFeeAmount) changeRows.push({ label: 'Cuota por salir sin aviso', value: `COP ${Number(exitFeeAmount).toLocaleString('es-CO')}` });
   if (exitNoticeDays) changeRows.push({ label: 'Días de aviso para salir gratis', value: exitNoticeDays });
-  if (leagueDurationMonths) changeRows.push({ label: 'Duración del ciclo de Liga', value: `${leagueDurationMonths} mes(es)` });
+  if (leagueDurationWeeks) changeRows.push({ label: 'Duración del ciclo de Liga', value: `${leagueDurationWeeks} semana(s)` });
   if (leaguePrizeSplits.some((v) => v.trim())) {
     changeRows.push({ label: 'Premio por puesto', value: leaguePrizeSplits.filter((v) => v.trim()).map((v) => `${v}%`).join(' · ') });
   }
@@ -402,12 +402,12 @@ export default function ProposeRuleChangeScreen() {
           <>
             <Card style={styles.stepCard}>
               <TextField
-                label="Duración del ciclo de Liga (meses)"
-                hint={RULE_FIELD_HELP.leagueDurationMonths}
-                value={leagueDurationMonths}
-                onChangeText={setLeagueDurationMonths}
+                label="Duración del ciclo de Liga (semanas)"
+                hint={RULE_FIELD_HELP.leagueDurationWeeks}
+                value={leagueDurationWeeks}
+                onChangeText={setLeagueDurationWeeks}
                 keyboardType="numeric"
-                placeholder={group ? String(group.league_duration_months) : ''}
+                placeholder={group ? String(group.league_duration_weeks) : ''}
               />
               <View>
                 {group ? (

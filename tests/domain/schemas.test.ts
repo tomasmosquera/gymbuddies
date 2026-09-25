@@ -92,11 +92,30 @@ describe('createGroupSchema', () => {
       penaltyAmount: 15000,
       weeklyPenaltyCap: 300000,
       payoutMode: 'league',
-      leagueDurationMonths: 6,
+      leagueDurationWeeks: 26,
       leaguePrizeSplits: [100],
       gameStartsAt: '2026-08-15',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('defaults the league cycle to 13 weeks and enforces the 1-104 week range', () => {
+    const base = {
+      name: 'Gym Buddies Bogotá',
+      initialDepositAmount: 100000,
+      minDaysPerWeek: 3,
+      penaltyAmount: 15000,
+      weeklyPenaltyCap: 300000,
+    };
+    const defaulted = createGroupSchema.safeParse(base);
+    expect(defaulted.success).toBe(true);
+    if (defaulted.success) expect(defaulted.data.leagueDurationWeeks).toBe(13);
+
+    expect(createGroupSchema.safeParse({ ...base, leagueDurationWeeks: 1 }).success).toBe(true);
+    expect(createGroupSchema.safeParse({ ...base, leagueDurationWeeks: 104 }).success).toBe(true);
+    expect(createGroupSchema.safeParse({ ...base, leagueDurationWeeks: 0 }).success).toBe(false);
+    expect(createGroupSchema.safeParse({ ...base, leagueDurationWeeks: 105 }).success).toBe(false);
+    expect(createGroupSchema.safeParse({ ...base, leagueDurationWeeks: 4.5 }).success).toBe(false);
   });
 
   it('rejects league prize splits summing over 100%', () => {
@@ -153,7 +172,7 @@ describe('ruleProposalSchema', () => {
   it('accepts a payout-mode change with valid league fields', () => {
     const result = ruleProposalSchema.safeParse({
       payoutMode: 'league',
-      leagueDurationMonths: 3,
+      leagueDurationWeeks: 13,
       leaguePrizeSplits: [60, 30, 10],
     });
     expect(result.success).toBe(true);

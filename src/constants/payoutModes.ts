@@ -22,7 +22,7 @@ export type ModeSpecificField = 'attendanceRules' | 'leagueConfig' | 'mixedShare
  * a mode doesn't use, in group creation and rule-change screens alike.
  * - attendanceRules: min_days_per_week / penalty_amount / weekly_penalty_cap
  *   — meaningless in pure Liga (no weekly penalties are ever charged there).
- * - leagueConfig: league_duration_months / league_prize_splits — only
+ * - leagueConfig: league_duration_weeks / league_prize_splits — only
  *   matters once a podium payout can happen (Liga or Mixto).
  * - mixedShare: mixed_league_share_percent — only meaningful in Mixto.
  */

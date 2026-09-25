@@ -80,7 +80,8 @@ export type Group = {
   timezone: string;
   /** How the group's pooled balance gets distributed — see league_cycles for 'league'/'mixed' cycle state. */
   payout_mode: PayoutMode;
-  league_duration_months: number;
+  /** How many whole Monday-Sunday weeks each Liga/Mixto cycle lasts (a cycle is graded on closed weeks). Applies to cycles started from now on — a running cycle keeps its own duration_weeks. */
+  league_duration_weeks: number;
   /** Percent of the league-share pool each place gets, in order (1st, 2nd, ...). Sum ≤ 100 — a sum below 100 leaves the remainder unpaid. */
   league_prize_splits: number[];
   /** Only meaningful when payout_mode = 'mixed': % of the pool that follows the league mechanic (the rest follows cooperative). */
@@ -116,7 +117,7 @@ export type LeagueCycle = {
   group_id: string;
   cycle_number: number;
   prize_splits: number[];
-  duration_months: number;
+  duration_weeks: number;
   league_share_percent: number;
   started_at: string;
   ends_at: string;
@@ -224,6 +225,8 @@ export type RuleProposalChanges = {
   require_checkout_photo?: boolean;
   min_workout_minutes?: number;
   payout_mode?: PayoutMode;
+  league_duration_weeks?: number;
+  /** Legacy key — proposals created before the months -> weeks change still carry this; the server converts it to weeks when applying. */
   league_duration_months?: number;
   league_prize_splits?: number[];
   mixed_league_share_percent?: number;
@@ -508,7 +511,7 @@ export type Database = {
           p_min_workout_minutes?: number;
           p_admin_payment_info?: string | null;
           p_payout_mode?: PayoutMode;
-          p_league_duration_months?: number;
+          p_league_duration_weeks?: number;
           p_league_prize_splits?: number[];
           p_mixed_league_share_percent?: number;
           p_game_starts_at?: string | null;

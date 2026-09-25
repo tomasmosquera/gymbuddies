@@ -10,6 +10,8 @@ export const colors = {
   danger: '#FF6B6B',
   warning: '#FFB454',
   success: '#3DDC97',
+  /** Liga champion crown (see CrownIcon) — a true gold, distinct from `warning`'s amber so it never reads as an alert. */
+  gold: '#F5C542',
 } as const;
 
 export const spacing = {

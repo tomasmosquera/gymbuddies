@@ -113,7 +113,7 @@ const STEP_FOR_FIELD: Record<string, StepKey> = {
   timezone: 'timezone',
   payoutMode: 'mode',
   gameStartsAt: 'mode',
-  leagueDurationMonths: 'mode',
+  leagueDurationWeeks: 'mode',
   leaguePrizeSplits: 'mode',
   mixedLeagueSharePercent: 'mode',
   descensoRankCount: 'mode',
@@ -203,7 +203,7 @@ export default function CreateGroupScreen() {
   const [minWorkoutMinutes, setMinWorkoutMinutes] = useState('');
   const [adminPaymentInfo, setAdminPaymentInfo] = useState('');
   const [payoutMode, setPayoutMode] = useState<PayoutMode>('cooperative');
-  const [leagueDurationMonths, setLeagueDurationMonths] = useState('');
+  const [leagueDurationWeeks, setLeagueDurationWeeks] = useState('');
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>(['60', '30', '10']);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
   const [descensoRankCount, setDescensoRankCount] = useState('');
@@ -252,7 +252,7 @@ export default function CreateGroupScreen() {
       minWorkoutMinutes: numberOrDefault(minWorkoutMinutes, DEFAULTS.minWorkoutMinutes),
       adminPaymentInfo,
       payoutMode,
-      leagueDurationMonths: leagueDurationMonths ? Number(leagueDurationMonths) : undefined,
+      leagueDurationWeeks: leagueDurationWeeks ? Number(leagueDurationWeeks) : undefined,
       leaguePrizeSplits: leaguePrizeSplits.filter((v) => v.trim()).map(Number),
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
       descensoRankCount: descensoRankCount ? Number(descensoRankCount) : undefined,
@@ -284,7 +284,7 @@ export default function CreateGroupScreen() {
         p_min_workout_minutes: result.data.minWorkoutMinutes,
         p_admin_payment_info: result.data.adminPaymentInfo || null,
         p_payout_mode: result.data.payoutMode,
-        p_league_duration_months: result.data.leagueDurationMonths,
+        p_league_duration_weeks: result.data.leagueDurationWeeks,
         p_league_prize_splits: result.data.leaguePrizeSplits,
         p_mixed_league_share_percent: result.data.mixedLeagueSharePercent,
         p_game_starts_at: result.data.gameStartsAt || null,
@@ -446,13 +446,13 @@ export default function CreateGroupScreen() {
             {showLeagueConfig ? (
               <Card style={styles.stepCard}>
                 <TextField
-                  label="Duración del ciclo de Liga (meses)"
-                  hint={RULE_FIELD_HELP.leagueDurationMonths}
-                  value={leagueDurationMonths}
-                  onChangeText={setLeagueDurationMonths}
+                  label="Duración del ciclo de Liga (semanas)"
+                  hint={RULE_FIELD_HELP.leagueDurationWeeks}
+                  value={leagueDurationWeeks}
+                  onChangeText={setLeagueDurationWeeks}
                   keyboardType="numeric"
-                  placeholder="3"
-                  error={errors.leagueDurationMonths}
+                  placeholder="13"
+                  error={errors.leagueDurationWeeks}
                 />
                 <PrizeSplitEditor values={leaguePrizeSplits} onChange={setLeaguePrizeSplits} />
               </Card>
@@ -625,7 +625,7 @@ export default function CreateGroupScreen() {
                 <>
                   <ReviewRow
                     label="Duración del ciclo"
-                    value={`${leagueDurationMonths || 3} mes(es)`}
+                    value={`${leagueDurationWeeks || 13} semana(s)`}
                   />
                   <ReviewRow label="Premio por puesto" value={leaguePrizeSplits.filter((v) => v.trim()).map((v) => `${v}%`).join(' · ') || '—'} />
                 </>

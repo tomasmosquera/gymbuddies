@@ -14,7 +14,9 @@ import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
 import { usePendingKothClaims } from '@/hooks/usePendingKothClaims';
 import { useGroupMembers } from '@/hooks/useGroupMembers';
 import { useLeagueCycle } from '@/hooks/useLeagueCycle';
+import { useLeagueCycleHistory } from '@/hooks/useLeagueCycleHistory';
 import { useMyActiveExcuses } from '@/hooks/useMyActiveExcuses';
+import { CrownIcon } from '@/components/ui/CrownIcon';
 import { supabase } from '@/lib/supabase/client';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
@@ -44,6 +46,8 @@ const CHANGE_LABELS: Record<string, string> = {
   require_checkout_photo: 'Foto final requerida',
   min_workout_minutes: 'Duración mínima del entreno (min)',
   payout_mode: 'Modo de juego',
+  league_duration_weeks: 'Duración del ciclo de Liga (semanas)',
+  // Legacy key: proposals created before the months -> weeks change still carry it.
   league_duration_months: 'Duración del ciclo de Liga (meses)',
   league_prize_splits: 'Premio por puesto',
   mixed_league_share_percent: '% del fondo para el premio de Liga',
@@ -178,6 +182,8 @@ export default function RulesScreen() {
     refresh: refreshLeagueCycle,
     startCycle: startLeagueCycle,
   } = useLeagueCycle(group?.id ?? null);
+  const { history: leagueHistory, refresh: refreshLeagueHistory } = useLeagueCycleHistory(group?.id ?? null);
+  const [showAllCycles, setShowAllCycles] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [isStartingCycle, setIsStartingCycle] = useState(false);
@@ -209,6 +215,7 @@ export default function RulesScreen() {
       refreshKothClaims();
       refreshMembers();
       refreshLeagueCycle();
+      refreshLeagueHistory();
       refreshMyActiveExcuses();
     }, [
       refreshGroup,
@@ -218,6 +225,7 @@ export default function RulesScreen() {
       refreshKothClaims,
       refreshMembers,
       refreshLeagueCycle,
+      refreshLeagueHistory,
       refreshMyActiveExcuses,
     ])
   );
@@ -301,6 +309,7 @@ export default function RulesScreen() {
         refreshKothClaims(),
         refreshMembers(),
         refreshLeagueCycle(),
+        refreshLeagueHistory(),
         refreshMyActiveExcuses(),
       ]);
     } finally {
@@ -406,7 +415,7 @@ export default function RulesScreen() {
           <>
             <View style={styles.ruleRow}>
               <Text style={styles.ruleLabel}>Duración del ciclo de Liga</Text>
-              <Text style={styles.ruleValue}>{group.league_duration_months} mes(es)</Text>
+              <Text style={styles.ruleValue}>{group.league_duration_weeks} semana(s)</Text>
             </View>
             <View style={styles.ruleRow}>
               <Text style={styles.ruleLabel}>Premio por puesto</Text>
@@ -448,6 +457,16 @@ export default function RulesScreen() {
                 Termina el {new Date(leagueCycle.ends_at).toLocaleDateString('es-CO')} (faltan{' '}
                 {daysUntil(leagueCycle.ends_at)} día{daysUntil(leagueCycle.ends_at) === 1 ? '' : 's'})
               </Text>
+              <Text style={styles.tally}>Duración: {leagueCycle.duration_weeks} semana(s).</Text>
+              {/* The duration rule above is what the NEXT cycle will use — a cycle that's
+                  already running keeps the length it was started with, so say so instead of
+                  leaving two different numbers on screen unexplained. */}
+              {group && leagueCycle.duration_weeks !== group.league_duration_weeks ? (
+                <Text style={styles.cycleNote}>
+                  La regla ahora dice {group.league_duration_weeks} semana(s), pero aplica desde el próximo ciclo: este
+                  sigue con sus {leagueCycle.duration_weeks}.
+                </Text>
+              ) : null}
             </>
           ) : (
             <>
@@ -457,6 +476,55 @@ export default function RulesScreen() {
               ) : null}
             </>
           )}
+        </Card>
+      ) : null}
+
+      {/* Shown whenever a completed cycle exists, even if the group has since switched to
+          Cooperativo — the results of a cycle that already paid out don't stop being true. */}
+      {leagueHistory.length > 0 && group ? (
+        <Card style={styles.proposalCard}>
+          <Text style={styles.cardTitle}>Historial de ciclos de Liga</Text>
+          {(showAllCycles ? leagueHistory : leagueHistory.slice(0, 3)).map(({ cycle, placements }) => (
+            <View key={cycle.id} style={styles.historyCycle}>
+              <View style={styles.historyCycleHeader}>
+                <Text style={styles.changeText}>Ciclo #{cycle.cycle_number}</Text>
+                <Text style={styles.tally}>
+                  {new Date(cycle.started_at).toLocaleDateString('es-CO')} –{' '}
+                  {new Date(cycle.ends_at).toLocaleDateString('es-CO')}
+                </Text>
+              </View>
+              {cycle.pool_at_payout !== null ? (
+                <Text style={styles.tally}>
+                  Fondo repartido: {group.currency} {cycle.pool_at_payout.toLocaleString('es-CO')}
+                </Text>
+              ) : null}
+              {placements.length === 0 ? (
+                <Text style={styles.tally}>No se repartió premio en este ciclo.</Text>
+              ) : (
+                placements.map((p) => (
+                  <View key={p.userId} style={styles.historyRow}>
+                    <View style={styles.historyPlace}>
+                      {p.place === 1 ? <CrownIcon size={18} /> : <Text style={styles.historyPlaceText}>{p.place}°</Text>}
+                    </View>
+                    <Text style={styles.historyName} numberOfLines={1}>
+                      {p.fullName ?? 'Ex miembro'}
+                    </Text>
+                    <Text style={styles.tally}>{p.sharePercent}%</Text>
+                    <Text style={styles.historyAmount}>
+                      {group.currency} {p.amount.toLocaleString('es-CO')}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+          ))}
+          {leagueHistory.length > 3 ? (
+            <Button
+              label={showAllCycles ? 'Ver menos' : `Ver todos (${leagueHistory.length})`}
+              variant="secondary"
+              onPress={() => setShowAllCycles((v) => !v)}
+            />
+          ) : null}
         </Card>
       ) : null}
 
@@ -781,6 +849,19 @@ const styles = StyleSheet.create({
   excuseProof: { width: 220, height: 220, borderRadius: radii.md },
   timingText: { color: colors.warning, fontSize: 13, fontWeight: '600' },
   tally: { color: colors.textMuted, fontSize: 13 },
+  cycleNote: { color: colors.warning, fontSize: 13 },
+  historyCycle: {
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  historyCycleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
+  historyPlace: { width: 24, alignItems: 'center' },
+  historyPlaceText: { color: colors.textMuted, fontWeight: '700' },
+  historyName: { flex: 1, color: colors.text, fontWeight: '600' },
+  historyAmount: { color: colors.text, fontWeight: '700', minWidth: 90, textAlign: 'right' },
   myVote: { color: colors.primary, fontWeight: '600' },
   voteButtons: { gap: spacing.sm, marginTop: spacing.sm },
   emptyText: { color: colors.textMuted, textAlign: 'center' },

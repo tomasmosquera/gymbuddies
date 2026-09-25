@@ -45,7 +45,7 @@ export const createGroupSchema = z.object({
   minWorkoutMinutes: z.number().int().min(0).default(0),
   adminPaymentInfo: z.string().trim().max(280).optional().or(z.literal('')),
   payoutMode: z.enum(['cooperative', 'league', 'mixed']).default('cooperative'),
-  leagueDurationMonths: z.number().int().min(1).max(24).default(3),
+  leagueDurationWeeks: z.number().int().min(1).max(104).default(13),
   leaguePrizeSplits: z
     .array(z.number().min(0))
     .max(10)
@@ -88,7 +88,7 @@ export const ruleProposalSchema = z
     requireCheckoutPhoto: z.boolean().optional(),
     minWorkoutMinutes: z.number().int().min(0).optional(),
     payoutMode: z.enum(['cooperative', 'league', 'mixed']).optional(),
-    leagueDurationMonths: z.number().int().min(1).max(24).optional(),
+    leagueDurationWeeks: z.number().int().min(1).max(104).optional(),
     leaguePrizeSplits: z
       .array(z.number().min(0))
       .max(10)

@@ -10,7 +10,7 @@ export const RULE_FIELD_HELP = {
   requireCheckoutPhoto: 'Pide una segunda foto al terminar el entreno, además de la de llegada.',
   minWorkoutMinutes: 'Minutos mínimos entre la foto inicial y la final para que el entreno cuente (solo aplica si exiges foto final).',
   gameStartsAt: 'Antes de esta fecha nada cuenta para el ranking ni las multas — útil si el grupo se crea antes de empezar a jugar en serio.',
-  leagueDurationMonths: 'Cuánto dura cada ciclo antes de repartir el premio — al terminar, el reparto de Liga queda en pausa hasta que el admin inicie uno nuevo.',
+  leagueDurationWeeks: 'Cuántas semanas completas (de lunes a domingo) dura cada ciclo antes de repartir el premio — al terminar, el reparto de Liga queda en pausa hasta que el admin inicie uno nuevo. Un cambio aplica desde el próximo ciclo, no al que ya está en curso.',
   leaguePrizeSplits: 'Qué % del fondo de Liga se lleva cada puesto del ranking al terminar el ciclo.',
   mixedLeagueSharePercent: 'El resto del fondo (100% menos esto) se reparte por igual entre todos, como en Cooperativo.',
   leagueCycleStartedAt: 'Cuándo arrancó el ciclo actual de Liga — mueve también la fecha en que se reparte el premio.',
