@@ -70,6 +70,10 @@ export const XP_BY_BADGE_ID: Record<string, number> = {
   'alma-del-grupo': 300,
   reformista: 50,
 
+  // Liga — a cycle takes many weeks of consistency to win, so these sit above the one-off social badges
+  'campeon-de-liga': 200,
+  'podio-de-liga': 75,
+
   // King of the Hill
   'primer-trono': 20,
   'fundador-del-trono': 30,

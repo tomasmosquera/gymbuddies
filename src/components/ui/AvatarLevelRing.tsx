@@ -2,12 +2,16 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { colors, radii } from '@/constants/theme';
 import type { LevelProgress } from '@/lib/domain/xp';
+import { useIsLeagueChampion } from '@/hooks/useLeagueChampions';
+import { CrownIcon } from '@/components/ui/CrownIcon';
 
 interface AvatarLevelRingProps {
   initials: string;
   level: LevelProgress | null;
   size?: number;
   ringWidth?: number;
+  /** The member this avatar belongs to. When they won the previous Liga cycle (1st place, ties included) a crown replaces the initials — omit to always show initials. */
+  userId?: string;
 }
 
 /**
@@ -16,7 +20,8 @@ interface AvatarLevelRingProps {
  * that needs to show a member's level at a glance (e.g. "Tus grupos") uses
  * the exact same visual, just at a different size.
  */
-export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4 }: AvatarLevelRingProps) {
+export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4, userId }: AvatarLevelRingProps) {
+  const isChampion = useIsLeagueChampion(userId);
   const radius = (size - ringWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = level?.progress ?? 0;
@@ -40,7 +45,11 @@ export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4 }: A
         />
       </Svg>
       <View style={[styles.avatarInner, { top: ringWidth + 3, left: ringWidth + 3, right: ringWidth + 3, bottom: ringWidth + 3 }]}>
-        <Text style={[styles.avatarText, { fontSize: size * 0.3 }]}>{initials}</Text>
+        {isChampion ? (
+          <CrownIcon size={Math.round(size * 0.5)} />
+        ) : (
+          <Text style={[styles.avatarText, { fontSize: size * 0.3 }]}>{initials}</Text>
+        )}
       </View>
       <View style={styles.levelBadge}>
         <Text style={styles.levelBadgeText}>{level?.level ?? 0}</Text>

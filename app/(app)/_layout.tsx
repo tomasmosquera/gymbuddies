@@ -2,6 +2,7 @@ import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useLeagueChampionsSync } from '@/hooks/useLeagueChampions';
 import { colors } from '@/constants/theme';
 
 function TabIcon({
@@ -21,6 +22,7 @@ function TabIcon({
 export default function AppLayout() {
   const { isInitializing, isSignedIn } = useAuth();
   const { membership, isLoading } = useActiveGroup();
+  useLeagueChampionsSync();
 
   if (isInitializing || isLoading) return null;
   if (!isSignedIn) return <Redirect href="/sign-in" />;

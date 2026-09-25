@@ -190,7 +190,7 @@ export function LeaderboardCard({
                     return (
                       <View key={row.userId} style={[styles.row, isInDescensoZone && styles.rowDescenso]}>
                         <Text style={[styles.rank, isSoleMvp && styles.rankMvp]}>{isSoleMvp ? 'MVP' : rank}</Text>
-                        <AvatarWithLevel initials={getInitials(row.fullName)} level={levelByUserId?.[row.userId]} size={28} />
+                        <AvatarWithLevel initials={getInitials(row.fullName)} level={levelByUserId?.[row.userId]} size={28} userId={row.userId} />
                         <View style={styles.rowBody}>
                           <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
                             {row.fullName}

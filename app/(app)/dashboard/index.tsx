@@ -10,6 +10,8 @@ import { TextField } from '@/components/ui/TextField';
 import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
+import { CrownIcon } from '@/components/ui/CrownIcon';
+import { useIsLeagueChampion } from '@/hooks/useLeagueChampions';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import {
@@ -43,8 +45,6 @@ const VIEW_MODE_OPTIONS: { key: ViewMode; label: string }[] = [
   { key: 'calendar', label: 'Calendario' },
 ];
 
-const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-const WEEKDAY_SHORT_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 /**
  * Temporary kill switch for starting a new invalidation vote on a check-in
  * ("Pedir votación para invalidar"). Nothing about the feature is removed —
@@ -54,6 +54,8 @@ const WEEKDAY_SHORT_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
  */
 const PHOTO_CHALLENGE_VOTES_ENABLED = false;
 
+const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const WEEKDAY_SHORT_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 const MONTH_NAMES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
@@ -72,6 +74,16 @@ function getInitials(fullName: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** A calendar chip's contents: the member's initials, or a crown if they won the previous Liga cycle. The chip's fill is mint/amber, so the crown uses the same dark ink as the initials rather than gold. */
+function InitialOrCrown({ userId, initials }: { userId: string; initials: string }) {
+  const isChampion = useIsLeagueChampion(userId);
+  return isChampion ? (
+    <CrownIcon size={11} color={colors.primaryText} />
+  ) : (
+    <Text style={styles.calendarInitialText}>{initials}</Text>
+  );
 }
 
 /** Monday-start weeks covering the whole month, padded with `null` for days outside it. */
@@ -133,7 +145,7 @@ function CalendarGrid({
                 <View style={styles.calendarBadgeWrap}>
                   {checkins.slice(0, 4).map((c) => (
                     <View key={c.id} style={styles.calendarInitialBadge}>
-                      <Text style={styles.calendarInitialText}>{getInitials(c.profile.full_name)}</Text>
+                      <InitialOrCrown userId={c.user_id} initials={getInitials(c.profile.full_name)} />
                     </View>
                   ))}
                   {checkins.length > 4 ? (
@@ -146,7 +158,7 @@ function CalendarGrid({
                   <View style={styles.calendarBadgeWrap}>
                     {excused.slice(0, 4).map((m) => (
                       <View key={m.user_id} style={styles.calendarExcusedBadge}>
-                        <Text style={styles.calendarInitialText}>{getInitials(m.full_name)}</Text>
+                        <InitialOrCrown userId={m.user_id} initials={getInitials(m.full_name)} />
                       </View>
                     ))}
                     {excused.length > 4 ? (
@@ -268,7 +280,7 @@ function DayCheckinRow({
     <View style={styles.checkinRow}>
       <View style={styles.checkinNameRow}>
         <View style={styles.checkinNameGroup}>
-          <AvatarWithLevel initials={getInitials(checkin.profile.full_name)} level={level} size={28} />
+          <AvatarWithLevel initials={getInitials(checkin.profile.full_name)} level={level} size={28} userId={checkin.user_id} />
           <Text style={styles.checkinName} numberOfLines={1}>
             {checkin.profile.full_name}
           </Text>
@@ -341,7 +353,7 @@ function AdminValidatedRow({
     <View style={styles.checkinRow}>
       <View style={styles.checkinNameRow}>
         <View style={styles.checkinNameGroup}>
-          <AvatarWithLevel initials={getInitials(member.full_name)} level={level} size={28} />
+          <AvatarWithLevel initials={getInitials(member.full_name)} level={level} size={28} userId={member.user_id} />
           <Text style={styles.checkinName} numberOfLines={1}>
             {member.full_name}
           </Text>
@@ -478,7 +490,7 @@ function MemberRow({
     <Card style={styles.dayCard}>
       <Pressable onPress={onToggle} style={styles.dayHeader}>
         <View style={styles.checkinNameGroup}>
-          <AvatarWithLevel initials={getInitials(member.full_name)} level={levelByUserId[member.user_id]} size={28} />
+          <AvatarWithLevel initials={getInitials(member.full_name)} level={levelByUserId[member.user_id]} size={28} userId={member.user_id} />
           <Text style={styles.dayLabel} numberOfLines={1}>
             {member.full_name}
           </Text>
@@ -628,6 +640,10 @@ export default function DashboardScreen() {
   );
 
   const handleChallenge = (checkin: GroupCheckinWithProfile) => {
+    if (!PHOTO_CHALLENGE_VOTES_ENABLED) {
+      Alert.alert('Votación no disponible', 'Por el momento no se pueden realizar este tipo de votaciones.');
+      return;
+    }
     setChallengeReason('');
     setChallengeTarget(checkin);
   };
@@ -640,10 +656,6 @@ export default function DashboardScreen() {
       return;
     }
     setIsSubmittingChallenge(true);
-    if (!PHOTO_CHALLENGE_VOTES_ENABLED) {
-      Alert.alert('Votación no disponible', 'Por el momento no se pueden realizar este tipo de votaciones.');
-      return;
-    }
     try {
       await createChallenge(challengeTarget.id, reason);
       setChallengeTarget(null);

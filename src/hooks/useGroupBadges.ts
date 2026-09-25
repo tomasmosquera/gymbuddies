@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { toZonedDateString, toZonedHour } from '@/lib/domain/dateUtils';
 import { fetchGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
 import { fetchGroupMonthlyChallenges, type MemberMonthlyChallenges } from '@/hooks/useGroupMonthlyChallenges';
-import { BADGES, type BadgeContext, type BadgeStatus } from '@/lib/domain/badges';
+import { BADGES, type BadgeContext, type BadgeStatus, type LeagueCycleFinish } from '@/lib/domain/badges';
 import { buddyCheckinXp, checkinXp, kothClaimXp, levelProgress, totalXpForEarnedBadges, type LevelProgress } from '@/lib/domain/xp';
 import {
   isKothGroupFounder,
@@ -58,7 +58,7 @@ export async function fetchGroupBadges(
 ): Promise<MemberBadges[]> {
   const todayString = toZonedDateString(new Date(), timezone);
 
-  const [checkinsRes, resultsRes, depositsRes, reactionsRes, proposalsRes, kothClaimsRes, kothRecordsRes] = await Promise.all([
+  const [checkinsRes, resultsRes, depositsRes, reactionsRes, proposalsRes, kothClaimsRes, kothRecordsRes, cyclesRes] = await Promise.all([
     supabase
       .from('checkins')
       .select('user_id, checkin_date, captured_at, workout_minutes, latitude, longitude')
@@ -93,13 +93,32 @@ export async function fetchGroupBadges(
       .eq('group_id', groupId)
       .eq('counts_for_record', true),
     supabase.from('koth_records').select('exercise_id, current_claim_id').eq('group_id', groupId),
+    supabase.from('league_cycles').select('id, completed_at').eq('group_id', groupId).eq('status', 'completed'),
   ]);
 
   const claimIds = (kothClaimsRes.data ?? []).map((c) => c.id);
-  const votesRes =
+  // The day each completed Liga cycle was settled, in the group's own timezone.
+  const completedCycleDateById = new Map<string, string>();
+  for (const c of cyclesRes.data ?? []) {
+    if (c.completed_at) completedCycleDateById.set(c.id, toZonedDateString(new Date(c.completed_at), timezone));
+  }
+  // Both need the ids fetched above, and neither depends on the other — so
+  // they run together instead of one after the other.
+  const [votesRes, payoutsRes] = await Promise.all([
     claimIds.length > 0
-      ? await supabase.from('koth_claim_votes').select('claim_id, vote').in('claim_id', claimIds)
-      : { data: [] as { claim_id: string; vote: string }[] };
+      ? supabase.from('koth_claim_votes').select('claim_id, vote').in('claim_id', claimIds)
+      : Promise.resolve({ data: [] as { claim_id: string; vote: string }[] }),
+    completedCycleDateById.size > 0
+      ? supabase.from('league_cycle_payouts').select('cycle_id, user_id, place').in('cycle_id', [...completedCycleDateById.keys()])
+      : Promise.resolve({ data: [] as { cycle_id: string; user_id: string; place: number }[] }),
+  ]);
+  const leagueFinishesByUser = new Map<string, LeagueCycleFinish[]>();
+  for (const p of payoutsRes.data ?? []) {
+    const date = completedCycleDateById.get(p.cycle_id);
+    if (!date) continue;
+    if (!leagueFinishesByUser.has(p.user_id)) leagueFinishesByUser.set(p.user_id, []);
+    leagueFinishesByUser.get(p.user_id)!.push({ place: p.place, date });
+  }
   const challengedClaimIds = new Set((votesRes.data ?? []).filter((v) => v.vote === 'yes').map((v) => v.claim_id));
 
   const kothClaims: KothClaimFact[] = (kothClaimsRes.data ?? []).map((c) => ({
@@ -252,6 +271,7 @@ export async function fetchGroupBadges(
       kothFirstReclaimDate: reclaim.firstReclaimDate,
       kothSimultaneousHoldTimeline: kothSimultaneousHoldTimeline(kothClaims, m.userId),
       buddyCheckinDates,
+      leagueCycleFinishes: leagueFinishesByUser.get(m.userId) ?? [],
     };
     const statuses: Record<string, BadgeStatus> = {};
     const earnedBadgeIds: string[] = [];

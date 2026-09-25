@@ -72,6 +72,7 @@ function baseContext(overrides: Partial<BadgeContext> = {}): BadgeContext {
     kothFirstReclaimDate: null,
     kothSimultaneousHoldTimeline: [],
     buddyCheckinDates: [],
+    leagueCycleFinishes: [],
     ...overrides,
   };
 }
@@ -83,9 +84,70 @@ function badge(id: string) {
 }
 
 describe('badge catalog', () => {
-  it('has exactly 59 badges with unique ids', () => {
-    expect(BADGES.length).toBe(59);
-    expect(new Set(BADGES.map((b) => b.id)).size).toBe(59);
+  it('has exactly 61 badges with unique ids', () => {
+    expect(BADGES.length).toBe(61);
+    expect(new Set(BADGES.map((b) => b.id)).size).toBe(61);
+  });
+});
+
+describe('Liga badges (campeon-de-liga / podio-de-liga)', () => {
+  it('are not earned with no completed cycle finishes', () => {
+    const ctx = baseContext({ leagueCycleFinishes: [] });
+    expect(badge('campeon-de-liga').evaluate(ctx).earned).toBe(false);
+    expect(badge('podio-de-liga').evaluate(ctx).earned).toBe(false);
+  });
+
+  it('treat a caller that does not load finishes at all as having none, instead of throwing', () => {
+    // The notify-achievements Edge Function builds its own context without this field.
+    const ctx = baseContext();
+    delete ctx.leagueCycleFinishes;
+    expect(badge('campeon-de-liga').evaluate(ctx).earned).toBe(false);
+    expect(badge('podio-de-liga').evaluate(ctx).earned).toBe(false);
+  });
+
+  it('a 1st place earns both, dated at the first win', () => {
+    const ctx = baseContext({
+      leagueCycleFinishes: [
+        { place: 1, date: '2026-06-01' },
+        { place: 1, date: '2026-03-01' },
+      ],
+    });
+    const champion = badge('campeon-de-liga').evaluate(ctx);
+    expect(champion.earned).toBe(true);
+    expect(champion.earnedDate).toBe('2026-03-01');
+    expect(badge('podio-de-liga').evaluate(ctx).earned).toBe(true);
+  });
+
+  it('a shared 1st place counts as a win — ties carry the same place number', () => {
+    const ctx = baseContext({ leagueCycleFinishes: [{ place: 1, date: '2026-05-04' }] });
+    expect(badge('campeon-de-liga').evaluate(ctx).earned).toBe(true);
+  });
+
+  it('a 2nd or 3rd place earns Podio but not Campeón', () => {
+    for (const place of [2, 3]) {
+      const ctx = baseContext({ leagueCycleFinishes: [{ place, date: '2026-05-04' }] });
+      expect(badge('campeon-de-liga').evaluate(ctx).earned).toBe(false);
+      const podium = badge('podio-de-liga').evaluate(ctx);
+      expect(podium.earned).toBe(true);
+      expect(podium.earnedDate).toBe('2026-05-04');
+    }
+  });
+
+  it('a 4th place (or lower) earns neither', () => {
+    const ctx = baseContext({ leagueCycleFinishes: [{ place: 4, date: '2026-05-04' }] });
+    expect(badge('campeon-de-liga').evaluate(ctx).earned).toBe(false);
+    expect(badge('podio-de-liga').evaluate(ctx).earned).toBe(false);
+  });
+
+  it('dates Podio at the earliest qualifying finish even if a later one is better', () => {
+    const ctx = baseContext({
+      leagueCycleFinishes: [
+        { place: 1, date: '2026-09-01' },
+        { place: 3, date: '2026-04-01' },
+      ],
+    });
+    expect(badge('podio-de-liga').evaluate(ctx).earnedDate).toBe('2026-04-01');
+    expect(badge('campeon-de-liga').evaluate(ctx).earnedDate).toBe('2026-09-01');
   });
 });
 

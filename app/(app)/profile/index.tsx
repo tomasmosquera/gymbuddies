@@ -160,7 +160,7 @@ export default function ProfileScreen() {
 
       <View style={styles.hero}>
         <Pressable onPress={() => router.push('/profile/badges')} style={styles.avatarWrap}>
-          <AvatarLevelRing initials={getInitials(profile.full_name)} level={myBadges?.level ?? null} size={80} ringWidth={4} />
+          <AvatarLevelRing initials={getInitials(profile.full_name)} level={myBadges?.level ?? null} size={80} ringWidth={4} userId={profile.id} />
         </Pressable>
         <Pressable onPress={() => router.push('/profile/edit-profile')} style={styles.heroInfo}>
           <Text style={styles.name}>{profile.full_name}</Text>

@@ -16,7 +16,7 @@ import { lastDayOfMonth } from '@/lib/domain/dateUtils';
  * "earned_at" timestamp yet.
  */
 
-export type BadgeCategory = 'racha' | 'consistencia' | 'fechas' | 'checkins' | 'financiero' | 'social' | 'koth';
+export type BadgeCategory = 'racha' | 'consistencia' | 'fechas' | 'checkins' | 'financiero' | 'social' | 'liga' | 'koth';
 
 export interface BadgeDayRecord {
   date: string;
@@ -34,6 +34,12 @@ export interface BadgeCheckinFact {
 export interface BadgeWeeklyPenalty {
   weekStartDate: string;
   penaltyCharged: number;
+}
+
+/** One completed Liga cycle this member was paid out in. `place` is tie-aware exactly as the server recorded it (1 = won or shared the win); `date` is the day the cycle was settled, in the group's timezone. */
+export interface LeagueCycleFinish {
+  place: number;
+  date: string;
 }
 
 export interface BadgeContext {
@@ -89,6 +95,16 @@ export interface BadgeContext {
   firstRuleProposalWinDate: string | null;
   /** Ascending dates of this member's own buddy check-ins — a teammate's check-in was close by in time and place that same day (findBuddyCheckinKeys, geo.ts). Precomputed at the hook level, same reason as the KOTH group-wide facts above: it needs every member's check-ins, not just this one's. Feeds buddyCheckinXp (xp.ts) and the 'dupla'/'mejor-acompanado' badges, same dated-list pattern as reactionsGivenDates. */
   buddyCheckinDates: string[];
+  /**
+   * Every completed Liga cycle this member finished in a paid place (a place
+   * only has a payout row if it received money, so a cycle that closed with
+   * an empty pool leaves no finishes at all). Optional on purpose: a caller
+   * that doesn't load it — e.g. the notify-achievements Edge Function, which
+   * builds its own context — simply never awards the two Liga badges instead
+   * of failing to compile. Historical by nature, so these badges can never be
+   * un-earned, same monotonic rule as every other lifetime badge.
+   */
+  leagueCycleFinishes?: readonly LeagueCycleFinish[];
 }
 
 export interface BadgeStatus {
@@ -559,6 +575,11 @@ export function dateReactionStreakFirstReachedLength(dates: readonly string[], t
 
 function bool(earned: boolean, earnedDate: string | null = null): BadgeStatus {
   return { earned, current: earned ? 1 : 0, target: 1, earnedDate: earned ? earnedDate : null };
+}
+
+/** This member's completed-cycle finishes at `maxPlace` or better, oldest first — so [0].date is when the badge was first earned. */
+export function leagueFinishesUpToPlace(ctx: Pick<BadgeContext, 'leagueCycleFinishes'>, maxPlace: number): LeagueCycleFinish[] {
+  return (ctx.leagueCycleFinishes ?? []).filter((f) => f.place <= maxPlace).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function threshold(current: number, target: number, earnedDate: string | null = null): BadgeStatus {
@@ -1135,6 +1156,30 @@ export const BADGES: BadgeDefinition[] = [
     description: 'Proponer una regla que gane la votación.',
     category: 'social',
     evaluate: (ctx) => bool(ctx.ruleProposalsWonCount >= 1, ctx.firstRuleProposalWinDate),
+  },
+
+  // Liga — earned from the cycle results the server recorded when it paid the prize out
+  {
+    id: 'campeon-de-liga',
+    name: 'Campeón de Liga',
+    emoji: '🥇',
+    description: 'Terminar en 1er puesto de un ciclo de Liga (si el primer puesto se comparte, cuenta igual).',
+    category: 'liga',
+    evaluate: (ctx) => {
+      const wins = leagueFinishesUpToPlace(ctx, 1);
+      return bool(wins.length >= 1, wins[0]?.date ?? null);
+    },
+  },
+  {
+    id: 'podio-de-liga',
+    name: 'Podio de Liga',
+    emoji: '🏅',
+    description: 'Terminar entre los 3 primeros de un ciclo de Liga.',
+    category: 'liga',
+    evaluate: (ctx) => {
+      const podiums = leagueFinishesUpToPlace(ctx, 3);
+      return bool(podiums.length >= 1, podiums[0]?.date ?? null);
+    },
   },
 
   // King of the Hill

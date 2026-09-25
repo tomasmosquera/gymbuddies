@@ -14,7 +14,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { XpHistoryModal } from '@/components/badges/XpHistoryModal';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
-const CATEGORY_ORDER: BadgeCategory[] = ['racha', 'consistencia', 'fechas', 'checkins', 'financiero', 'social', 'koth'];
+const CATEGORY_ORDER: BadgeCategory[] = ['racha', 'consistencia', 'fechas', 'checkins', 'financiero', 'social', 'liga', 'koth'];
 
 const CATEGORY_LABELS: Record<BadgeCategory, string> = {
   racha: 'RACHAS',
@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<BadgeCategory, string> = {
   checkins: 'CHECK-INS',
   financiero: 'FINANCIERO',
   social: 'SOCIAL',
+  liga: 'LIGA',
   koth: 'KING OF THE HILL',
 };
 

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radii, spacing } from '@/constants/theme';
+import { CrownIcon } from '@/components/ui/CrownIcon';
+import { useIsLeagueChampion } from '@/hooks/useLeagueChampions';
 
 export interface VoteBreakdownPerson {
   userId: string;
@@ -60,19 +62,30 @@ function VoteGroup({ label, tone, people }: { label: string; tone: Tone; people:
   );
 }
 
-function VoteChips({ tone, people }: { tone: Tone; people: VoteBreakdownPerson[] }) {
+function VoteChip({ tone, person }: { tone: Tone; person: VoteBreakdownPerson }) {
   const { bg, fg } = TONE_COLORS[tone];
+  const isChampion = useIsLeagueChampion(person.userId);
+  return (
+    <View style={[styles.chip, { backgroundColor: bg }]}>
+      <View style={[styles.avatar, { borderColor: fg }]}>
+        {isChampion ? (
+          <CrownIcon size={12} />
+        ) : (
+          <Text style={[styles.avatarText, { color: fg }]}>{initials(person.fullName)}</Text>
+        )}
+      </View>
+      <Text style={[styles.chipText, { color: fg }]} numberOfLines={1}>
+        {firstName(person.fullName)}
+      </Text>
+    </View>
+  );
+}
+
+function VoteChips({ tone, people }: { tone: Tone; people: VoteBreakdownPerson[] }) {
   return (
     <View style={styles.chipRow}>
       {people.map((p) => (
-        <View key={p.userId} style={[styles.chip, { backgroundColor: bg }]}>
-          <View style={[styles.avatar, { borderColor: fg }]}>
-            <Text style={[styles.avatarText, { color: fg }]}>{initials(p.fullName)}</Text>
-          </View>
-          <Text style={[styles.chipText, { color: fg }]} numberOfLines={1}>
-            {firstName(p.fullName)}
-          </Text>
-        </View>
+        <VoteChip key={p.userId} tone={tone} person={p} />
       ))}
     </View>
   );

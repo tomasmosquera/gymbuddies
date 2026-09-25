@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, radii } from '@/constants/theme';
+import { useIsLeagueChampion } from '@/hooks/useLeagueChampions';
+import { CrownIcon } from '@/components/ui/CrownIcon';
 
 interface AvatarWithLevelProps {
   initials: string;
@@ -10,6 +12,8 @@ interface AvatarWithLevelProps {
   borderColor?: string;
   /** The avatar circle's own fill — defaults to surfaceAlt (the look everywhere it's used today: Leaderboard, Dashboard, ...). Pass the exact background of whatever it sits on to make the circle itself disappear, leaving only the initials + level badge — e.g. a hero card whose own background already IS surfaceAlt. */
   backgroundColor?: string;
+  /** The member this avatar belongs to. When they won the previous Liga cycle (1st place, ties included) a crown replaces the initials — omit to always show initials. */
+  userId?: string;
 }
 
 /** A small initials avatar with the member's XP level overlapping its bottom-right corner (see useGroupBadges). */
@@ -19,11 +23,13 @@ export function AvatarWithLevel({
   size = 32,
   borderColor = colors.surface,
   backgroundColor = colors.surfaceAlt,
+  userId,
 }: AvatarWithLevelProps) {
+  const isChampion = useIsLeagueChampion(userId);
   return (
     <View style={{ width: size, height: size }}>
       <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor }]}>
-        <Text style={styles.avatarText}>{initials}</Text>
+        {isChampion ? <CrownIcon size={Math.round(size * 0.62)} /> : <Text style={styles.avatarText}>{initials}</Text>}
       </View>
       {level !== undefined ? (
         <View style={[styles.levelBadge, { borderColor }]}>

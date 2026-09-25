@@ -201,7 +201,7 @@ export default function PersonalStatsScreen() {
       {/* --- Hero --- */}
       <Card style={styles.heroCard}>
         <View style={styles.heroTop}>
-          <AvatarWithLevel initials={getInitials(stats.fullName)} level={level.level} size={56} />
+          <AvatarWithLevel initials={getInitials(stats.fullName)} level={level.level} size={56} userId={me.userId} />
           <View style={styles.heroNameBlock}>
             <Text style={styles.heroName}>{stats.fullName}</Text>
             <Text style={styles.heroRank}>
