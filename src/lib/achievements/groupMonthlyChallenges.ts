@@ -1,0 +1,313 @@
+import { enumerateMonths, getWeekBounds, getWeekBoundsForDateString, toZonedDateString } from '@/lib/domain/dateUtils';
+import { rankMembersByConsistency } from '@/lib/domain/attendance';
+import type { MemberAttendanceRecord } from '@/lib/achievements/groupAttendanceRecords';
+import type { AchievementsClient } from '@/lib/achievements/client';
+import {
+  MONTHLY_CHALLENGES,
+  allWeekendsCompleted,
+  anyWeekendCompleted,
+  completedOnAnyHoliday,
+  computeWeeklyMvpsByWeek,
+  determineTopByCount,
+  monthHasFixedHoliday,
+  tallyMonth,
+  tallyMvpWeeksByMonth,
+  type ClosedWeekFacts,
+  type MonthlyChallengeStatus,
+  type MonthlyMemberContext,
+} from '@/lib/domain/monthlyChallenges';
+import { kothActiveExerciseIdsInMonth, kothClaimedExerciseIdsInMonth, kothDefendedInMonth, type KothClaimFact } from '@/lib/domain/koth';
+import { findBuddyCheckinKeys } from '@/lib/domain/geo';
+
+export interface MemberMonthlyChallenges {
+  userId: string;
+  fullName: string;
+  statusesById: Record<string, MonthlyChallengeStatus>;
+  totalXp: number;
+}
+
+function addDaysToDateString(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const ms = Date.UTC(y, m - 1, d) + n * 24 * 60 * 60 * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
+ * The actual fetch + evaluation, as a plain function — pulled out of the
+ * useGroupMonthlyChallenges hook so a caller that needs this for several groups at once (e.g.
+ * useMyGroupsSummary, one group per membership) can call it in a
+ * loop/Promise.all without breaking the rules of hooks. Takes `records`/
+ * `groupCreatedDate` as params (from fetchGroupAttendanceRecords) rather
+ * than fetching them itself, so a caller that already has them doesn't pay
+ * for that fetch twice.
+ *
+ * Evaluates the monthly challenges catalog (src/lib/domain/monthlyChallenges.ts)
+ * for every active member of a group, across every calendar month since the
+ * group existed. Computed live, same as the lifetime badges — no new table.
+ * Cross-member facts (rank, weekly MVP, most-reacted) are computed once per
+ * month/week here and threaded into each member's evaluation context.
+ */
+export async function fetchGroupMonthlyChallenges(
+  client: AchievementsClient,
+  groupId: string,
+  timezone: string,
+  records: MemberAttendanceRecord[],
+  groupCreatedDate: string | null
+): Promise<MemberMonthlyChallenges[]> {
+  if (records.length === 0 || !groupCreatedDate) return [];
+
+  const todayString = toZonedDateString(new Date(), timezone);
+
+  const [resultsRes, reactionsRes, checkinsRes, buddyCheckinsRes, groupRes, kothClaimsRes] = await Promise.all([
+    client
+      .from('weekly_evaluation_results')
+      .select('user_id, failed_days, penalty_charged, penalty_protected, run:weekly_evaluation_runs(week_start_date)')
+      .eq('group_id', groupId),
+    client.from('checkin_reactions').select('user_id, created_at, checkin:checkins(user_id)').eq('group_id', groupId),
+    client
+      .from('checkins')
+      .select('user_id, checkin_date, workout_minutes')
+      .eq('group_id', groupId)
+      .lte('checkin_date', todayString)
+      .not('workout_minutes', 'is', null),
+    // Separate from checkinsRes above (which excludes checkins with no
+    // recorded duration) — buddy pairing must see EVERY check-in regardless
+    // of whether a checkout/duration was ever recorded.
+    client
+      .from('checkins')
+      .select('user_id, checkin_date, captured_at, latitude, longitude')
+      .eq('group_id', groupId)
+      .lte('checkin_date', todayString),
+    client.from('groups').select('require_checkout_photo').eq('id', groupId).single(),
+    // counts_for_record excludes practice claims made during a member's
+    // protection period — see 0084_koth_respects_protection.sql.
+    client
+      .from('koth_claims')
+      .select('id, exercise_id, user_id, metric_type, status, created_at, decided_at')
+      .eq('group_id', groupId)
+      .eq('counts_for_record', true),
+  ]);
+  const requiresCheckoutPhoto = groupRes.data?.require_checkout_photo ?? false;
+
+  const kothClaimIds = (kothClaimsRes.data ?? []).map((c) => c.id);
+  const kothVotesRes =
+    kothClaimIds.length > 0
+      ? await client.from('koth_claim_votes').select('claim_id, vote').in('claim_id', kothClaimIds)
+      : { data: [] as { claim_id: string; vote: string }[] };
+  const challengedClaimIds = new Set((kothVotesRes.data ?? []).filter((v) => v.vote === 'yes').map((v) => v.claim_id));
+  const kothClaims: KothClaimFact[] = (kothClaimsRes.data ?? []).map((c) => ({
+    id: c.id,
+    exerciseId: c.exercise_id,
+    userId: c.user_id,
+    metricType: c.metric_type,
+    status: c.status,
+    createdAt: c.created_at,
+    decidedAt: c.decided_at,
+    wasChallenged: challengedClaimIds.has(c.id),
+  }));
+
+  const workoutMinutesByUser = new Map<string, { date: string; minutes: number }[]>();
+  for (const c of checkinsRes.data ?? []) {
+    if (c.workout_minutes === null) continue;
+    if (!workoutMinutesByUser.has(c.user_id)) workoutMinutesByUser.set(c.user_id, []);
+    workoutMinutesByUser.get(c.user_id)!.push({ date: c.checkin_date, minutes: c.workout_minutes });
+  }
+
+  const buddyCheckinKeys = findBuddyCheckinKeys(
+    (buddyCheckinsRes.data ?? []).map((c) => ({
+      userId: c.user_id,
+      date: c.checkin_date,
+      capturedAtMs: new Date(c.captured_at).getTime(),
+      latitude: c.latitude,
+      longitude: c.longitude,
+    }))
+  );
+
+  const results = (resultsRes.data ?? []) as unknown as {
+    user_id: string;
+    failed_days: number;
+    penalty_charged: number;
+    penalty_protected: boolean;
+    run: { week_start_date: string } | null;
+  }[];
+  const closedWeeksByUser = new Map<string, ClosedWeekFacts[]>();
+  for (const r of results) {
+    if (!r.run) continue;
+    if (!closedWeeksByUser.has(r.user_id)) closedWeeksByUser.set(r.user_id, []);
+    closedWeeksByUser.get(r.user_id)!.push({
+      weekStartDate: r.run.week_start_date,
+      failedDays: r.failed_days,
+      penaltyCharged: r.penalty_charged,
+      penaltyProtected: r.penalty_protected,
+    });
+  }
+
+  const reactions = (reactionsRes.data ?? []) as unknown as {
+    user_id: string;
+    created_at: string;
+    checkin: { user_id: string } | null;
+  }[];
+  const rawReactions = reactions
+    .filter((r) => r.checkin)
+    .map((r) => ({ giverId: r.user_id, recipientId: r.checkin!.user_id, date: toZonedDateString(new Date(r.created_at), timezone) }));
+
+  const currentMonth = todayString.slice(0, 7);
+  const months = enumerateMonths(groupCreatedDate.slice(0, 7), currentMonth);
+  const closedMonths = months.filter((m) => m < currentMonth);
+
+  // --- Weekly MVP, computed once across the group's full history ---
+  // Only over CLOSED weeks — the still-open current week is deliberately
+  // excluded. Otherwise whoever happens to be the only member with a
+  // decided day so far this week (e.g. the first to check in on Monday)
+  // would trivially "win" that week's MVP by default, since everyone else
+  // still has zero decided days and gets filtered out of the ranking pool
+  // entirely (see the `.filter` below). The MVP for a week can only be
+  // known once that week has actually finished.
+  const firstWeekStart = getWeekBoundsForDateString(groupCreatedDate).weekStart;
+  const currentWeekStart = getWeekBounds(new Date(), timezone).weekStart;
+  const lastClosedWeekStart = addDaysToDateString(currentWeekStart, -7);
+  const weekStarts: string[] = [];
+  for (let cursor = firstWeekStart; cursor <= lastClosedWeekStart; cursor = addDaysToDateString(cursor, 7)) {
+    weekStarts.push(cursor);
+  }
+  // A check-in/reaction/penalty from before this member's own activation
+  // date isn't theirs to count — m.days already applies this rule; the
+  // extras fetched independently above (duration, reactions, closed weeks)
+  // need it applied here too.
+  const isOwnedByMember = (m: MemberAttendanceRecord, date: string) => !m.activatedDate || date >= m.activatedDate;
+
+  const allWeekAttendance = weekStarts.flatMap((weekStart) => {
+    const weekEnd = addDaysToDateString(weekStart, 6);
+    return records
+      .map((m) => {
+        const weekDays = m.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
+        const completedCount = weekDays.filter((d) => d.status === 'completed').length;
+        const failedCount = weekDays.filter((d) => d.status === 'failed').length;
+        return { userId: m.userId, weekStartDate: weekStart, completedCount, failedCount };
+      })
+      .filter((w) => w.completedCount + w.failedCount > 0);
+  });
+  const mvpTallyByMonth = tallyMvpWeeksByMonth(computeWeeklyMvpsByWeek(allWeekAttendance));
+
+  // --- Per-month, per-member facts + cross-member rank/mostReacted ---
+  let previousMonthRankByUserId = new Map<string, number>();
+  const contextsByMonthByUser = new Map<string, Map<string, MonthlyMemberContext>>();
+
+  for (const month of months) {
+    const hasHoliday = monthHasFixedHoliday(month, timezone);
+    const tallies = new Map(records.map((m) => [m.userId, tallyMonth(m.days.filter((d) => d.date.slice(0, 7) === month))]));
+    const durationsInMonthByUserId = new Map(
+      records.map((m) => [
+        m.userId,
+        (workoutMinutesByUser.get(m.userId) ?? [])
+          .filter((r) => r.date.slice(0, 7) === month && isOwnedByMember(m, r.date))
+          .map((r) => r.minutes),
+      ])
+    );
+    const totalDurationInMonthByUserId = new Map(
+      [...durationsInMonthByUserId.entries()].map(([userId, minutes]) => [userId, minutes.reduce((sum, n) => sum + n, 0)])
+    );
+    const rankable = records
+      .filter((m) => {
+        const t = tallies.get(m.userId)!;
+        return t.completed + t.failed > 0;
+      })
+      .map((m) => ({
+        userId: m.userId,
+        completedCount: tallies.get(m.userId)!.completed,
+        failedCount: tallies.get(m.userId)!.failed,
+      }));
+    const rankByUserId = rankMembersByConsistency(rankable);
+    const reactionsReceivedInMonthByUserId = new Map(
+      records.map((m) => [
+        m.userId,
+        rawReactions.filter((r) => r.recipientId === m.userId && r.date.slice(0, 7) === month && isOwnedByMember(m, r.date)).length,
+      ])
+    );
+    const mostReacted = new Set(
+      determineTopByCount(records.map((m) => ({ userId: m.userId, count: reactionsReceivedInMonthByUserId.get(m.userId) ?? 0 })))
+    );
+    const mostDuration = new Set(
+      determineTopByCount(records.map((m) => ({ userId: m.userId, count: totalDurationInMonthByUserId.get(m.userId) ?? 0 })))
+    );
+    const mvpTallyThisMonth = mvpTallyByMonth.get(month) ?? new Map<string, number>();
+    const kothKingThisMonth = new Set(
+      determineTopByCount(
+        records.map((m) => ({ userId: m.userId, count: kothActiveExerciseIdsInMonth(kothClaims, m.userId, month).length }))
+      )
+    );
+
+    const byUser = new Map<string, MonthlyMemberContext>();
+    for (const m of records) {
+      const daysInMonth = m.days.filter((d) => d.date.slice(0, 7) === month);
+      const { completed, failed, percent } = tallies.get(m.userId)!;
+      const durations = durationsInMonthByUserId.get(m.userId) ?? [];
+      const totalWorkoutMinutesInMonth = totalDurationInMonthByUserId.get(m.userId) ?? 0;
+      byUser.set(m.userId, {
+        completedCount: completed,
+        failedCount: failed,
+        consistencyPercent: percent,
+        closedWeeksInMonth: (closedWeeksByUser.get(m.userId) ?? []).filter(
+          (w) => w.weekStartDate.slice(0, 7) === month && isOwnedByMember(m, w.weekStartDate)
+        ),
+        monthHasFixedHoliday: hasHoliday,
+        completedOnHoliday: completedOnAnyHoliday(daysInMonth, timezone),
+        allWeekendsCompleted: allWeekendsCompleted(daysInMonth),
+        anyWeekendCompleted: anyWeekendCompleted(daysInMonth),
+        reactionsGivenCount: rawReactions.filter(
+          (r) => r.giverId === m.userId && r.date.slice(0, 7) === month && isOwnedByMember(m, r.date)
+        ).length,
+        rank: rankByUserId.get(m.userId) ?? null,
+        rankedGroupSize: rankable.length,
+        previousMonthRank: previousMonthRankByUserId.get(m.userId) ?? null,
+        isMostReactedThisMonth: mostReacted.has(m.userId),
+        mvpWeeksThisMonth: mvpTallyThisMonth.get(m.userId) ?? 0,
+        groupRequiresCheckoutPhoto: requiresCheckoutPhoto,
+        totalWorkoutMinutesInMonth,
+        averageWorkoutMinutesInMonth: durations.length > 0 ? totalWorkoutMinutesInMonth / durations.length : 0,
+        workoutSessionsWithDurationInMonth: durations.length,
+        isMostDurationThisMonth: mostDuration.has(m.userId),
+        kothClaimedExerciseIdsThisMonth: kothClaimedExerciseIdsInMonth(kothClaims, m.userId, month),
+        kothDefendedThisMonth: kothDefendedInMonth(kothClaims, m.userId, month),
+        isKothKingThisMonth: kothKingThisMonth.has(m.userId),
+        buddyCheckinsInMonth: daysInMonth.filter((d) => d.status === 'completed' && buddyCheckinKeys.has(`${m.userId}|${d.date}`))
+          .length,
+      });
+    }
+    contextsByMonthByUser.set(month, byUser);
+    previousMonthRankByUserId = rankByUserId;
+  }
+
+  return records.map((m) => {
+    const statusesById: Record<string, MonthlyChallengeStatus> = {};
+    let totalXp = 0;
+    for (const challengeDef of MONTHLY_CHALLENGES) {
+      let timesAchieved = 0;
+      let monthsEvaluated = 0;
+      const earnedMonths: string[] = [];
+      // Monotonic challenges (counters that only grow within a month) are
+      // credited the moment they're met — including the still-open current
+      // month — instead of waiting for month-close like comparative/
+      // rank-based challenges, which could still flip later in the month.
+      const evalMonths = challengeDef.monotonic ? months : closedMonths;
+      for (const month of evalMonths) {
+        const ctx = contextsByMonthByUser.get(month)?.get(m.userId);
+        if (!ctx) continue;
+        const result = challengeDef.evaluate(ctx);
+        if (result === null) continue;
+        monthsEvaluated++;
+        if (result) {
+          timesAchieved++;
+          earnedMonths.push(month);
+        }
+      }
+      const currentCtx = contextsByMonthByUser.get(currentMonth)?.get(m.userId);
+      const currentMonthEarned = currentCtx ? challengeDef.evaluate(currentCtx) : null;
+      const currentMonthProgress =
+        currentCtx && currentMonthEarned !== null && challengeDef.progress ? challengeDef.progress(currentCtx) : null;
+      statusesById[challengeDef.id] = { timesAchieved, monthsEvaluated, currentMonthEarned, currentMonthProgress, earnedMonths };
+      totalXp += timesAchieved * challengeDef.xpPerOccurrence;
+    }
+    return { userId: m.userId, fullName: m.fullName, statusesById, totalXp };
+  });
+}

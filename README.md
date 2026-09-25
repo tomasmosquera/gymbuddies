@@ -27,6 +27,7 @@ app/                          Screens (expo-router, file-based routing)
     profile/                      Hub + ~15 sub-screens (wallet, admin tools, stats, badges, etc.)
 src/
   lib/domain/                   Pure business logic, zero RN/Supabase deps — unit tested 1:1
+  lib/achievements/             Badge / monthly-challenge / level evaluation + the notify-achievements logic — takes the Supabase client as a PARAMETER, so the app and the Edge Function run the same code
   lib/supabase/                 Supabase client, hand-maintained generated types, Storage helpers
   lib/validation/               Zod schemas for every form
   lib/notifications/             Checkout reminders, geofencing, push token registration, tap routing
@@ -40,8 +41,9 @@ src/
   constants/                    theme, payoutModes (per-payout-mode field relevance), ruleFieldHelp
 supabase/
   migrations/                   Full SQL schema, RLS, triggers, RPCs, pg_cron jobs — 0001 through 0065
-  functions/notify-achievements/  The one Edge Function (badge/level-up push notifications)
+  functions/notify-achievements/  The one Edge Function (badge/level-up push notifications) — a thin wrapper over src/lib/achievements/notifyAchievements.ts
 tests/domain/                   Unit tests for src/lib/domain/*, one file per module
+tests/achievements/             Unit tests for the notify-achievements logic, against an in-memory Supabase (tests/helpers/fakeSupabase.ts)
 tests/notifications/            Unit test for the notification tap-routing logic
 ```
 
@@ -202,7 +204,9 @@ Members can react to each other's check-in photos with exactly one of 3 fixed em
 
 Every push goes through one Postgres function, `send_push_notification(p_user_ids, p_title, p_body, p_group_id, p_data, p_category)`, which filters recipients against their **per-group** `notification_preferences` (`group_activity | money | votes | reminders | admin_actions | achievements` — a member can mute one group while keeping another fully on), always writes an in-app `notifications` inbox row regardless of push-token presence, and sends the actual Expo push with `category`/`group_id` folded into the payload's `data` so a cold-start tap can route without a database round trip.
 
-It's called from ~30 places covering essentially every state change in the app: new member joined, deposit/recharge confirmed or rejected, weekly evaluation result, balance adjusted, payout settled, League cycle started/settled, rule proposal opened/resolved, direct rule change applied, excuse request submitted/decided/voted, photo challenge opened/resolved, someone reacted to your photo, admin corrected your activation or penalty-start date, admin deleted your check-in, you were removed from a group, and the nightly "you haven't checked in today" reminder. A separate reactive pipeline (a Deno Edge Function, `notify-achievements`, triggered every 15 minutes but skipping any group with no relevant changes since its last check via a `dirty_at`/`last_checked_at` tracking table) evaluates every badge/monthly-challenge/level-up and pushes exactly once per newly-earned achievement, to both the achiever and the rest of the group.
+It's called from ~30 places covering essentially every state change in the app: new member joined, deposit/recharge confirmed or rejected, weekly evaluation result, balance adjusted, payout settled, League cycle started/settled, rule proposal opened/resolved, direct rule change applied, excuse request submitted/decided/voted, photo challenge opened/resolved, someone reacted to your photo, admin corrected your activation or penalty-start date, admin deleted your check-in, you were removed from a group, and the nightly "you haven't checked in today" reminder. A separate reactive pipeline (a Deno Edge Function, `notify-achievements`, triggered every 15 minutes but skipping any group with no relevant changes since its last check via a `dirty_at`/`last_checked_at` tracking table) evaluates every badge/monthly-challenge/level-up **with the same code the app uses** (`src/lib/achievements/`, client passed in) and pushes exactly once per newly-earned achievement, to both the achiever and the rest of the group. It records an achievement, then pushes, and undoes the record if the push fails so it is retried instead of lost; it never guesses when the "already notified" list is unreadable; and it sends at most 5 pushes per person per run (the rest are recorded silently), as a guard against a burst. It returns HTTP 500 when any group fails — the previous version returned 200 with `groupsProcessed: 0` while failing on every group for weeks, because it kept its own copy of the badge computation that had drifted out of sync with the app.
+
+**After changing the badge catalog, the XP formula, or anything else that changes what members "already have", run the function once with `{"baseline": true}`** before (or right after) deploying: it records everything currently earned as notified for every group WITHOUT sending a push. Skipping it makes the next run notify each member of everything they already had. To check the function against the shared code after editing it: `deno check --config supabase/functions/notify-achievements/deno.json supabase/functions/notify-achievements/index.ts` (the app's own `tsc` excludes `supabase/functions`, which is how the old version went unnoticed); if a shared module starts importing a new `@/...` path, add it to that `deno.json` import map.
 
 Beyond ordinary pushes, a confirmed check-in also schedules **local** reminders when the group requires a checkout photo: a 20-minute delayed notification, a foreground GPS-distance watch (fires if the member drifts >100m from the check-in spot while the app is open), and — if background location permission is granted — a one-shot native geofence that fires the same reminder even with the app fully closed.
 
@@ -237,7 +241,7 @@ General pattern: every table's `SELECT` policy is simply "any member of this gro
 | `close-expired-excuse-votes` | hourly | Same, for group-voted excuse requests |
 | `close-expired-photo-challenges` | hourly | Same, for photo-validity challenges (defaults to valid) |
 | `process-scheduled-leaves` | hourly | Finalizes members whose leave-notice period has elapsed, settling any payout |
-| `notify-achievements` (Edge Function) | every 15 min | Pushes newly-earned badges/monthly-challenges/level-ups; cheaply no-ops for groups with nothing new |
+| `notify-achievements` (Edge Function) | every 15 min | Pushes newly-earned badges/monthly-challenges/level-ups; cheaply no-ops for groups with nothing new; HTTP 500 if any group fails; `{"baseline": true}` records without pushing |
 
 ## App architecture
 

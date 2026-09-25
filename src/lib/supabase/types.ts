@@ -438,6 +438,30 @@ export type WeeklyEvaluationResult = {
   created_at: string;
 };
 
+/** One row per (member, badge or monthly challenge, period) already pushed — `period` is 'lifetime' for badges, the YYYY-MM month for a monthly challenge. */
+export type MemberAchievementNotification = {
+  group_id: string;
+  user_id: string;
+  badge_id: string;
+  period: string;
+  notified_at: string;
+};
+
+/** The last level a member was told about, so a level-up is pushed once. */
+export type MemberLevelNotification = {
+  group_id: string;
+  user_id: string;
+  last_notified_level: number;
+  updated_at: string;
+};
+
+/** A group is only re-evaluated when dirty_at (bumped by triggers on every table that feeds badges) is newer than last_checked_at. */
+export type AchievementCheckState = {
+  group_id: string;
+  dirty_at: string;
+  last_checked_at: string | null;
+};
+
 type NoRelationships = { Relationships: [] };
 
 export type Database = {
@@ -495,6 +519,23 @@ export type Database = {
       buddy_nudges: { Row: BuddyNudge; Insert: never; Update: never } & NoRelationships;
       league_cycles: { Row: LeagueCycle; Insert: never; Update: never } & NoRelationships;
       league_cycle_payouts: { Row: LeagueCyclePayout; Insert: never; Update: never } & NoRelationships;
+      // The three below are only ever touched by the notify-achievements Edge Function (service role) — the app never reads or writes them.
+      member_achievement_notifications: {
+        Row: MemberAchievementNotification;
+        Insert: Pick<MemberAchievementNotification, 'group_id' | 'user_id' | 'badge_id' | 'period'>;
+        Update: never;
+      } & NoRelationships;
+      member_level_notifications: {
+        Row: MemberLevelNotification;
+        Insert: Pick<MemberLevelNotification, 'group_id' | 'user_id' | 'last_notified_level'> &
+          Partial<Pick<MemberLevelNotification, 'updated_at'>>;
+        Update: never;
+      } & NoRelationships;
+      achievement_check_state: {
+        Row: AchievementCheckState;
+        Insert: Pick<AchievementCheckState, 'group_id'> & Partial<Pick<AchievementCheckState, 'dirty_at' | 'last_checked_at'>>;
+        Update: never;
+      } & NoRelationships;
     };
     Views: Record<string, never>;
     Functions: {
@@ -587,6 +628,17 @@ export type Database = {
       admin_set_member_activation_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       admin_set_member_penalty_start_date: { Args: { p_member_id: string; p_date: string }; Returns: GroupMember };
       admin_allow_rejoin: { Args: { p_member_id: string }; Returns: GroupMember };
+      send_push_notification: {
+        Args: {
+          p_user_ids: string[];
+          p_title: string;
+          p_body: string;
+          p_group_id: string;
+          p_data?: Record<string, unknown>;
+          p_category?: string | null;
+        };
+        Returns: void;
+      };
       register_push_token: { Args: { p_token: string }; Returns: void };
       unregister_push_token: { Args: { p_token: string }; Returns: void };
       react_to_checkin: { Args: { p_checkin_id: string; p_emoji: string }; Returns: CheckinReaction };

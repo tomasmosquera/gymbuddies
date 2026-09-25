@@ -1,6 +1,17 @@
 {
   "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.110.7",
+    "@/lib/achievements/client": "../../../src/lib/achievements/client.ts",
+    "@/lib/achievements/groupAttendanceRecords": "../../../src/lib/achievements/groupAttendanceRecords.ts",
+    "@/lib/achievements/groupBadges": "../../../src/lib/achievements/groupBadges.ts",
+    "@/lib/achievements/groupMonthlyChallenges": "../../../src/lib/achievements/groupMonthlyChallenges.ts",
     "@/lib/domain/attendance": "../../../src/lib/domain/attendance.ts",
-    "@/lib/domain/badges": "../../../src/lib/domain/badges.ts"
+    "@/lib/domain/badges": "../../../src/lib/domain/badges.ts",
+    "@/lib/domain/dateUtils": "../../../src/lib/domain/dateUtils.ts",
+    "@/lib/domain/geo": "../../../src/lib/domain/geo.ts",
+    "@/lib/domain/koth": "../../../src/lib/domain/koth.ts",
+    "@/lib/domain/monthlyChallenges": "../../../src/lib/domain/monthlyChallenges.ts",
+    "@/lib/domain/xp": "../../../src/lib/domain/xp.ts",
+    "@/lib/supabase/types": "../../../src/lib/supabase/types.ts"
   }
 }
