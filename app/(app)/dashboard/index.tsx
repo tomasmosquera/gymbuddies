@@ -45,6 +45,15 @@ const VIEW_MODE_OPTIONS: { key: ViewMode; label: string }[] = [
 
 const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const WEEKDAY_SHORT_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+/**
+ * Temporary kill switch for starting a new invalidation vote on a check-in
+ * ("Pedir votación para invalidar"). Nothing about the feature is removed —
+ * voting on/deciding an already-open challenge, the modal, and the RPCs all
+ * still work as before — this just blocks opening a NEW one while the
+ * feature is paused. Flip back to true to re-enable.
+ */
+const PHOTO_CHALLENGE_VOTES_ENABLED = false;
+
 const MONTH_NAMES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
@@ -631,6 +640,10 @@ export default function DashboardScreen() {
       return;
     }
     setIsSubmittingChallenge(true);
+    if (!PHOTO_CHALLENGE_VOTES_ENABLED) {
+      Alert.alert('Votación no disponible', 'Por el momento no se pueden realizar este tipo de votaciones.');
+      return;
+    }
     try {
       await createChallenge(challengeTarget.id, reason);
       setChallengeTarget(null);
