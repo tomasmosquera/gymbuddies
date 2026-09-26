@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useActiveGroup } from "@/hooks/useActiveGroup";
 import { useLeagueChampionsSync } from "@/hooks/useLeagueChampions";
 import { useLeagueCycleResultsPrompt } from "@/hooks/useLeagueCycleResultsPrompt";
+import { useWorkoutLiveActivity } from "@/hooks/useWorkoutLiveActivity";
 import { LeagueCycleResultsModal } from "@/components/rules/LeagueCycleResultsModal";
 import { colors } from "@/constants/theme";
 
@@ -27,6 +28,7 @@ export default function AppLayout() {
   const { group, membership, isLoading } = useActiveGroup();
   useLeagueChampionsSync();
   const cycleResults = useLeagueCycleResultsPrompt(group);
+  useWorkoutLiveActivity(group);
 
   if (isInitializing || isLoading) return null;
   if (!isSignedIn) return <Redirect href="/sign-in" />;

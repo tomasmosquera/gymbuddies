@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Linking, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AdminPanel } from '@/components/admin/AdminPanel';
@@ -15,6 +15,7 @@ import { useLocationLock } from '@/hooks/useLocationLock';
 import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { cancelCheckoutReminders, stopCheckoutGeofence } from '@/lib/notifications/checkoutReminders';
 import { supabase } from '@/lib/supabase/client';
+import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
 import { formatZonedTime12h, formatElapsedClock, toZonedDateString } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -42,9 +43,19 @@ export default function CheckinCameraScreen() {
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [isCameraReady, setIsCameraReady] = useState(false);
 
+  // Set by the lock-screen workout timer's "Tomar foto final" button (gymbuddies://checkin?checkout=1).
+  const { checkout: checkoutParam } = useLocalSearchParams<{ checkout?: string }>();
   const checkoutRequired = group?.require_checkout_photo ?? false;
   const needsCheckout = checkoutRequired && !!todayCheckin && !todayCheckin.checkout_captured_at;
   const isCheckoutFlow = needsCheckout && checkoutRequested;
+
+  // Opens the final-photo step straight away when arriving from the workout timer's button; the
+  // param is consumed either way so it cannot re-trigger on a later visit to this tab.
+  useEffect(() => {
+    if (checkoutParam !== '1' || groupLoading || checkinsLoading) return;
+    if (needsCheckout) setCheckoutRequested(true);
+    router.setParams({ checkout: undefined });
+  }, [checkoutParam, groupLoading, checkinsLoading, needsCheckout]);
   const elapsedSeconds = useElapsedSeconds(needsCheckout && todayCheckin ? todayCheckin.captured_at : null);
   const todayString = toZonedDateString(new Date(), group?.timezone ?? 'America/Bogota');
   // A day invalidated (photo challenge vote, or the admin directly) can
@@ -161,6 +172,7 @@ export default function CheckinCameraScreen() {
       const { error } = await supabase.rpc('delete_own_checkin', { p_checkin_id: todayCheckin.id });
       if (error) throw new Error(error.message);
       await cancelCheckoutReminders(todayCheckin.id);
+      requestWorkoutActivitySync();
       setRetakeRequested(false);
       setCheckoutRequested(false);
       setIsCameraReady(false);

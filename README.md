@@ -337,7 +337,19 @@ npm run start
 6. Date pickers (group creation, rule proposal, cycle start), timezone picker sheet, tab icons colors.
 7. Apple Health (iOS) / Health Connect (Android) connect + calories shown after a workout.
 8. Rules: propose/vote, League cycle card, early close, results modal; Dashboard calendar.
-9. `eas update` picks up on a 1.1.0 build (and does NOT reach a 1.0.x build).
+9. Live Activity: check-in → the timer appears on the lock screen / Dynamic Island; "Tomar foto final" opens the final-photo step; it disappears after the final photo, after deleting the check-in and on sign-out; with Live Activities off in iOS Settings the check-in still works.
+10. `eas update` picks up on a 1.1.0 build (and does NOT reach a 1.0.x build).
+
+### Workout Live Activity (iOS, `expo-widgets`)
+
+While a check-in is waiting for its final photo, iOS shows a **Live Activity**: on the lock screen and in the Dynamic Island, a timer counting up from the check-in photo, a progress bar towards the group's minimum workout minutes (`min_workout_minutes`; hidden when it is 0) and a **"Tomar foto final"** button. The button cannot take the photo itself (iOS does not open a camera from a Live Activity) — it opens the app on `gymbuddies://checkin?checkout=1`, and the check-in tab goes straight into the final-photo step.
+
+- **Layout**: `src/lib/liveActivity/WorkoutActivity.tsx` (`createLiveActivity`, `'widget'` directive). It runs in an isolated runtime — only `@expo/ui/swift-ui` components, no hooks/app state — so it imports nothing from the app but a type; the button's deep link (`WORKOUT_ACTIVITY_URL`) travels inside the props as `checkoutUrl`. The clock and the bar are drawn by the system (`timerInterval`), so they keep running with the app closed and need no updates or pushes.
+- **When it is up** (`workoutActivityFor`, `src/lib/domain/workoutActivity.ts`): the group requires a final photo, today's check-in exists and has no `checkout_captured_at`, and it is under 8 h old (iOS ends any Live Activity after 8 h). Anything else — checkout done, check-in deleted, other group, signed out — ends it.
+- **Reconciliation, not events**: `useWorkoutLiveActivity` (mounted in `app/(app)/_layout.tsx`) reads today's check-in from Supabase on mount, on returning to the foreground, on group change and whenever `requestWorkoutActivitySync()` is called (after saving a check-in/final photo in `checkin/preview.tsx`, after deleting one, and on sign-out). A failed read never ends a running workout. `syncWorkoutLiveActivity` is idempotent, serialised, collapses duplicates and never throws (Live Activities can be switched off in iOS Settings).
+- **Old binaries / Expo Go / Android**: the widget module is `require`d lazily and only on iOS outside Expo Go, so this is a silent no-op anywhere it does not exist.
+- **Build requirement**: it adds an app-extension target (`com.gymbuddiestm.app.ExpoWidgetsTarget`) and an App Group (`group.com.gymbuddiestm.app`). The **first** EAS iOS build after adding it must be run **interactively** so EAS can create/update the App ID, the App Group and the extension's provisioning profile (Apple login + 2FA): `npx eas build --platform ios --profile production` from a terminal. Later builds are non-interactive again.
+- **Known limits**: only the active group's check-in drives the activity (switching group re-syncs it); no server pushes, so the text does not change when the minimum is reached (the bar just fills); Android has no Live Activity (a persistent notification would be the equivalent, not built).
 
 Scan the QR code with **Expo Go** on a physical device — camera and GPS need a real device (iOS Simulator has no camera; the Android emulator's camera is fake).
 

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/state/authStore';
 import { registerForPushNotificationsAsync, unregisterCurrentDeviceToken } from '@/lib/notifications/pushToken';
 import { stopArrivalGeofence } from '@/lib/notifications/checkinArrivalReminders';
+import { syncWorkoutLiveActivity } from '@/lib/liveActivity/workoutLiveActivity';
 import type { Profile } from '@/lib/supabase/types';
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -91,6 +92,7 @@ export function useAuth() {
     // has to be stopped explicitly or it'd keep watching for a signed-out
     // account.
     await stopArrivalGeofence().catch(() => {});
+    await syncWorkoutLiveActivity(null);
     const { error } = await supabase.auth.signOut();
     if (error) throw new Error(error.message);
   }, []);

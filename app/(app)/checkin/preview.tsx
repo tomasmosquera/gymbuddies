@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase/client';
 import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
+import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
 import { setLastCheckinDateCache } from '@/lib/notifications/checkinArrivalCache';
 import { todayLocalDateString } from '@/lib/domain/checkinReminders';
 import { getActiveEnergyBurnedKcal } from '@/lib/health';
@@ -279,6 +280,7 @@ export default function CheckinPreviewScreen() {
         }
 
         setDraft(null);
+        requestWorkoutActivitySync();
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
         Alert.alert(
@@ -394,6 +396,7 @@ export default function CheckinPreviewScreen() {
       const buddyLine = buddyPartnerName ? `\n\n🫱🏼‍🫲🏻 Entrenaste junto a ${buddyPartnerName} — +3 XP bonus.` : '';
 
       setDraft(null);
+      requestWorkoutActivitySync();
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
         (group.require_checkout_photo
