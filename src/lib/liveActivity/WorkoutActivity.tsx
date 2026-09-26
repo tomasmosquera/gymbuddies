@@ -3,6 +3,7 @@ import {
   font,
   foregroundStyle,
   frame,
+  labelsHidden,
   minimumScaleFactor,
   monospacedDigit,
   multilineTextAlignment,
@@ -23,6 +24,11 @@ import type { WorkoutActivityProps } from '@/lib/domain/workoutActivity';
  * and need no updates or pushes. A SwiftUI timer text is greedy — it stretches to whatever width
  * it is offered — so every one of them is given an explicit frame: a fixed width where it sits
  * next to other things, a very wide frame plus centered alignment where it should be centered.
+ *
+ * iOS caps the lock-screen banner at about 160 pt of height and clips whatever does not fit, so the
+ * banner below is budgeted to stay around 135 pt (5 rows + 4 gaps + 24 pt of vertical padding).
+ * `ProgressView(timerInterval:)` draws its own remaining-time label under the bar; it is hidden
+ * (`labelsHidden`) because the banner already has its own "Tiempo mínimo restante" line.
  */
 const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityEnvironment) => {
   'widget';
@@ -34,38 +40,42 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
   const minEnd = new Date(start.getTime() + props.minMinutes * 60 * 1000);
   const hasMinimum = props.minMinutes > 0;
   // "44:59" while the minimum is under an hour, "1:14:59" from an hour up.
-  const remainingWidth = props.minMinutes >= 60 ? 62 : 48;
+  const remainingWidth = props.minMinutes >= 60 ? 58 : 44;
   const wide = 10000; // stands in for "as wide as the parent allows" (JSON cannot carry Infinity)
 
   return {
     banner: (
-      <VStack spacing={12} modifiers={[padding({ horizontal: 24, vertical: 20 })]}>
+      <VStack spacing={4} modifiers={[padding({ horizontal: 24, vertical: 12 })]}>
         <HStack>
-          <Text modifiers={[font({ weight: 'bold', size: 15 }), foregroundStyle(green)]}>Gym Buddies</Text>
+          <Text modifiers={[font({ weight: 'bold', size: 13 }), foregroundStyle(green)]}>Gym Buddies</Text>
           <Spacer />
-          <Text modifiers={[font({ size: 13 }), foregroundStyle(muted)]}>{props.groupName}</Text>
+          <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupName}</Text>
         </HStack>
         <Text
           timerInterval={{ lower: start, upper: timerEnd }}
           countsDown={false}
           modifiers={[
-            font({ weight: 'bold', size: 44 }),
+            font({ weight: 'bold', size: 34 }),
             monospacedDigit(),
             multilineTextAlignment('center'),
             frame({ maxWidth: wide, alignment: 'center' }),
           ]}
         />
         {hasMinimum ? (
-          <VStack spacing={8}>
-            <ProgressView timerInterval={{ lower: start, upper: minEnd }} modifiers={[tint(green)]} />
+          <VStack spacing={4}>
+            <ProgressView
+              timerInterval={{ lower: start, upper: minEnd }}
+              countsDown={false}
+              modifiers={[tint(green), labelsHidden()]}
+            />
             <HStack spacing={4}>
               <Spacer />
-              <Text modifiers={[font({ size: 14 })]}>Tiempo mínimo restante:</Text>
+              <Text modifiers={[font({ size: 13 })]}>Tiempo mínimo restante:</Text>
               <Text
                 timerInterval={{ lower: start, upper: minEnd }}
                 countsDown
                 modifiers={[
-                  font({ weight: 'semibold', size: 14 }),
+                  font({ weight: 'semibold', size: 13 }),
                   monospacedDigit(),
                   multilineTextAlignment('leading'),
                   frame({ width: remainingWidth, alignment: 'leading' }),
@@ -80,7 +90,7 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
           <Link
             label="Tomar Foto Final"
             destination={props.checkoutUrl}
-            modifiers={[font({ weight: 'semibold', size: 16 }), foregroundStyle(green)]}
+            modifiers={[font({ weight: 'semibold', size: 15 }), foregroundStyle(green)]}
           />
           <Spacer />
         </HStack>
@@ -128,7 +138,13 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
     ),
     expandedBottom: (
       <VStack spacing={10} modifiers={[padding({ horizontal: 20, vertical: 12 })]}>
-        {hasMinimum ? <ProgressView timerInterval={{ lower: start, upper: minEnd }} modifiers={[tint(green)]} /> : null}
+        {hasMinimum ? (
+          <ProgressView
+            timerInterval={{ lower: start, upper: minEnd }}
+            countsDown={false}
+            modifiers={[tint(green), labelsHidden()]}
+          />
+        ) : null}
         <HStack>
           <Spacer />
           <Link
