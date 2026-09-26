@@ -27,7 +27,13 @@ import type { GroupMemberWithProfile } from '@/hooks/useGroupMembers';
 import { formatKothValue } from '@/lib/domain/koth';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
-import { cycleBoundaryDate, formatDateOnly } from '@/lib/domain/leagueCycle';
+import {
+  canCancelEarlyClose,
+  canCloseEarly,
+  cycleBoundaryDate,
+  earlyCloseSunday,
+  formatDateOnly,
+} from '@/lib/domain/leagueCycle';
 import { toCycleResults } from '@/lib/domain/leagueResults';
 import { LeagueCycleResultsModal } from '@/components/rules/LeagueCycleResultsModal';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
@@ -185,6 +191,8 @@ export default function RulesScreen() {
     isLoading: leagueCycleLoading,
     refresh: refreshLeagueCycle,
     startCycle: startLeagueCycle,
+    closeEarly: closeLeagueCycleEarly,
+    cancelEarlyClose: cancelLeagueCycleEarlyClose,
   } = useLeagueCycle(group?.id ?? null);
   const { history: leagueHistory, refresh: refreshLeagueHistory } = useLeagueCycleHistory(group?.id ?? null);
   const [showAllCycles, setShowAllCycles] = useState(false);
@@ -192,6 +200,7 @@ export default function RulesScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [isStartingCycle, setIsStartingCycle] = useState(false);
+  const [isChangingEarlyClose, setIsChangingEarlyClose] = useState(false);
   const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
   const [excuseProofItems, setExcuseProofItems] = useState<{ url: string; path: string }[]>([]);
   const [viewingExcuseProof, setViewingExcuseProof] = useState<{ url: string; path: string } | null>(null);
@@ -320,6 +329,30 @@ export default function RulesScreen() {
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  const runEarlyCloseChange = async (action: () => Promise<void>) => {
+    setIsChangingEarlyClose(true);
+    try {
+      await action();
+    } catch (err) {
+      Alert.alert('No se pudo cambiar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsChangingEarlyClose(false);
+    }
+  };
+
+  const handleCloseLeagueCycleEarly = () => {
+    if (!group) return;
+    const sunday = formatDateOnly(earlyCloseSunday(new Date(), group.timezone));
+    Alert.alert(
+      'Cerrar la Liga antes de tiempo',
+      `El ciclo terminará este domingo ${sunday}: ese es el último día que cuenta y el lunes se reparte el premio con las posiciones finales. Se aplica de inmediato, sin votación, y se avisa a todos los integrantes. Puedes cancelarlo hasta que termine la semana. ¿Continuar?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cerrar la Liga', style: 'destructive', onPress: () => runEarlyCloseChange(closeLeagueCycleEarly) },
+      ]
+    );
   };
 
   const handleStartLeagueCycle = async () => {
@@ -474,6 +507,22 @@ export default function RulesScreen() {
                   {formatDateOnly(cycleBoundaryDate(leagueCycle.original_ends_at ?? leagueCycle.ends_at, group.timezone))}).
                   {group.league_auto_renew ? ' El lunes arranca un ciclo nuevo.' : ' Después la Liga queda en pausa hasta iniciar otro ciclo.'}
                 </Text>
+              ) : null}
+              {isAdmin && canCancelEarlyClose(leagueCycle, new Date()) ? (
+                <Button
+                  label="Cancelar cierre anticipado"
+                  variant="secondary"
+                  onPress={() => runEarlyCloseChange(cancelLeagueCycleEarlyClose)}
+                  loading={isChangingEarlyClose}
+                />
+              ) : null}
+              {isAdmin && canCloseEarly(leagueCycle, new Date(), group.timezone) ? (
+                <Button
+                  label="Cerrar el ciclo esta semana"
+                  variant="danger"
+                  onPress={handleCloseLeagueCycleEarly}
+                  loading={isChangingEarlyClose}
+                />
               ) : null}
               {leagueCycle.effective_start_date !== cycleBoundaryDate(leagueCycle.started_at, group.timezone) ? (
                 <Text style={styles.tally}>
