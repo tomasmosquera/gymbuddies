@@ -27,6 +27,9 @@ import type { GroupMemberWithProfile } from '@/hooks/useGroupMembers';
 import { formatKothValue } from '@/lib/domain/koth';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
+import { cycleBoundaryDate, formatDateOnly } from '@/lib/domain/leagueCycle';
+import { toCycleResults } from '@/lib/domain/leagueResults';
+import { LeagueCycleResultsModal } from '@/components/rules/LeagueCycleResultsModal';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -47,6 +50,7 @@ const CHANGE_LABELS: Record<string, string> = {
   min_workout_minutes: 'Duración mínima del entreno (min)',
   payout_mode: 'Modo de juego',
   league_duration_weeks: 'Duración del ciclo de Liga (semanas)',
+  league_auto_renew: 'Renovar ciclo de Liga automáticamente',
   // Legacy key: proposals created before the months -> weeks change still carry it.
   league_duration_months: 'Duración del ciclo de Liga (meses)',
   league_prize_splits: 'Premio por puesto',
@@ -63,7 +67,7 @@ const MONEY_CHANGE_FIELDS = new Set([
   'descenso_penalty_amount',
   'enrollment_fee_amount',
 ]);
-const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo']);
+const BOOLEAN_CHANGE_FIELDS = new Set(['require_checkout_photo', 'league_auto_renew']);
 const PAYOUT_MODE_FIELDS = new Set(['payout_mode']);
 const PERCENT_ARRAY_FIELDS = new Set(['league_prize_splits']);
 const DATE_CHANGE_FIELDS = new Set(['league_cycle_started_at']);
@@ -184,6 +188,7 @@ export default function RulesScreen() {
   } = useLeagueCycle(group?.id ?? null);
   const { history: leagueHistory, refresh: refreshLeagueHistory } = useLeagueCycleHistory(group?.id ?? null);
   const [showAllCycles, setShowAllCycles] = useState(false);
+  const [resultsCycleId, setResultsCycleId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [isStartingCycle, setIsStartingCycle] = useState(false);
@@ -418,6 +423,10 @@ export default function RulesScreen() {
               <Text style={styles.ruleValue}>{group.league_duration_weeks} semana(s)</Text>
             </View>
             <View style={styles.ruleRow}>
+              <Text style={styles.ruleLabel}>Renovar ciclo automáticamente</Text>
+              <Text style={styles.ruleValue}>{group.league_auto_renew ? 'Sí' : 'No'}</Text>
+            </View>
+            <View style={styles.ruleRow}>
               <Text style={styles.ruleLabel}>Premio por puesto</Text>
               <Text style={styles.ruleValue}>{group.league_prize_splits.map((v) => `${v}%`).join(' / ')}</Text>
             </View>
@@ -454,10 +463,24 @@ export default function RulesScreen() {
             <>
               <Text style={styles.changeText}>Ciclo #{leagueCycle.cycle_number} en curso</Text>
               <Text style={styles.tally}>
-                Termina el {new Date(leagueCycle.ends_at).toLocaleDateString('es-CO')} (faltan{' '}
-                {daysUntil(leagueCycle.ends_at)} día{daysUntil(leagueCycle.ends_at) === 1 ? '' : 's'})
+                Cierra el domingo {formatDateOnly(cycleBoundaryDate(leagueCycle.ends_at, group.timezone))} (faltan{' '}
+                {daysUntil(leagueCycle.ends_at)} día{daysUntil(leagueCycle.ends_at) === 1 ? '' : 's'}); el lunes
+                siguiente se reparte el premio.
               </Text>
               <Text style={styles.tally}>Duración: {leagueCycle.duration_weeks} semana(s).</Text>
+              {leagueCycle.closed_early ? (
+                <Text style={styles.cycleNote}>
+                  El administrador programó el cierre anticipado de este ciclo (iba a terminar el{' '}
+                  {formatDateOnly(cycleBoundaryDate(leagueCycle.original_ends_at ?? leagueCycle.ends_at, group.timezone))}).
+                  {group.league_auto_renew ? ' El lunes arranca un ciclo nuevo.' : ' Después la Liga queda en pausa hasta iniciar otro ciclo.'}
+                </Text>
+              ) : null}
+              {leagueCycle.effective_start_date !== cycleBoundaryDate(leagueCycle.started_at, group.timezone) ? (
+                <Text style={styles.tally}>
+                  Arrancó el {formatDateOnly(leagueCycle.effective_start_date)}; los días anteriores de esa semana se
+                  cuentan como excusados para todos.
+                </Text>
+              ) : null}
               {/* The duration rule above is what the NEXT cycle will use — a cycle that's
                   already running keeps the length it was started with, so say so instead of
                   leaving two different numbers on screen unexplained. */}
@@ -484,37 +507,49 @@ export default function RulesScreen() {
       {leagueHistory.length > 0 && group ? (
         <Card style={styles.proposalCard}>
           <Text style={styles.cardTitle}>Historial de ciclos de Liga</Text>
-          {(showAllCycles ? leagueHistory : leagueHistory.slice(0, 3)).map(({ cycle, placements }) => (
+          {(showAllCycles ? leagueHistory : leagueHistory.slice(0, 3)).map(({ cycle, standings }) => (
             <View key={cycle.id} style={styles.historyCycle}>
               <View style={styles.historyCycleHeader}>
                 <Text style={styles.changeText}>Ciclo #{cycle.cycle_number}</Text>
                 <Text style={styles.tally}>
-                  {new Date(cycle.started_at).toLocaleDateString('es-CO')} –{' '}
-                  {new Date(cycle.ends_at).toLocaleDateString('es-CO')}
+                  {formatDateOnly(cycle.effective_start_date)} –{' '}
+                  {formatDateOnly(cycleBoundaryDate(cycle.ends_at, group.timezone))}
                 </Text>
               </View>
+              {cycle.closed_early ? <Text style={styles.tally}>Cerrado antes de tiempo por el administrador.</Text> : null}
               {cycle.pool_at_payout !== null ? (
                 <Text style={styles.tally}>
                   Fondo repartido: {group.currency} {cycle.pool_at_payout.toLocaleString('es-CO')}
                 </Text>
               ) : null}
-              {placements.length === 0 ? (
+              {standings.length === 0 ? (
                 <Text style={styles.tally}>No se repartió premio en este ciclo.</Text>
               ) : (
-                placements.map((p) => (
-                  <View key={p.userId} style={styles.historyRow}>
-                    <View style={styles.historyPlace}>
-                      {p.place === 1 ? <CrownIcon size={18} /> : <Text style={styles.historyPlaceText}>{p.place}°</Text>}
-                    </View>
-                    <Text style={styles.historyName} numberOfLines={1}>
-                      {p.fullName ?? 'Ex miembro'}
+                <>
+                  {standings
+                    .filter((s) => s.place === 1)
+                    .map((s) => (
+                      <View key={s.userId} style={styles.historyRow}>
+                        <View style={styles.historyPlace}>
+                          <CrownIcon size={18} />
+                        </View>
+                        <Text style={styles.historyName} numberOfLines={1}>
+                          {s.fullName ?? 'Ex miembro'}
+                        </Text>
+                        {s.prizeAmount > 0 ? (
+                          <Text style={styles.historyAmount}>
+                            {group.currency} {s.prizeAmount.toLocaleString('es-CO')}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  {standings.some((s) => s.relegated) ? (
+                    <Text style={styles.tally}>
+                      Zona de descenso: {standings.filter((s) => s.relegated).length} jugador(es).
                     </Text>
-                    <Text style={styles.tally}>{p.sharePercent}%</Text>
-                    <Text style={styles.historyAmount}>
-                      {group.currency} {p.amount.toLocaleString('es-CO')}
-                    </Text>
-                  </View>
-                ))
+                  ) : null}
+                  <Button label="Ver resultados completos" variant="secondary" onPress={() => setResultsCycleId(cycle.id)} />
+                </>
               )}
             </View>
           ))}
@@ -525,6 +560,26 @@ export default function RulesScreen() {
               onPress={() => setShowAllCycles((v) => !v)}
             />
           ) : null}
+          <LeagueCycleResultsModal
+            variant="past"
+            visible={resultsCycleId !== null}
+            myUserId={session?.user.id ?? null}
+            onClose={() => setResultsCycleId(null)}
+            results={(() => {
+              const entry = leagueHistory.find((h) => h.cycle.id === resultsCycleId);
+              if (!entry) return null;
+              return toCycleResults({
+                cycleNumber: entry.cycle.cycle_number,
+                startDate: entry.cycle.effective_start_date,
+                endDate: cycleBoundaryDate(entry.cycle.ends_at, group.timezone),
+                closedEarly: entry.cycle.closed_early,
+                currency: group.currency,
+                poolAmount: entry.cycle.pool_at_payout,
+                partial: entry.partial,
+                rows: entry.standings,
+              });
+            })()}
+          />
         </Card>
       ) : null}
 

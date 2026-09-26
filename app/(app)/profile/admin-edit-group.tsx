@@ -13,6 +13,14 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useLeagueCycle } from '@/hooks/useLeagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { toZonedDateString } from '@/lib/domain/dateUtils';
+import {
+  canCancelEarlyClose,
+  canCloseEarly,
+  cycleBoundaryDate,
+  dateOnlyToLocalDate,
+  earlyCloseSunday,
+  formatDateOnly,
+} from '@/lib/domain/leagueCycle';
 import { DEFAULT_GROUP_TIMEZONE } from '@/constants/timezones';
 import { colors, spacing } from '@/constants/theme';
 
@@ -28,7 +36,7 @@ const PLATFORM_ADMIN_EMAIL = 'tomasmosquera@hotmail.com';
 export default function AdminEditGroupScreen() {
   const { session } = useAuth();
   const { group, refresh } = useActiveGroup();
-  const { cycle, setCycleStart } = useLeagueCycle(group?.id ?? null);
+  const { cycle, setCycleStart, closeEarly, cancelEarlyClose } = useLeagueCycle(group?.id ?? null);
   const [name, setName] = useState(group?.name ?? '');
   const [adminPaymentInfo, setAdminPaymentInfo] = useState(group?.admin_payment_info ?? '');
   const [timezone, setTimezone] = useState(group?.timezone ?? DEFAULT_GROUP_TIMEZONE);
@@ -36,6 +44,7 @@ export default function AdminEditGroupScreen() {
   const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const [leagueCycleStartDate, setLeagueCycleStartDate] = useState(new Date());
   const [isSavingCycleStart, setIsSavingCycleStart] = useState(false);
+  const [isChangingEarlyClose, setIsChangingEarlyClose] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canManagePublic = session?.user.email === PLATFORM_ADMIN_EMAIL;
@@ -74,7 +83,7 @@ export default function AdminEditGroupScreen() {
   };
 
   useEffect(() => {
-    if (cycle) setLeagueCycleStartDate(new Date(cycle.started_at));
+    if (cycle) setLeagueCycleStartDate(dateOnlyToLocalDate(cycle.effective_start_date));
   }, [cycle]);
 
   const applyCycleStart = async () => {
@@ -96,6 +105,30 @@ export default function AdminEditGroupScreen() {
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Cambiar', onPress: applyCycleStart },
+      ]
+    );
+  };
+
+  const runEarlyCloseChange = async (action: () => Promise<void>) => {
+    setIsChangingEarlyClose(true);
+    try {
+      await action();
+    } catch (err) {
+      Alert.alert('No se pudo cambiar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsChangingEarlyClose(false);
+    }
+  };
+
+  const handleCloseEarly = () => {
+    if (!group) return;
+    const sunday = formatDateOnly(earlyCloseSunday(new Date(), group.timezone));
+    Alert.alert(
+      'Cerrar la Liga antes de tiempo',
+      `El ciclo terminará este domingo ${sunday}: ese es el último día que cuenta y el lunes se reparte el premio con las posiciones finales. Se aplica de inmediato, sin votación, y se avisa a todos los integrantes. Puedes cancelarlo hasta que termine la semana. ¿Continuar?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cerrar la Liga', style: 'destructive', onPress: () => runEarlyCloseChange(closeEarly) },
       ]
     );
   };
@@ -185,7 +218,9 @@ export default function AdminEditGroupScreen() {
             <SectionHeader icon="trophy-outline" title="Ciclo de Liga" />
             <Card style={styles.card}>
               <Text style={styles.hint}>
-                Se aplica de inmediato, sin votación — mueve también la fecha en que se reparte el premio.
+                Se aplica de inmediato, sin votación — mueve también la fecha en que se reparte el premio. Un ciclo
+                siempre arranca el lunes de la semana elegida (los días anteriores a la fecha que elijas cuentan como
+                excusados para todos) y cierra un domingo.
               </Text>
               <InlineDatePicker value={leagueCycleStartDate} onChange={setLeagueCycleStartDate} wide />
               <Button
@@ -194,6 +229,48 @@ export default function AdminEditGroupScreen() {
                 onPress={handleSaveCycleStart}
                 loading={isSavingCycleStart}
               />
+            </Card>
+
+            <SectionHeader icon="flag-outline" title="Cierre anticipado" />
+            <Card style={styles.card}>
+              {cycle.closed_early ? (
+                <>
+                  <Text style={styles.hint}>
+                    El ciclo cierra este domingo {formatDateOnly(cycleBoundaryDate(cycle.ends_at, group.timezone))}. El
+                    lunes se conocen las posiciones finales y se reparte el premio
+                    {group.league_auto_renew ? ', y arranca un ciclo nuevo' : ''}.
+                  </Text>
+                  {canCancelEarlyClose(cycle, new Date()) ? (
+                    <Button
+                      label="Cancelar cierre anticipado"
+                      variant="secondary"
+                      onPress={() => runEarlyCloseChange(cancelEarlyClose)}
+                      loading={isChangingEarlyClose}
+                    />
+                  ) : null}
+                </>
+              ) : canCloseEarly(cycle, new Date(), group.timezone) ? (
+                <>
+                  <Text style={styles.hint}>
+                    Termina el ciclo al cerrar esta semana: el domingo{' '}
+                    {formatDateOnly(earlyCloseSunday(new Date(), group.timezone))} es el último día y el lunes se dan
+                    las posiciones finales y se reparte el premio.{' '}
+                    {group.league_auto_renew
+                      ? 'Como la renovación automática está activada, ese mismo lunes arranca un ciclo nuevo.'
+                      : 'Después la Liga queda en pausa hasta que inicies un ciclo nuevo.'}
+                  </Text>
+                  <Button
+                    label="Iniciar cierre anticipado de la Liga"
+                    variant="danger"
+                    onPress={handleCloseEarly}
+                    loading={isChangingEarlyClose}
+                  />
+                </>
+              ) : (
+                <Text style={styles.hint}>
+                  No hay nada que adelantar: el ciclo ya termina esta semana o todavía no empieza.
+                </Text>
+              )}
             </Card>
           </>
         ) : null}

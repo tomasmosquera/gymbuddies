@@ -204,6 +204,7 @@ export default function CreateGroupScreen() {
   const [adminPaymentInfo, setAdminPaymentInfo] = useState('');
   const [payoutMode, setPayoutMode] = useState<PayoutMode>('cooperative');
   const [leagueDurationWeeks, setLeagueDurationWeeks] = useState('');
+  const [leagueAutoRenew, setLeagueAutoRenew] = useState<'yes' | 'no'>('no');
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>(['60', '30', '10']);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
   const [descensoRankCount, setDescensoRankCount] = useState('');
@@ -253,6 +254,7 @@ export default function CreateGroupScreen() {
       adminPaymentInfo,
       payoutMode,
       leagueDurationWeeks: leagueDurationWeeks ? Number(leagueDurationWeeks) : undefined,
+      leagueAutoRenew: leagueAutoRenew === 'yes',
       leaguePrizeSplits: leaguePrizeSplits.filter((v) => v.trim()).map(Number),
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
       descensoRankCount: descensoRankCount ? Number(descensoRankCount) : undefined,
@@ -285,6 +287,7 @@ export default function CreateGroupScreen() {
         p_admin_payment_info: result.data.adminPaymentInfo || null,
         p_payout_mode: result.data.payoutMode,
         p_league_duration_weeks: result.data.leagueDurationWeeks,
+        p_league_auto_renew: payoutMode === 'cooperative' ? false : result.data.leagueAutoRenew,
         p_league_prize_splits: result.data.leaguePrizeSplits,
         p_mixed_league_share_percent: result.data.mixedLeagueSharePercent,
         p_game_starts_at: result.data.gameStartsAt || null,
@@ -454,6 +457,11 @@ export default function CreateGroupScreen() {
                   placeholder="13"
                   error={errors.leagueDurationWeeks}
                 />
+                <View style={styles.toggleField}>
+                  <Text style={styles.toggleLabel}>¿Renovar el ciclo automáticamente?</Text>
+                  <Text style={styles.toggleHint}>{RULE_FIELD_HELP.leagueAutoRenew}</Text>
+                  <SegmentedControl options={YES_NO_OPTIONS} value={leagueAutoRenew} onChange={setLeagueAutoRenew} />
+                </View>
                 <PrizeSplitEditor values={leaguePrizeSplits} onChange={setLeaguePrizeSplits} />
               </Card>
             ) : null}
@@ -627,6 +635,7 @@ export default function CreateGroupScreen() {
                     label="Duración del ciclo"
                     value={`${leagueDurationWeeks || 13} semana(s)`}
                   />
+                  <ReviewRow label="Renovar ciclo automáticamente" value={leagueAutoRenew === 'yes' ? 'Sí' : 'No'} />
                   <ReviewRow label="Premio por puesto" value={leaguePrizeSplits.filter((v) => v.trim()).map((v) => `${v}%`).join(' · ') || '—'} />
                 </>
               ) : null}

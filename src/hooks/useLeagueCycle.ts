@@ -34,7 +34,7 @@ export function useLeagueCycle(groupId: string | null) {
     await refresh();
   }, [groupId, refresh]);
 
-  /** Moves the running cycle's start date (and recomputes its end date) — no vote needed, admin-only on the server. */
+  /** Moves the running cycle's start date (the cycle snaps to that week's Monday and its end date is recomputed; it also clears a scheduled early close) — no vote needed, admin-only on the server. */
   const setCycleStart = useCallback(
     async (dateString: string) => {
       if (!groupId) return;
@@ -48,5 +48,21 @@ export function useLeagueCycle(groupId: string | null) {
     [groupId, refresh]
   );
 
-  return { cycle, isLoading, refresh, startCycle, setCycleStart };
+  /** Schedules the cycle to close at the end of THIS week (Sunday) — the Monday evaluation settles it. Admin-only on the server, no vote. */
+  const closeEarly = useCallback(async () => {
+    if (!groupId) return;
+    const { error } = await supabase.rpc('admin_close_league_cycle_early', { p_group_id: groupId });
+    if (error) throw new Error(error.message);
+    await refresh();
+  }, [groupId, refresh]);
+
+  /** Undoes a scheduled early close (only until the closing week is over) — the cycle goes back to its original end date. */
+  const cancelEarlyClose = useCallback(async () => {
+    if (!groupId) return;
+    const { error } = await supabase.rpc('admin_cancel_league_cycle_early_close', { p_group_id: groupId });
+    if (error) throw new Error(error.message);
+    await refresh();
+  }, [groupId, refresh]);
+
+  return { cycle, isLoading, refresh, startCycle, setCycleStart, closeEarly, cancelEarlyClose };
 }

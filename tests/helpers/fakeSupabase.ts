@@ -42,12 +42,17 @@ export function createFakeSupabase(initial: Record<string, Row[]>, options: Fake
     private payload: Row | null = null;
     private filters: ((r: Row) => boolean)[] = [];
     private one: 'single' | 'maybe' | null = null;
+    private sort: { col: string; ascending: boolean } | null = null;
+    private max: number | null = null;
     constructor(private table: string) {}
 
     select() { return this; }
     eq(col: string, val: unknown) { this.filters.push((r) => r[col] === val); return this; }
     in(col: string, vals: unknown[]) { this.filters.push((r) => vals.includes(r[col])); return this; }
     lte(col: string, val: unknown) { this.filters.push((r) => (r[col] as string) <= (val as string)); return this; }
+    gt(col: string, val: unknown) { this.filters.push((r) => (r[col] as number) > (val as number)); return this; }
+    order(col: string, opts?: { ascending?: boolean }) { this.sort = { col, ascending: opts?.ascending ?? true }; return this; }
+    limit(n: number) { this.max = n; return this; }
     not(col: string, op: string, val: unknown) {
       if (op === 'is') this.filters.push((r) => (val === null ? r[col] !== null && r[col] !== undefined : r[col] !== val));
       return this;
@@ -83,7 +88,12 @@ export function createFakeSupabase(initial: Record<string, Row[]>, options: Fake
       }
       const failure = options.failSelect?.(table) ?? null;
       if (failure) return { data: null, error: { message: failure } };
-      const matched = rows(table).filter((r) => this.filters.every((f) => f(r)));
+      let matched = rows(table).filter((r) => this.filters.every((f) => f(r)));
+      if (this.sort) {
+        const { col, ascending } = this.sort;
+        matched = [...matched].sort((a, b) => ((a[col] as number) - (b[col] as number)) * (ascending ? 1 : -1));
+      }
+      if (this.max !== null) matched = matched.slice(0, this.max);
       if (this.one === 'single') return matched.length > 0 ? { data: matched[0], error: null } : { data: null, error: { message: 'no rows' } };
       if (this.one === 'maybe') return { data: matched[0] ?? null, error: null };
       return { data: matched, error: null };

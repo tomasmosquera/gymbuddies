@@ -118,6 +118,14 @@ describe('createGroupSchema', () => {
     expect(createGroupSchema.safeParse({ ...base, leagueDurationWeeks: 4.5 }).success).toBe(false);
   });
 
+  it('leaves league auto-renew OFF unless asked for', () => {
+    const base = { name: 'Grupo', initialDepositAmount: 100000, minDaysPerWeek: 3, penaltyAmount: 15000, weeklyPenaltyCap: 300000 };
+    const off = createGroupSchema.safeParse(base);
+    expect(off.success && off.data.leagueAutoRenew).toBe(false);
+    const on = createGroupSchema.safeParse({ ...base, leagueAutoRenew: true });
+    expect(on.success && on.data.leagueAutoRenew).toBe(true);
+  });
+
   it('rejects league prize splits summing over 100%', () => {
     const result = createGroupSchema.safeParse({
       name: 'Gym Buddies Bogotá',
@@ -186,6 +194,11 @@ describe('ruleProposalSchema', () => {
   it('accepts a winner-take-all split', () => {
     const result = ruleProposalSchema.safeParse({ leaguePrizeSplits: [100] });
     expect(result.success).toBe(true);
+  });
+
+  it('counts switching auto-renew OFF as a change (false is not "nothing")', () => {
+    expect(ruleProposalSchema.safeParse({ leagueAutoRenew: false }).success).toBe(true);
+    expect(ruleProposalSchema.safeParse({ leagueAutoRenew: true }).success).toBe(true);
   });
 
   it('rejects a mixed share percent out of range', () => {

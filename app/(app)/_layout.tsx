@@ -1,9 +1,11 @@
-import { Redirect, Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '@/hooks/useAuth';
-import { useActiveGroup } from '@/hooks/useActiveGroup';
-import { useLeagueChampionsSync } from '@/hooks/useLeagueChampions';
-import { colors } from '@/constants/theme';
+import { Redirect, Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/hooks/useAuth";
+import { useActiveGroup } from "@/hooks/useActiveGroup";
+import { useLeagueChampionsSync } from "@/hooks/useLeagueChampions";
+import { useLeagueCycleResultsPrompt } from "@/hooks/useLeagueCycleResultsPrompt";
+import { LeagueCycleResultsModal } from "@/components/rules/LeagueCycleResultsModal";
+import { colors } from "@/constants/theme";
 
 function TabIcon({
   filled,
@@ -21,8 +23,9 @@ function TabIcon({
 
 export default function AppLayout() {
   const { isInitializing, isSignedIn } = useAuth();
-  const { membership, isLoading } = useActiveGroup();
+  const { group, membership, isLoading } = useActiveGroup();
   useLeagueChampionsSync();
+  const cycleResults = useLeagueCycleResultsPrompt(group);
 
   if (isInitializing || isLoading) return null;
   if (!isSignedIn) return <Redirect href="/sign-in" />;
@@ -31,65 +34,106 @@ export default function AppLayout() {
   // An admin_only member never checks in — that tab becomes the group admin
   // panel instead (see checkin/index.tsx), so its label/icon should read as
   // that, not as a dead camera tab.
-  const isAdminOnly = membership.status === 'admin_only';
+  const isAdminOnly = membership.status === "admin_only";
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-      }}
-    >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: 'Inicio',
-          tabBarIcon: ({ focused, color }) => (
-            <TabIcon filled="home" outline="home-outline" focused={focused} color={color} />
-          ),
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+          },
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
         }}
-      />
-      <Tabs.Screen
-        name="checkin"
-        options={{
-          title: isAdminOnly ? 'Admin' : 'Check-in',
-          tabBarIcon: ({ focused, color }) =>
-            isAdminOnly ? (
-              <TabIcon filled="shield-checkmark" outline="shield-checkmark-outline" focused={focused} color={color} />
-            ) : (
-              <TabIcon filled="camera" outline="camera-outline" focused={focused} color={color} />
+      >
+        <Tabs.Screen
+          name="home"
+          options={{
+            title: "Inicio",
+            tabBarIcon: ({ focused, color }) => (
+              <TabIcon
+                filled="home"
+                outline="home-outline"
+                focused={focused}
+                color={color}
+              />
             ),
-        }}
+          }}
+        />
+        <Tabs.Screen
+          name="checkin"
+          options={{
+            title: isAdminOnly ? "Admin" : "Check-in",
+            tabBarIcon: ({ focused, color }) =>
+              isAdminOnly ? (
+                <TabIcon
+                  filled="shield-checkmark"
+                  outline="shield-checkmark-outline"
+                  focused={focused}
+                  color={color}
+                />
+              ) : (
+                <TabIcon
+                  filled="camera"
+                  outline="camera-outline"
+                  focused={focused}
+                  color={color}
+                />
+              ),
+          }}
+        />
+        <Tabs.Screen
+          name="dashboard"
+          options={{
+            title: "Dashboard",
+            tabBarIcon: ({ focused, color }) => (
+              <TabIcon
+                filled="stats-chart"
+                outline="stats-chart-outline"
+                focused={focused}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="rules"
+          options={{
+            title: "Reglas",
+            tabBarIcon: ({ focused, color }) => (
+              <TabIcon
+                filled="clipboard"
+                outline="clipboard-outline"
+                focused={focused}
+                color={color}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Perfil",
+            tabBarIcon: ({ focused, color }) => (
+              <TabIcon
+                filled="person"
+                outline="person-outline"
+                focused={focused}
+                color={color}
+              />
+            ),
+          }}
+        />
+      </Tabs>
+      <LeagueCycleResultsModal
+        visible={cycleResults.results !== null}
+        results={cycleResults.results}
+        myUserId={cycleResults.userId}
+        onClose={cycleResults.dismiss}
       />
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ focused, color }) => (
-            <TabIcon filled="stats-chart" outline="stats-chart-outline" focused={focused} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="rules"
-        options={{
-          title: 'Reglas',
-          tabBarIcon: ({ focused, color }) => (
-            <TabIcon filled="clipboard" outline="clipboard-outline" focused={focused} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Perfil',
-          tabBarIcon: ({ focused, color }) => (
-            <TabIcon filled="person" outline="person-outline" focused={focused} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+    </>
   );
 }

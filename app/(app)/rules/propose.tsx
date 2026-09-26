@@ -12,6 +12,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { StepProgress } from '@/components/ui/StepProgress';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useLeagueCycle } from '@/hooks/useLeagueCycle';
+import { dateOnlyToLocalDate } from '@/lib/domain/leagueCycle';
 import { supabase } from '@/lib/supabase/client';
 import { ruleProposalSchema } from '@/lib/validation/schemas';
 import { PAYOUT_MODE_DESCRIPTIONS, PAYOUT_MODE_LABELS, isFieldRelevantForMode } from '@/constants/payoutModes';
@@ -65,6 +66,7 @@ export default function ProposeRuleChangeScreen() {
   const [minWorkoutMinutes, setMinWorkoutMinutes] = useState('');
   const [payoutMode, setPayoutMode] = useState<'no_change' | PayoutMode>('no_change');
   const [leagueDurationWeeks, setLeagueDurationWeeks] = useState('');
+  const [leagueAutoRenew, setLeagueAutoRenew] = useState<'no_change' | 'yes' | 'no'>('no_change');
   const [leaguePrizeSplits, setLeaguePrizeSplits] = useState<string[]>([]);
   const [mixedLeagueSharePercent, setMixedLeagueSharePercent] = useState('');
   const [descensoRankCount, setDescensoRankCount] = useState('');
@@ -90,7 +92,7 @@ export default function ProposeRuleChangeScreen() {
   const showEnrollmentFee = isAdmin && applyMode === 'direct';
 
   useEffect(() => {
-    if (cycle) setLeagueCycleStartDate(new Date(cycle.started_at));
+    if (cycle) setLeagueCycleStartDate(dateOnlyToLocalDate(cycle.effective_start_date));
   }, [cycle]);
 
   const steps = useMemo(() => {
@@ -178,6 +180,7 @@ export default function ProposeRuleChangeScreen() {
       minWorkoutMinutes: minWorkoutMinutes ? Number(minWorkoutMinutes) : undefined,
       payoutMode: payoutMode === 'no_change' ? undefined : payoutMode,
       leagueDurationWeeks: leagueDurationWeeks ? Number(leagueDurationWeeks) : undefined,
+      leagueAutoRenew: leagueAutoRenew === 'no_change' ? undefined : leagueAutoRenew === 'yes',
       leaguePrizeSplits: leaguePrizeSplits.length > 0 ? leaguePrizeSplits.map(Number) : undefined,
       mixedLeagueSharePercent: mixedLeagueSharePercent ? Number(mixedLeagueSharePercent) : undefined,
       descensoRankCount: descensoRankCount ? Number(descensoRankCount) : undefined,
@@ -210,6 +213,7 @@ export default function ProposeRuleChangeScreen() {
         ...(result.data.leagueDurationWeeks !== undefined && {
           league_duration_weeks: result.data.leagueDurationWeeks,
         }),
+        ...(result.data.leagueAutoRenew !== undefined && { league_auto_renew: result.data.leagueAutoRenew }),
         ...(result.data.leaguePrizeSplits !== undefined && { league_prize_splits: result.data.leaguePrizeSplits }),
         ...(result.data.mixedLeagueSharePercent !== undefined && {
           mixed_league_share_percent: result.data.mixedLeagueSharePercent,
@@ -272,6 +276,7 @@ export default function ProposeRuleChangeScreen() {
   if (exitFeeAmount) changeRows.push({ label: 'Cuota por salir sin aviso', value: `COP ${Number(exitFeeAmount).toLocaleString('es-CO')}` });
   if (exitNoticeDays) changeRows.push({ label: 'Días de aviso para salir gratis', value: exitNoticeDays });
   if (leagueDurationWeeks) changeRows.push({ label: 'Duración del ciclo de Liga', value: `${leagueDurationWeeks} semana(s)` });
+  if (leagueAutoRenew !== 'no_change') changeRows.push({ label: 'Renovar ciclo automáticamente', value: leagueAutoRenew === 'yes' ? 'Sí' : 'No' });
   if (leaguePrizeSplits.some((v) => v.trim())) {
     changeRows.push({ label: 'Premio por puesto', value: leaguePrizeSplits.filter((v) => v.trim()).map((v) => `${v}%`).join(' · ') });
   }
@@ -409,6 +414,18 @@ export default function ProposeRuleChangeScreen() {
                 keyboardType="numeric"
                 placeholder={group ? String(group.league_duration_weeks) : ''}
               />
+              <View style={styles.toggleField}>
+                <Text style={styles.toggleLabel}>¿Renovar el ciclo automáticamente?</Text>
+                <Text style={styles.hint}>{RULE_FIELD_HELP.leagueAutoRenew}</Text>
+                {group ? (
+                  <Text style={styles.currentValue}>Actual: {group.league_auto_renew ? 'Sí' : 'No'}</Text>
+                ) : null}
+                <SegmentedControl
+                  options={CHECKOUT_TOGGLE_OPTIONS}
+                  value={leagueAutoRenew}
+                  onChange={setLeagueAutoRenew}
+                />
+              </View>
               <View>
                 {group ? (
                   <Text style={styles.currentValue}>

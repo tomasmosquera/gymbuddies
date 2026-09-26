@@ -82,6 +82,8 @@ export type Group = {
   payout_mode: PayoutMode;
   /** How many whole Monday-Sunday weeks each Liga/Mixto cycle lasts (a cycle is graded on closed weeks). Applies to cycles started from now on — a running cycle keeps its own duration_weeks. */
   league_duration_weeks: number;
+  /** Liga/Mixto: when a cycle is settled, start the next one right away (that same Monday) instead of waiting for the admin to start it. Off by default. */
+  league_auto_renew: boolean;
   /** Percent of the league-share pool each place gets, in order (1st, 2nd, ...). Sum ≤ 100 — a sum below 100 leaves the remainder unpaid. */
   league_prize_splits: number[];
   /** Only meaningful when payout_mode = 'mixed': % of the pool that follows the league mechanic (the rest follows cooperative). */
@@ -119,12 +121,41 @@ export type LeagueCycle = {
   prize_splits: number[];
   duration_weeks: number;
   league_share_percent: number;
+  /** Monday 00:00 (group timezone) of the week the cycle began in — cycles always run on whole Monday-Sunday weeks. */
   started_at: string;
+  /** Sunday 23:59:59 (group timezone) of the cycle's last week. */
   ends_at: string;
+  /** The day the admin actually started the cycle (YYYY-MM-DD). Days of the first week before it count as excused for everyone. */
+  effective_start_date: string;
+  /** The admin closed it ahead of schedule: ends_at was moved to that week's Sunday. */
+  closed_early: boolean;
+  /** The end date before an early close (null unless closed_early) — restored if the close is cancelled. */
+  original_ends_at: string | null;
   status: LeagueCycleStatus;
   completed_at: string | null;
   pool_at_payout: number | null;
   created_at: string;
+};
+
+/** A member's full final standing in a settled cycle (every eligible member, not just the paid places). Absent for cycles settled before migration 0126 or closed by liquidate_group_now. */
+export type LeagueCycleStanding = {
+  id: string;
+  cycle_id: string;
+  user_id: string;
+  place: number;
+  completed_days: number;
+  failed_days: number;
+  prize_amount: number;
+  relegated: boolean;
+  descenso_amount: number;
+  created_at: string;
+};
+
+/** "This person already got the end-of-cycle results modal for this cycle" — one row per user per cycle, so it never shows twice (also across devices). */
+export type LeagueCycleResultsSeen = {
+  cycle_id: string;
+  user_id: string;
+  seen_at: string;
 };
 
 export type LeagueCyclePayout = {
@@ -234,6 +265,7 @@ export type RuleProposalChanges = {
   descenso_rank_count?: number;
   descenso_penalty_amount?: number;
   enrollment_fee_amount?: number;
+  league_auto_renew?: boolean;
 };
 
 export type RuleProposal = {
@@ -519,6 +551,8 @@ export type Database = {
       buddy_nudges: { Row: BuddyNudge; Insert: never; Update: never } & NoRelationships;
       league_cycles: { Row: LeagueCycle; Insert: never; Update: never } & NoRelationships;
       league_cycle_payouts: { Row: LeagueCyclePayout; Insert: never; Update: never } & NoRelationships;
+      league_cycle_standings: { Row: LeagueCycleStanding; Insert: never; Update: never } & NoRelationships;
+      league_cycle_results_seen: { Row: LeagueCycleResultsSeen; Insert: { cycle_id: string; user_id: string }; Update: never } & NoRelationships;
       // The three below are only ever touched by the notify-achievements Edge Function (service role) — the app never reads or writes them.
       member_achievement_notifications: {
         Row: MemberAchievementNotification;
@@ -561,6 +595,7 @@ export type Database = {
           p_descenso_rank_count?: number;
           p_descenso_penalty_amount?: number;
           p_enrollment_fee_amount?: number;
+          p_league_auto_renew?: boolean;
         };
         Returns: Group;
       };
@@ -612,6 +647,8 @@ export type Database = {
       admin_settle_league_departure: { Args: { p_group_id: string; p_user_id: string; p_refund: boolean }; Returns: void };
       start_league_cycle: { Args: { p_group_id: string }; Returns: LeagueCycle };
       admin_set_league_cycle_start: { Args: { p_group_id: string; p_started_at: string }; Returns: LeagueCycle };
+      admin_close_league_cycle_early: { Args: { p_group_id: string }; Returns: LeagueCycle };
+      admin_cancel_league_cycle_early_close: { Args: { p_group_id: string }; Returns: LeagueCycle };
       admin_set_cooperative_share_percent: {
         Args: { p_member_id: string; p_target_percent: number };
         Returns: GroupMember;
