@@ -1,6 +1,6 @@
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ActivityRow } from '@/components/admin/ActivityRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/hooks/useAuth';

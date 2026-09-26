@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -596,6 +596,7 @@ export default function DashboardScreen() {
     [calendarMonth]
   );
 
+  const groupCreatedAt = group?.created_at ?? null;
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (viewMode === 'calendar') {
       const mm = String(calendarMonth.month).padStart(2, '0');
@@ -610,9 +611,9 @@ export default function DashboardScreen() {
       const [year, month] = todayString.split('-');
       return { rangeStart: `${year}-${month}-01`, rangeEnd: todayString };
     }
-    const start = group?.created_at ? toZonedDateString(new Date(group.created_at), timezone) : todayString;
+    const start = groupCreatedAt ? toZonedDateString(new Date(groupCreatedAt), timezone) : todayString;
     return { rangeStart: start, rangeEnd: todayString };
-  }, [viewMode, calendarMonth, period, group?.created_at, todayString, timezone]);
+  }, [viewMode, calendarMonth, period, groupCreatedAt, todayString, timezone]);
 
   const {
     days,

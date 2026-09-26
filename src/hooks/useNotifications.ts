@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase/client';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import type { AppNotification } from '@/lib/supabase/types';
 

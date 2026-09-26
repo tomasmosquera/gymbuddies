@@ -52,7 +52,7 @@ export function KothVideoModal({ visible, videoPath, onClose }: KothVideoModalPr
           </View>
         ) : null}
         {status === 'ready' && signedUrl ? (
-          <VideoView key={signedUrl} player={player} style={styles.videoArea} nativeControls allowsFullscreen />
+          <VideoView key={signedUrl} player={player} style={styles.videoArea} nativeControls fullscreenOptions={{ enable: true }} />
         ) : null}
         <Pressable
           accessibilityRole="button"

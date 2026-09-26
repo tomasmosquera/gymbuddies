@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   fieldValue: { color: colors.text, fontSize: 16, fontWeight: '600' },
   fieldOffset: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  backdropDismiss: { ...StyleSheet.absoluteFillObject },
+  backdropDismiss: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: radii.lg,

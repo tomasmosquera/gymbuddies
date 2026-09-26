@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { CrownIcon } from '@/components/ui/CrownIcon';
@@ -79,8 +79,8 @@ export function LeagueCycleResultsModal({
   variant = 'closed',
   onClose,
 }: LeagueCycleResultsModalProps) {
-  const pop = useRef(new Animated.Value(0)).current;
-  const fade = useRef(new Animated.Value(0)).current;
+  const [pop] = useState(() => new Animated.Value(0));
+  const [fade] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!visible) return;

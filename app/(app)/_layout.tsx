@@ -1,3 +1,4 @@
+import type { ColorValue } from "react-native";
 import { Redirect, Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,7 +17,7 @@ function TabIcon({
   filled: keyof typeof Ionicons.glyphMap;
   outline: keyof typeof Ionicons.glyphMap;
   focused: boolean;
-  color: string;
+  color: ColorValue;
 }) {
   return <Ionicons name={focused ? filled : outline} size={24} color={color} />;
 }

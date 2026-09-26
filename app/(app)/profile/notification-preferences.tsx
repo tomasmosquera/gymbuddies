@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, ActivityIndicator, Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';

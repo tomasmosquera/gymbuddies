@@ -6,7 +6,7 @@ This document is intentionally exhaustive: it is meant to let another AI (or a n
 
 ## Stack
 
-- **App**: Expo (React Native) + TypeScript + `expo-router` (file-based routing) + Zustand (small global state) + Zod (form validation)
+- **App**: Expo SDK 57 (React Native 0.86, React 19.2) + TypeScript + `expo-router` (file-based routing) + Zustand (small global state) + Zod (form validation)
 - **Backend**: [Supabase](https://supabase.com) — Postgres + Auth + Storage + Row Level Security + `pg_cron` + one Deno Edge Function
 - **No payment gateway**: money transfers happen entirely outside the app; the app is a ledger and an attendance-verification tool, never a payment processor
 - **Notable native modules**: `expo-camera` (check-in photos + invite QR scanning), `expo-location` (GPS lock + background geofencing), `expo-notifications` (push), `@react-native-community/datetimepicker`, `@kingstinct/react-native-healthkit` (iOS-only, optional), `react-native-qrcode-svg`, `react-native-view-shot` (photo watermarking), `react-native-svg` (charts)
@@ -316,6 +316,28 @@ The app ships with the complete schema, but you need your own Supabase project t
 npm install
 npm run start
 ```
+
+### Expo SDK 57 notes (this is what `sdk-57` / app version 1.1.0 changed vs the SDK 54 / 1.0.x line)
+
+- **Install**: `.npmrc` sets `legacy-peer-deps=true` — `@react-native-community/datetimepicker` 9 declares an optional `react-native-windows` peer that npm otherwise refuses to resolve against React Native 0.86. `@react-native/jest-preset` must match the React Native version (`0.86.3`), not `latest`.
+- **Runtime version**: `app.json` `version` is `1.1.0` (runtime policy `appVersion`), so `eas update` from this line never reaches binaries built from the SDK 54 line (`1.0.x`) and vice-versa. Never publish an update for `1.0.x` from a checkout that has SDK 57 installed (or the other way round).
+- **Navigation imports**: `expo-router` no longer sits on `@react-navigation/*`; `useFocusEffect` is imported from `expo-router`. `@expo/vector-icons` is now an explicit dependency (with its `expo-font` peer).
+- **`@expo/config-plugins`** is a direct devDependency only because the datetimepicker config plugin still requires it; `expo-doctor` flags it, and it can be ignored.
+- **`fetch`**: since SDK 56, `expo/fetch` is the global `fetch`. If Supabase calls or uploads misbehave on a device, set `EXPO_PUBLIC_USE_RN_FETCH=1` to opt out and compare.
+- **iOS minimum** is 16.4 (Expo modules dropped older versions in SDK 56).
+- Not verifiable without a device/EAS build (nothing above has been run on a phone yet): native compile, Hermes V1, the geofence flow, uploads, maps, HealthKit/Health Connect. Run the checklist below on a real device before releasing.
+
+**Device regression checklist (SDK 57)**
+
+1. Sign in, switch groups, cold start after the app has been closed for hours.
+2. Check-in: camera, GPS lock, photo upload; then the final (checkout) photo and the minimum-minutes rule.
+3. Arrival/departure geofence reminders with the app closed (location "always"), and push notifications (receive, tap → correct screen).
+4. Uploads: deposit proof, excuse proofs, King of the Hill video (upload + playback with fullscreen).
+5. Maps: the location picker in group creation.
+6. Date pickers (group creation, rule proposal, cycle start), timezone picker sheet, tab icons colors.
+7. Apple Health (iOS) / Health Connect (Android) connect + calories shown after a workout.
+8. Rules: propose/vote, League cycle card, early close, results modal; Dashboard calendar.
+9. `eas update` picks up on a 1.1.0 build (and does NOT reach a 1.0.x build).
 
 Scan the QR code with **Expo Go** on a physical device — camera and GPS need a real device (iOS Simulator has no camera; the Android emulator's camera is fake).
 
