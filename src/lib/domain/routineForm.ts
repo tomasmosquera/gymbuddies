@@ -3,7 +3,7 @@ import type { RoutineExerciseInput } from '@/lib/validation/schemas';
 import type { RoutineExerciseArg, RoutineExerciseSet } from '@/lib/supabase/types';
 import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 
-/** An already-saved routine exercise (+ its planned sets) -> editable form state, weight shown in `unit`. */
+/** An already-saved routine exercise (+ its planned sets) -> editable form state, weight shown in `unit` (its own unit isn't stored — only canonical kg is — so editing always starts from the member's current preference; they can still flip it per exercise from there). */
 export function routineExerciseToFormRow(
   input: { exercise_id: string; exercise_name: string; rest_seconds: number | null; notes: string | null; sets: RoutineExerciseSet[] },
   unit: WeightUnit
@@ -12,6 +12,7 @@ export function routineExerciseToFormRow(
   return {
     exerciseId: input.exercise_id,
     exerciseName: input.exercise_name,
+    unit,
     restMinutes: restSeconds > 0 ? String(Math.floor(restSeconds / 60)) : '',
     restSeconds: restSeconds > 0 ? String(restSeconds % 60) : '',
     notes: input.notes ?? '',
@@ -28,6 +29,7 @@ export function formRowsToRoutineInput(rows: RoutineExerciseFormRow[]): {
   exerciseId: string;
   restSeconds: number | undefined;
   notes: string;
+  unit: WeightUnit;
   sets: { targetReps: number; targetWeight: number | undefined; isFailureTarget: boolean }[];
 }[] {
   return rows.map((row) => {
@@ -36,6 +38,7 @@ export function formRowsToRoutineInput(rows: RoutineExerciseFormRow[]): {
       exerciseId: row.exerciseId,
       restSeconds: totalRestSeconds > 0 ? totalRestSeconds : undefined,
       notes: row.notes,
+      unit: row.unit,
       sets: row.sets.map((s) => ({
         targetReps: Number(s.targetReps) || 0,
         targetWeight: s.targetWeight ? Number(s.targetWeight) : undefined,
@@ -45,12 +48,13 @@ export function formRowsToRoutineInput(rows: RoutineExerciseFormRow[]): {
   });
 }
 
-/** Validated form data -> what create_routine/update_routine take. */
+/** Validated form data -> what create_routine/update_routine take — each exercise carries its own unit. */
 export function routineInputToArgs(exercises: RoutineExerciseInput[]): RoutineExerciseArg[] {
   return exercises.map((e) => ({
     exercise_id: e.exerciseId,
     rest_seconds: e.restSeconds ?? null,
     notes: e.notes || null,
+    unit: e.unit,
     sets: e.sets.map((s) => ({ target_reps: s.targetReps, target_weight: s.targetWeight, is_failure_target: s.isFailureTarget })),
   }));
 }

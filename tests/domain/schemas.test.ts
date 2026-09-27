@@ -250,6 +250,13 @@ describe('routineSchema', () => {
   const oneSet = { targetReps: 8 };
   const exercise = { exerciseId: '11111111-1111-4111-8111-111111111111', sets: [oneSet] };
 
+  it('defaults an exercise\'s unit to kg, but accepts lbs per exercise', () => {
+    const defaulted = routineSchema.safeParse({ name: 'Empuje', groupId: null, exercises: [exercise] });
+    expect(defaulted.success && defaulted.data.exercises[0].unit).toBe('kg');
+    const inLbs = routineSchema.safeParse({ name: 'Empuje', groupId: null, exercises: [{ ...exercise, unit: 'lbs' }] });
+    expect(inLbs.success && inLbs.data.exercises[0].unit).toBe('lbs');
+  });
+
   it('accepts a personal routine with one exercise', () => {
     const result = routineSchema.safeParse({ name: 'Empuje', groupId: null, exercises: [exercise] });
     expect(result.success).toBe(true);

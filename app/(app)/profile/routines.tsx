@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyRoutines, type RoutineWithExercises } from '@/hooks/useMyRoutines';
+import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 function RoutineCard({ routine, groupName, onPress }: { routine: RoutineWithExercises; groupName: string | null; onPress: () => void }) {
@@ -35,19 +36,22 @@ function RoutineCard({ routine, groupName, onPress }: { routine: RoutineWithExer
 }
 
 /**
- * Fase 1's temporary home — reachable from Perfil → Configuración while this
- * feature is being built and reviewed. Where it really lives in the
+ * Fase 1/2's temporary home — reachable from Perfil → Configuración while
+ * this feature is being built and reviewed. Where it really lives in the
  * navigation (its own tab? nested somewhere else?) is a later decision (Fase 5).
  */
 export default function RoutinesScreen() {
   const { group } = useActiveGroup();
   const { routines, isLoading, refresh, deleteRoutine } = useMyRoutines(group?.id ?? null);
+  const { session: activeSession, isLoading: isSessionLoading, startFromRoutine, startFreeform, refresh: refreshSession } = useWorkoutSession();
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       refresh();
-    }, [refresh])
+      refreshSession();
+    }, [refresh, refreshSession])
   );
 
   const confirmDelete = (routine: RoutineWithExercises) => {
@@ -74,7 +78,19 @@ export default function RoutinesScreen() {
     );
   };
 
-  if (isLoading) {
+  const handleStart = async (starter: () => Promise<void>, key: string) => {
+    setIsStarting(key);
+    try {
+      await starter();
+      router.push('/profile/workout-session');
+    } catch (err) {
+      Alert.alert('No se pudo empezar el entreno', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsStarting(null);
+    }
+  };
+
+  if (isLoading || isSessionLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -89,8 +105,30 @@ export default function RoutinesScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.hint}>
         Arma tus rutinas con ejercicios del catálogo — series, repeticiones y peso objetivo por ejercicio. Todavía no
-        están conectadas al check-in; por ahora se crean y editan desde aquí.
+        están conectadas al check-in; por ahora se empiezan desde aquí.
       </Text>
+
+      {activeSession ? (
+        <Pressable onPress={() => router.push('/profile/workout-session')} accessibilityRole="button">
+          <Card style={styles.activeBanner}>
+            <Ionicons name="barbell" size={20} color={colors.primaryText} />
+            <View style={styles.flex}>
+              <Text style={styles.activeBannerTitle}>Entreno en curso</Text>
+              <Text style={styles.activeBannerSubtitle} numberOfLines={1}>
+                {activeSession.routine_name_snapshot ?? 'Entreno libre'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.primaryText} />
+          </Card>
+        </Pressable>
+      ) : (
+        <Button
+          label="Empezar entreno libre"
+          variant="secondary"
+          onPress={() => handleStart(() => startFreeform(), 'freeform')}
+          loading={isStarting === 'freeform'}
+        />
+      )}
 
       <Button label="+ Crear rutina" onPress={() => router.push('/profile/routine-create')} />
 
@@ -106,12 +144,21 @@ export default function RoutinesScreen() {
                 groupName={null}
                 onPress={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
               />
-              <Button
-                label="Borrar"
-                variant="danger"
-                onPress={() => confirmDelete(routine)}
-                loading={isDeleting === routine.id}
-              />
+              <View style={styles.actionsRow}>
+                {!activeSession ? (
+                  <Button
+                    label="Empezar"
+                    onPress={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
+                    loading={isStarting === routine.id}
+                  />
+                ) : null}
+                <Button
+                  label="Borrar"
+                  variant="danger"
+                  onPress={() => confirmDelete(routine)}
+                  loading={isDeleting === routine.id}
+                />
+              </View>
             </View>
           ))
         )}
@@ -133,12 +180,21 @@ export default function RoutinesScreen() {
                   groupName={group.name}
                   onPress={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
                 />
-                <Button
-                  label="Borrar"
-                  variant="danger"
-                  onPress={() => confirmDelete(routine)}
-                  loading={isDeleting === routine.id}
-                />
+                <View style={styles.actionsRow}>
+                  {!activeSession ? (
+                    <Button
+                      label="Empezar"
+                      onPress={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
+                      loading={isStarting === routine.id}
+                    />
+                  ) : null}
+                  <Button
+                    label="Borrar"
+                    variant="danger"
+                    onPress={() => confirmDelete(routine)}
+                    loading={isDeleting === routine.id}
+                  />
+                </View>
               </View>
             ))
           )}
@@ -149,9 +205,19 @@ export default function RoutinesScreen() {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   hint: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  activeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  activeBannerTitle: { color: colors.primaryText, fontWeight: '700', fontSize: 15 },
+  activeBannerSubtitle: { color: colors.primaryText, fontSize: 13 },
   sectionLabel: {
     color: colors.textMuted,
     fontSize: 12,
@@ -160,6 +226,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   cardWrap: { gap: spacing.xs, marginBottom: spacing.sm },
+  actionsRow: { flexDirection: 'row', gap: spacing.sm },
   routineCard: { gap: spacing.xs },
   routineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   routineName: { ...typography.heading, fontSize: 16, color: colors.text, flexShrink: 1 },

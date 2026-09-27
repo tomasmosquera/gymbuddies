@@ -136,6 +136,8 @@ export const routineExerciseSchema = z.object({
   /** Rest between sets, in whole seconds — the form collects minutes + seconds and combines them. */
   restSeconds: z.number().int().min(0).max(1800).optional(),
   notes: z.string().trim().max(200).optional().or(z.literal('')),
+  /** This exercise's own unit — different gym machines read in different units, so it's picked per exercise. */
+  unit: z.enum(['kg', 'lbs']).default('kg'),
   sets: z.array(routineExerciseSetSchema).min(1, 'Agrega al menos una serie').max(15, 'Máximo 15 series por ejercicio'),
 });
 

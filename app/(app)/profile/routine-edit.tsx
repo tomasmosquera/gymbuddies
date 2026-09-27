@@ -53,7 +53,7 @@ export default function EditRoutineScreen() {
     setError(undefined);
     setIsSubmitting(true);
     try {
-      await updateRoutine(routine.id, result.data.name, routineInputToArgs(result.data.exercises), unit);
+      await updateRoutine(routine.id, result.data.name, routineInputToArgs(result.data.exercises));
       router.back();
     } catch (err) {
       Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
@@ -90,7 +90,7 @@ export default function EditRoutineScreen() {
 
         <Card style={styles.card}>
           <Text style={styles.sectionTitle}>Ejercicios</Text>
-          <RoutineExerciseListEditor values={exercises} onChange={setExercises} unit={unit} />
+          <RoutineExerciseListEditor values={exercises} onChange={setExercises} defaultUnit={unit} />
         </Card>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

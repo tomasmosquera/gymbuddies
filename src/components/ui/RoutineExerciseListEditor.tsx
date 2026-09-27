@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { ExercisePickerModal } from '@/components/ui/ExercisePickerModal';
 import { colors, radii, spacing } from '@/constants/theme';
-import type { WeightUnit } from '@/lib/domain/workoutUnits';
+import { kgToUnit, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise } from '@/lib/supabase/types';
 
 /** One row of the planned SET / weight / REPS table — raw strings while editing, same reason MoneyField/PrizeSplitEditor keep numeric fields as text (never flash NaN). */
@@ -17,6 +17,8 @@ export interface RoutineExerciseSetFormRow {
 export interface RoutineExerciseFormRow {
   exerciseId: string;
   exerciseName: string;
+  /** This exercise's own unit — a leg press machine and a cable stack in the same gym often read in different units, so it's picked per exercise, not once for the whole routine. */
+  unit: WeightUnit;
   /** Minutes/seconds kept apart in the form, matching how the rest timer is displayed ("2min 0s") — combined into total seconds on submit. */
   restMinutes: string;
   restSeconds: string;
@@ -27,17 +29,19 @@ export interface RoutineExerciseFormRow {
 interface RoutineExerciseListEditorProps {
   values: RoutineExerciseFormRow[];
   onChange: (values: RoutineExerciseFormRow[]) => void;
-  unit: WeightUnit;
+  /** The unit a newly-added exercise starts in (the member's own Configuración preference) — each exercise can still be switched afterwards. */
+  defaultUnit: WeightUnit;
 }
 
 function defaultSet(): RoutineExerciseSetFormRow {
   return { targetReps: '10', targetWeight: '', isFailureTarget: false };
 }
 
-export function exerciseToFormRow(exercise: Exercise): RoutineExerciseFormRow {
+export function exerciseToFormRow(exercise: Exercise, defaultUnit: WeightUnit): RoutineExerciseFormRow {
   return {
     exerciseId: exercise.id,
     exerciseName: exercise.name,
+    unit: defaultUnit,
     restMinutes: '',
     restSeconds: '',
     notes: '',
@@ -47,21 +51,35 @@ export function exerciseToFormRow(exercise: Exercise): RoutineExerciseFormRow {
 
 /**
  * The list of exercises inside a routine being created/edited, styled after
- * a reference screenshot of Hevy's own routine editor: per exercise, a rest
- * timer, a free-text note line (e.g. "6 to 8, 1-2 RIR, failure on the last
- * set"), and an editable SET / weight / REPS table — tapping a set's number
- * toggles it between a normal set and an "F" (to-failure) target set.
- * "+ Add Set" copies the last row's numbers forward, same as Hevy, so a
- * routine with identical sets only needs typing once.
+ * a reference screenshot of Hevy's own routine editor: per exercise, its own
+ * unit toggle (real gyms mix kg- and lbs-labeled machines), a rest timer, a
+ * free-text note line (e.g. "6 to 8, 1-2 RIR, failure on the last set"), and
+ * an editable SET / weight / REPS table — tapping a set's number toggles it
+ * between a normal set and an "F" (to-failure) target set. "+ Add Set"
+ * copies the last row's numbers forward, same as Hevy, so a routine with
+ * identical sets only needs typing once.
  */
-export function RoutineExerciseListEditor({ values, onChange, unit }: RoutineExerciseListEditorProps) {
+export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: RoutineExerciseListEditorProps) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const updateExercise = (index: number, patch: Partial<RoutineExerciseFormRow>) => {
     onChange(values.map((v, i) => (i === index ? { ...v, ...patch } : v)));
   };
   const removeExercise = (index: number) => onChange(values.filter((_, i) => i !== index));
-  const addExercise = (exercise: Exercise) => onChange([...values, exerciseToFormRow(exercise)]);
+  const addExercise = (exercise: Exercise) => onChange([...values, exerciseToFormRow(exercise, defaultUnit)]);
+
+  // Converts every already-typed weight so the physical target stays the same when the unit changes —
+  // switching a card from kg to lbs re-displays the same weight, it never reinterprets the digits.
+  const toggleUnit = (exerciseIndex: number) => {
+    const exercise = values[exerciseIndex];
+    const nextUnit: WeightUnit = exercise.unit === 'kg' ? 'lbs' : 'kg';
+    const sets = exercise.sets.map((s) => {
+      if (!s.targetWeight) return s;
+      const kg = unitToKg(Number(s.targetWeight) || 0, exercise.unit);
+      return { ...s, targetWeight: String(kgToUnit(kg, nextUnit)) };
+    });
+    updateExercise(exerciseIndex, { unit: nextUnit, sets });
+  };
 
   const updateSet = (exerciseIndex: number, setIndex: number, patch: Partial<RoutineExerciseSetFormRow>) => {
     const exercise = values[exerciseIndex];
@@ -86,6 +104,14 @@ export function RoutineExerciseListEditor({ values, onChange, unit }: RoutineExe
             <Text style={styles.exerciseName} numberOfLines={2}>
               {exercise.exerciseName}
             </Text>
+            <Pressable
+              onPress={() => toggleUnit(exerciseIndex)}
+              style={styles.unitPill}
+              accessibilityRole="button"
+              accessibilityLabel="Cambiar unidad de peso para este ejercicio"
+            >
+              <Text style={styles.unitPillText}>{exercise.unit.toUpperCase()}</Text>
+            </Pressable>
             <Pressable onPress={() => removeExercise(exerciseIndex)} hitSlop={8} accessibilityRole="button">
               <Ionicons name="close-circle" size={22} color={colors.textMuted} />
             </Pressable>
@@ -125,7 +151,7 @@ export function RoutineExerciseListEditor({ values, onChange, unit }: RoutineExe
 
           <View style={styles.setsTableHeader}>
             <Text style={[styles.tableHeaderCell, styles.setColumn]}>SERIE</Text>
-            <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{unit.toUpperCase()}</Text>
+            <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{exercise.unit.toUpperCase()}</Text>
             <Text style={[styles.tableHeaderCell, styles.repsColumn]}>REPS</Text>
             <View style={styles.removeColumn} />
           </View>
@@ -192,6 +218,14 @@ const styles = StyleSheet.create({
   },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
   exerciseName: { flex: 1, color: colors.primary, fontWeight: '700', fontSize: 16 },
+  unitPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  unitPillText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   notesInput: {
     backgroundColor: colors.surface,
     borderWidth: 1,

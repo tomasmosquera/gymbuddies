@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { Exercise, Routine, RoutineExercise, RoutineExerciseArg, RoutineExerciseSet } from '@/lib/supabase/types';
-import type { WeightUnit } from '@/lib/domain/workoutUnits';
 
 export interface RoutineExerciseWithDetails extends RoutineExercise {
   exercise: Exercise;
@@ -53,13 +52,14 @@ export function useMyRoutines(groupId: string | null) {
     refresh();
   }, [refresh]);
 
+  // Each exercise in `exercises` already carries its own unit (RoutineExerciseArg.unit) —
+  // real gyms mix kg- and lbs-labeled machines, so there's no single unit for the whole call.
   const createRoutine = useCallback(
-    async (name: string, exercises: RoutineExerciseArg[], routineGroupId: string | null, unit: WeightUnit) => {
+    async (name: string, exercises: RoutineExerciseArg[], routineGroupId: string | null) => {
       const { data, error } = await supabase.rpc('create_routine', {
         p_name: name,
         p_exercises: exercises,
         p_group_id: routineGroupId,
-        p_unit: unit,
       });
       if (error) throw new Error(error.message);
       await refresh();
@@ -69,12 +69,11 @@ export function useMyRoutines(groupId: string | null) {
   );
 
   const updateRoutine = useCallback(
-    async (routineId: string, name: string, exercises: RoutineExerciseArg[], unit: WeightUnit) => {
+    async (routineId: string, name: string, exercises: RoutineExerciseArg[]) => {
       const { data, error } = await supabase.rpc('update_routine', {
         p_routine_id: routineId,
         p_name: name,
         p_exercises: exercises,
-        p_unit: unit,
       });
       if (error) throw new Error(error.message);
       await refresh();

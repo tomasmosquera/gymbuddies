@@ -577,6 +577,8 @@ export type WorkoutSessionExercise = {
   exercise_id: string;
   sort_order: number;
   target_sets_snapshot: WorkoutSessionSetTarget[];
+  /** Frozen from routine_exercises.rest_seconds at session start — null for a freeform-added exercise. */
+  rest_seconds: number | null;
   created_at: string;
 };
 
@@ -603,6 +605,8 @@ export type RoutineExerciseArg = {
   exercise_id: string;
   rest_seconds?: number | null;
   notes?: string | null;
+  /** This exercise's own weight unit — different machines in the same gym read in different units, so it's picked per exercise, not once for the whole routine. Defaults to the call's p_unit ('kg') when omitted. */
+  unit?: 'kg' | 'lbs';
   sets: RoutineExerciseSetArg[];
 };
 

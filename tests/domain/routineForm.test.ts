@@ -5,6 +5,7 @@ import type { RoutineExerciseSet } from '@/lib/supabase/types';
 const formRow = (overrides: Partial<RoutineExerciseFormRow> = {}): RoutineExerciseFormRow => ({
   exerciseId: 'ex-1',
   exerciseName: 'Bench Press (Dumbbell)',
+  unit: 'kg',
   restMinutes: '',
   restSeconds: '',
   notes: '',
@@ -41,6 +42,12 @@ describe('formRowsToRoutineInput', () => {
     ]);
     expect(row.sets[0].isFailureTarget).toBe(true);
   });
+
+  it('carries each exercise\'s own unit through, independent of the others', () => {
+    const [kg, lbs] = formRowsToRoutineInput([formRow({ exerciseId: 'a', unit: 'kg' }), formRow({ exerciseId: 'b', unit: 'lbs' })]);
+    expect(kg.unit).toBe('kg');
+    expect(lbs.unit).toBe('lbs');
+  });
 });
 
 describe('routineInputToArgs', () => {
@@ -50,6 +57,7 @@ describe('routineInputToArgs', () => {
         exerciseId: 'ex-1',
         restSeconds: 120,
         notes: 'to failure on the last set',
+        unit: 'lbs',
         sets: [{ targetReps: 8, targetWeight: 60, isFailureTarget: false }],
       },
     ]);
@@ -58,13 +66,16 @@ describe('routineInputToArgs', () => {
         exercise_id: 'ex-1',
         rest_seconds: 120,
         notes: 'to failure on the last set',
+        unit: 'lbs',
         sets: [{ target_reps: 8, target_weight: 60, is_failure_target: false }],
       },
     ]);
   });
 
   it('turns an empty/missing notes string into null, and a missing rest into null', () => {
-    const args = routineInputToArgs([{ exerciseId: 'ex-1', notes: '', sets: [{ targetReps: 8, isFailureTarget: false }] }]);
+    const args = routineInputToArgs([
+      { exerciseId: 'ex-1', notes: '', unit: 'kg', sets: [{ targetReps: 8, isFailureTarget: false }] },
+    ]);
     expect(args[0].notes).toBeNull();
     expect(args[0].rest_seconds).toBeNull();
   });

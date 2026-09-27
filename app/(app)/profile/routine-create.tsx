@@ -42,7 +42,7 @@ export default function CreateRoutineScreen() {
     setError(undefined);
     setIsSubmitting(true);
     try {
-      await createRoutine(result.data.name, routineInputToArgs(result.data.exercises), result.data.groupId, unit);
+      await createRoutine(result.data.name, routineInputToArgs(result.data.exercises), result.data.groupId);
       router.back();
     } catch (err) {
       Alert.alert('No se pudo crear la rutina', err instanceof Error ? err.message : 'Intenta de nuevo');
@@ -65,7 +65,7 @@ export default function CreateRoutineScreen() {
 
         <Card style={styles.card}>
           <Text style={styles.sectionTitle}>Ejercicios</Text>
-          <RoutineExerciseListEditor values={exercises} onChange={setExercises} unit={unit} />
+          <RoutineExerciseListEditor values={exercises} onChange={setExercises} defaultUnit={unit} />
         </Card>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
