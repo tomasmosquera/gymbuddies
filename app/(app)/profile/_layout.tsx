@@ -99,6 +99,9 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="badges" options={{ title: 'Logros' }} />
       <Stack.Screen name="stats" options={{ title: 'Estadísticas' }} />
       <Stack.Screen name="platform-dashboard" options={{ title: 'Panel de la plataforma' }} />
+      <Stack.Screen name="routines" options={{ title: 'Rutinas de entreno' }} />
+      <Stack.Screen name="routine-create" options={{ title: 'Crear rutina' }} />
+      <Stack.Screen name="routine-edit" options={{ title: 'Editar rutina' }} />
       <Stack.Screen name="king-of-the-hill" options={{ title: 'King of the Hill' }} />
       <Stack.Screen name="king-of-the-hill-exercise" options={{ title: 'King of the Hill' }} />
       <Stack.Screen name="king-of-the-hill-claim" options={{ title: 'Reclamar récord' }} />

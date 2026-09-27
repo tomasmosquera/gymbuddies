@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { requestHealthAuthorization } from '@/lib/health';
@@ -27,6 +28,7 @@ export default function SettingsScreen() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [isSavingHealth, setIsSavingHealth] = useState(false);
   const [isSavingAutoCheckin, setIsSavingAutoCheckin] = useState(false);
+  const [isSavingWeightUnit, setIsSavingWeightUnit] = useState(false);
   const [healthConnectSdkStatus, setHealthConnectSdkStatus] = useState<number | null>(null);
 
   const refreshPermissionStatus = useCallback(async () => {
@@ -87,6 +89,17 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSetWeightUnit = async (unit: 'kg' | 'lbs') => {
+    setIsSavingWeightUnit(true);
+    try {
+      const { error } = await supabase.rpc('set_weight_unit', { p_unit: unit });
+      if (error) throw error;
+      await refreshProfile();
+    } finally {
+      setIsSavingWeightUnit(false);
+    }
+  };
+
   const handleToggleAutoCheckin = async (value: boolean) => {
     setIsSavingAutoCheckin(true);
     try {
@@ -100,6 +113,37 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* Fase 1 (en construcción): entrada temporal a Rutinas de entreno mientras se decide dónde vive de verdad en la navegación (Fase 5). */}
+      <Card style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Rutinas de entreno (nuevo)</Text>
+        </View>
+        <Text style={styles.hint}>
+          Crea rutinas con ejercicios de un catálogo — series, repeticiones y peso objetivo. Por ahora se administran
+          desde aquí.
+        </Text>
+        <Button label="Ver mis rutinas" variant="secondary" onPress={() => router.push('/profile/routines')} />
+      </Card>
+
+      <Card style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Unidad de peso</Text>
+        </View>
+        <Text style={styles.hint}>
+          En qué unidad escribes y ves los pesos de tus rutinas y entrenos. Al compararte con el grupo siempre se
+          muestra en kilos, sin importar esta preferencia.
+        </Text>
+        <SegmentedControl
+          options={[
+            { key: 'kg', label: 'Kilos (kg)' },
+            { key: 'lbs', label: 'Libras (lbs)' },
+          ]}
+          value={profile.weight_unit}
+          onChange={handleSetWeightUnit}
+        />
+        {isSavingWeightUnit ? <ActivityIndicator color={colors.primary} /> : null}
+      </Card>
+
       <Card style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Ubicación</Text>

@@ -125,6 +125,20 @@ export const excuseRequestSchema = z
     path: ['proofImageUris'],
   });
 
+export const routineExerciseSchema = z.object({
+  exerciseId: z.string().uuid(),
+  targetSets: z.number().int().min(1).max(20),
+  targetReps: z.number().int().min(1).max(100),
+  targetWeight: z.number().min(0).optional(),
+  notes: z.string().trim().max(200).optional().or(z.literal('')),
+});
+
+export const routineSchema = z.object({
+  name: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(60),
+  groupId: z.string().uuid().nullable().default(null),
+  exercises: z.array(routineExerciseSchema).min(1, 'Agrega al menos un ejercicio').max(30, 'Máximo 30 ejercicios por rutina'),
+});
+
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
@@ -132,3 +146,5 @@ export type JoinGroupInput = z.infer<typeof joinGroupSchema>;
 export type WalletTransactionInput = z.infer<typeof walletTransactionSchema>;
 export type RuleProposalInput = z.infer<typeof ruleProposalSchema>;
 export type ExcuseRequestInput = z.infer<typeof excuseRequestSchema>;
+export type RoutineInput = z.infer<typeof routineSchema>;
+export type RoutineExerciseInput = z.infer<typeof routineExerciseSchema>;

@@ -2,6 +2,7 @@ import {
   createGroupSchema,
   excuseRequestSchema,
   joinGroupSchema,
+  routineSchema,
   ruleProposalSchema,
   signUpSchema,
 } from '@/lib/validation/schemas';
@@ -242,5 +243,47 @@ describe('excuseRequestSchema', () => {
     const result = excuseRequestSchema.safeParse({ ...base, excuseType: 'other' });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.proofImageUris).toEqual([]);
+  });
+});
+
+describe('routineSchema', () => {
+  const exercise = { exerciseId: '11111111-1111-4111-8111-111111111111', targetSets: 4, targetReps: 8 };
+
+  it('accepts a personal routine with one exercise', () => {
+    const result = routineSchema.safeParse({ name: 'Empuje', groupId: null, exercises: [exercise] });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a group-shared routine and an optional target weight', () => {
+    const result = routineSchema.safeParse({
+      name: 'Día de pierna',
+      groupId: '22222222-2222-4222-8222-222222222222',
+      exercises: [{ ...exercise, targetWeight: 60 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a routine with no exercises', () => {
+    const result = routineSchema.safeParse({ name: 'Vacía', groupId: null, exercises: [] });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects more than 30 exercises', () => {
+    const result = routineSchema.safeParse({
+      name: 'Enorme',
+      groupId: null,
+      exercises: Array.from({ length: 31 }, () => exercise),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a name that is too short', () => {
+    const result = routineSchema.safeParse({ name: 'A', groupId: null, exercises: [exercise] });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects sets/reps out of range', () => {
+    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, targetSets: 0 }] }).success).toBe(false);
+    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, targetReps: 101 }] }).success).toBe(false);
   });
 });

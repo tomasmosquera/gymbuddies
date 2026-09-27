@@ -48,6 +48,8 @@ export type Profile = {
   is_platform_admin: boolean;
   /** Consumed by create_group (1 per group), free to start (default 1, including a one-time backfill for every pre-existing profile). The platform admin never spends this. See admin_grant_group_creation_credits for the platform admin's manual top-up tool — in-app purchase isn't built yet. */
   group_creation_credits: number;
+  /** How this member types/reads weights in the routines/workout-log feature — see set_weight_unit. Storage is always canonical kg (weight_kg / target_weight_kg columns); a group comparison always shows kg regardless of the viewer's own preference, same idea as koth_claims' submitted_unit but as a standing preference rather than a per-claim choice. */
+  weight_unit: 'kg' | 'lbs';
   created_at: string;
 };
 
@@ -494,6 +496,96 @@ export type AchievementCheckState = {
   last_checked_at: string | null;
 };
 
+// ----------------------------------------------------------------------------
+// Workout routines, exercise catalog, and live workout logging (0127).
+// Everything weight-related is stored/returned in kg — see Profile.weight_unit
+// for how a member's OWN screens convert for display; a group comparison
+// always shows kg regardless of who's looking.
+// ----------------------------------------------------------------------------
+export type MuscleGroup =
+  | 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps' | 'forearms'
+  | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'core' | 'cardio' | 'full_body';
+export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'smith_machine' | 'bodyweight' | 'kettlebell' | 'band' | 'other';
+
+/** The fixed, global exercise catalog — same for every group, rarely changes. */
+export type Exercise = {
+  id: string;
+  slug: string;
+  name: string;
+  muscle_group: MuscleGroup;
+  equipment: Equipment;
+  created_at: string;
+};
+
+/** Personal (group_id null) or shared with exactly one of the owner's groups — never a snapshot itself, see WorkoutSession.routine_name_snapshot. */
+export type Routine = {
+  id: string;
+  owner_user_id: string;
+  group_id: string | null;
+  name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RoutineExercise = {
+  id: string;
+  routine_id: string;
+  exercise_id: string;
+  sort_order: number;
+  target_sets: number;
+  target_reps: number;
+  target_weight_kg: number | null;
+  notes: string | null;
+};
+
+export type WorkoutSessionStatus = 'in_progress' | 'completed';
+
+/** A live/logged workout — routine_id goes null (routine_name_snapshot keeps the label) if the routine is later deleted; a freeform session never had one. */
+export type WorkoutSession = {
+  id: string;
+  user_id: string;
+  routine_id: string | null;
+  routine_name_snapshot: string | null;
+  checkin_id: string | null;
+  status: WorkoutSessionStatus;
+  started_at: string;
+  finished_at: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+/** One exercise within a specific session — copied from routine_exercises at start time (or added freeform, with null targets), independent of the routine afterwards. */
+export type WorkoutSessionExercise = {
+  id: string;
+  session_id: string;
+  exercise_id: string;
+  sort_order: number;
+  target_sets: number | null;
+  target_reps: number | null;
+  target_weight_kg: number | null;
+  created_at: string;
+};
+
+/** One completed set — a fact ("did 8 reps at 60kg"), logged live and only editable while its session is still in_progress. */
+export type WorkoutSet = {
+  id: string;
+  session_exercise_id: string;
+  set_number: number;
+  reps: number;
+  weight_kg: number | null;
+  is_warmup: boolean;
+  completed_at: string;
+};
+
+/** The shape create_routine/update_routine take for their exercise list — target_weight is in whichever unit that same call's p_unit declares. */
+export type RoutineExerciseArg = {
+  exercise_id: string;
+  target_sets: number;
+  target_reps: number;
+  target_weight?: number | null;
+  notes?: string | null;
+};
+
 type NoRelationships = { Relationships: [] };
 
 export type Database = {
@@ -545,6 +637,12 @@ export type Database = {
       koth_claims: { Row: KothClaim; Insert: never; Update: never } & NoRelationships;
       koth_claim_votes: { Row: KothClaimVote; Insert: never; Update: never } & NoRelationships;
       koth_records: { Row: KothRecord; Insert: never; Update: never } & NoRelationships;
+      exercises: { Row: Exercise; Insert: never; Update: never } & NoRelationships;
+      routines: { Row: Routine; Insert: never; Update: never } & NoRelationships;
+      routine_exercises: { Row: RoutineExercise; Insert: never; Update: never } & NoRelationships;
+      workout_sessions: { Row: WorkoutSession; Insert: never; Update: never } & NoRelationships;
+      workout_session_exercises: { Row: WorkoutSessionExercise; Insert: never; Update: never } & NoRelationships;
+      workout_sets: { Row: WorkoutSet; Insert: never; Update: never } & NoRelationships;
       checkin_reactions: { Row: CheckinReaction; Insert: never; Update: never } & NoRelationships;
       app_version_info: { Row: AppVersionInfo; Insert: never; Update: never } & NoRelationships;
       // Select-only (own sent rows) — every write goes through send_buddy_nudge.
@@ -742,6 +840,32 @@ export type Database = {
       };
       cast_koth_claim_vote: { Args: { p_claim_id: string; p_vote: VoteChoice }; Returns: KothClaimVote };
       admin_decide_koth_claim: { Args: { p_claim_id: string; p_valid: boolean }; Returns: KothClaim };
+      set_weight_unit: { Args: { p_unit: 'kg' | 'lbs' }; Returns: void };
+      create_routine: {
+        Args: { p_name: string; p_exercises: RoutineExerciseArg[]; p_group_id?: string | null; p_unit?: 'kg' | 'lbs' };
+        Returns: Routine;
+      };
+      update_routine: {
+        Args: { p_routine_id: string; p_name: string; p_exercises: RoutineExerciseArg[]; p_unit?: 'kg' | 'lbs' };
+        Returns: Routine;
+      };
+      delete_routine: { Args: { p_routine_id: string }; Returns: void };
+      start_workout_session: {
+        Args: { p_routine_id?: string | null; p_checkin_id?: string | null };
+        Returns: WorkoutSession;
+      };
+      add_session_exercise: { Args: { p_session_id: string; p_exercise_id: string }; Returns: WorkoutSessionExercise };
+      log_set: {
+        Args: { p_session_exercise_id: string; p_reps: number; p_weight?: number | null; p_unit?: 'kg' | 'lbs'; p_is_warmup?: boolean };
+        Returns: WorkoutSet;
+      };
+      update_set: {
+        Args: { p_set_id: string; p_reps: number; p_weight?: number | null; p_unit?: 'kg' | 'lbs'; p_is_warmup?: boolean };
+        Returns: WorkoutSet;
+      };
+      delete_set: { Args: { p_set_id: string }; Returns: void };
+      finish_workout_session: { Args: { p_session_id: string; p_notes?: string | null }; Returns: WorkoutSession };
+      delete_workout_session: { Args: { p_session_id: string }; Returns: void };
       admin_adjust_balance: {
         Args: { p_group_id: string; p_user_id: string; p_amount: number; p_note?: string | null };
         Returns: WalletTransaction;

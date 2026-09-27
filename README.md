@@ -24,7 +24,7 @@ app/                          Screens (expo-router, file-based routing)
     checkin/                      Camera capture + preview/confirm (initial + checkout photos)
     dashboard/                    Group-wide attendance viewer (by day / by member / calendar)
     rules/                        Current rules, voting, excuses, photo challenges, League cycle
-    profile/                      Hub + ~15 sub-screens (wallet, admin tools, stats, badges, etc.)
+    profile/                      Hub + ~15 sub-screens (wallet, admin tools, stats, badges, routines, etc.)
 src/
   lib/domain/                   Pure business logic, zero RN/Supabase deps — unit tested 1:1
   lib/achievements/             Badge / monthly-challenge / level evaluation + the notify-achievements logic — takes the Supabase client as a PARAMETER, so the app and the Edge Function run the same code
@@ -40,7 +40,7 @@ src/
   components/stats/             LineChart, Heatmap, BarList
   constants/                    theme, payoutModes (per-payout-mode field relevance), ruleFieldHelp
 supabase/
-  migrations/                   Full SQL schema, RLS, triggers, RPCs, pg_cron jobs — 0001 through 0065
+  migrations/                   Full SQL schema, RLS, triggers, RPCs, pg_cron jobs — 0001 onward
   functions/notify-achievements/  The one Edge Function (badge/level-up push notifications) — a thin wrapper over src/lib/achievements/notifyAchievements.ts
 tests/domain/                   Unit tests for src/lib/domain/*, one file per module
 tests/achievements/             Unit tests for the notify-achievements logic, against an in-memory Supabase (tests/helpers/fakeSupabase.ts)
@@ -215,6 +215,18 @@ Beyond ordinary pushes, a confirmed check-in also schedules **local** reminders 
 
 `src/lib/health/appleHealth.ts` lazily loads `@kingstinct/react-native-healthkit` (must not be imported statically — it's a native/Nitro module that crashes in Expo Go) and reads exactly one thing: active calories burned, taking the max of two independent estimates (workout-object totals vs. summed loose quantity samples) to avoid undercounting. Gated entirely behind an opt-in `profiles.apple_health_enabled` flag (a one-time prompt on first iOS sign-in, togglable later in Profile → Permissions). Synced three ways: a fire-and-forget attempt right at checkout confirmation, a foreground-resync pass on every app-foreground event (re-checks the last 72 hours of checkouts, since a paired Watch can lag), and a server guard (`set_checkin_active_energy`) that never lets a synced value *decrease*. Stored as `checkins.active_energy_kcal`, shown as a display-only 🔥 figure in Dashboard and Admin Photos — never used for penalties, ranking, or badges.
 
+## Workout routines & logging (in progress — backend + routine CRUD done, live logging and check-in integration not yet)
+
+A Hevy-style layer on top of check-ins: members build routines from a fixed exercise catalog and, eventually, log sets/reps/weight live during a workout. Migration `0127` (see its header comment for the full design reasoning) added:
+
+- **`exercises`** — a fixed, global catalog (~95 entries across chest/back/shoulders/arms/legs/core/cardio/full-body), named the way people actually say them in a Spanish-speaking gym (Spanish for the classic barbell lifts, the common English/Spanglish term for machine and cable movements — Cable Curl, Lat Pulldown, Leg Press). No custom (user-added) exercises yet.
+- **`routines`** / **`routine_exercises`** — a routine is personal (`group_id` null) or shared with exactly one of the owner's groups, a list of exercises each with a target sets/reps/weight. Editing/deleting is allowed for its owner, or — for a group-shared routine — that group's admin too, same admin-override shape used everywhere else (KOTH, photo challenges). **`profile/routines.tsx`** (list), **`profile/routine-create.tsx`**, **`profile/routine-edit.tsx`** are its screens, reachable for now from Perfil → Configuración while the feature is being built — where it really lives in the navigation is a later decision.
+- **`workout_sessions`** / **`workout_session_exercises`** / **`workout_sets`** — the live log, built but not yet wired to any screen. Starting a session from a routine copies its exercises/targets in as a snapshot (`routine_name_snapshot` too), so editing or deleting the routine afterwards never touches a session already in progress or in the past — same freeze-at-start idiom `league_cycles` uses for its own prize splits. `workout_sets` is a set of *facts* ("did 8 reps at 60kg"), append-only via `log_set`; `update_set`/`delete_set` only work while the parent session is still `in_progress` — a finished workout's numbers don't get rewritten later, the same rule `weekly_evaluation_results` already follows. At most one session `in_progress` per person (`start_workout_session` is resume-or-create: called again, it just returns the existing one).
+- **Visibility is NOT scoped to a specific group's check-in** — sharing *any* active group with someone is enough to see their workout history (`shares_active_group_with()`), same as badges/stats already work. (There's an older, looser `shares_group_with()` from migration `0009`, used only to gate reading a profile row — it doesn't filter by membership status. The new one does, on purpose: workout data is more sensitive than a name.) A future group leaderboard/comparison and the check-in prompt ("¿qué rutina quieres hacer?") both read straight off these tables — no RPC needed, same "plain SELECT behind RLS, compute client-side" pattern as `attendance.ts`/`leaguePayouts.ts`.
+- **Units**: everything is stored in canonical kg. `profiles.weight_unit` (`set_weight_unit`, toggle in Configuración) is only how a member types/reads weight on **their own** screens — every RPC that takes a weight (`create_routine`/`update_routine`/`log_set`/`update_set`) takes the raw number **and** a unit, converting to kg server-side (`to_kg()`), same discipline `submit_koth_claim` already applies (never trust a client-computed canonical number). A future group comparison always shows kg, regardless of the viewer's own preference.
+
+Not built yet: the live logging screen itself, hooking `start_workout_session` up to the check-in flow, progressive-overload display ("what did I lift last time" — `src/lib/domain/workoutSets.ts` already has `bestSet`/`compareBestSet` ready for it), the group history/leaderboard view, and a Live Activity rest timer. `src/lib/domain/workoutUnits.ts` has the kg⇄lbs conversions client-side code needs.
+
 ## Personal stats
 
 `profile/stats.tsx` — day/week/month trend charts (consistency % and, if checkout photos are required, average workout minutes, both "you" vs. "group") via a custom `LineChart` (fixed non-scrolling Y-axis, horizontally-scrollable plot once there are more points than fit, always defaulted scrolled to the most recent point); current/longest streaks; weekday and check-in-hour pattern bars; a 26-week GitHub-style attendance heatmap; group-comparison tiles; personal records; financial summary; and a social tally (reactions given/received, who you react to most).
@@ -379,3 +391,4 @@ npm test            # jest — the src/lib/domain/* pure business logic
 - `src/lib/domain/weeklyEvaluation.ts` (the pure TS mirror used for tests/UI previews) has not been updated to reflect the `penalty_start_date` grace-period split or League-mode penalty suppression added later in the SQL (migrations 0060/0064) — it still implements the earlier single-quota algorithm. The real SQL function is correct and authoritative; only the preview mirror is stale.
 - `src/lib/supabase/types.ts` is hand-maintained to match the migrations rather than generated on every schema change — regenerate via the CLI if it drifts.
 - Colombia has no daylight saving time, so all date logic (SQL and `src/lib/domain/dateUtils.ts`) assumes a fixed `America/Bogota` = UTC-5 offset rather than a real timezone database.
+- Workout routines/logging (migration `0127`): the live logging screen, the check-in prompt, and the group leaderboard don't exist yet — only the backend and the routine list/create/edit screens do. See "Workout routines & logging" above.
