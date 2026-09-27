@@ -1,0 +1,56 @@
+import type { RoutineExerciseFormRow } from '@/components/ui/RoutineExerciseListEditor';
+import type { RoutineExerciseInput } from '@/lib/validation/schemas';
+import type { RoutineExerciseArg, RoutineExerciseSet } from '@/lib/supabase/types';
+import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
+
+/** An already-saved routine exercise (+ its planned sets) -> editable form state, weight shown in `unit`. */
+export function routineExerciseToFormRow(
+  input: { exercise_id: string; exercise_name: string; rest_seconds: number | null; notes: string | null; sets: RoutineExerciseSet[] },
+  unit: WeightUnit
+): RoutineExerciseFormRow {
+  const restSeconds = input.rest_seconds ?? 0;
+  return {
+    exerciseId: input.exercise_id,
+    exerciseName: input.exercise_name,
+    restMinutes: restSeconds > 0 ? String(Math.floor(restSeconds / 60)) : '',
+    restSeconds: restSeconds > 0 ? String(restSeconds % 60) : '',
+    notes: input.notes ?? '',
+    sets: input.sets.map((s) => ({
+      targetReps: String(s.target_reps),
+      targetWeight: s.target_weight_kg !== null ? String(kgToUnit(s.target_weight_kg, unit)) : '',
+      isFailureTarget: s.is_failure_target,
+    })),
+  };
+}
+
+/** Raw form state (strings, minutes+seconds kept apart) -> the shape routineSchema validates. Pure so it's testable without React. */
+export function formRowsToRoutineInput(rows: RoutineExerciseFormRow[]): {
+  exerciseId: string;
+  restSeconds: number | undefined;
+  notes: string;
+  sets: { targetReps: number; targetWeight: number | undefined; isFailureTarget: boolean }[];
+}[] {
+  return rows.map((row) => {
+    const totalRestSeconds = (Number(row.restMinutes) || 0) * 60 + (Number(row.restSeconds) || 0);
+    return {
+      exerciseId: row.exerciseId,
+      restSeconds: totalRestSeconds > 0 ? totalRestSeconds : undefined,
+      notes: row.notes,
+      sets: row.sets.map((s) => ({
+        targetReps: Number(s.targetReps) || 0,
+        targetWeight: s.targetWeight ? Number(s.targetWeight) : undefined,
+        isFailureTarget: s.isFailureTarget,
+      })),
+    };
+  });
+}
+
+/** Validated form data -> what create_routine/update_routine take. */
+export function routineInputToArgs(exercises: RoutineExerciseInput[]): RoutineExerciseArg[] {
+  return exercises.map((e) => ({
+    exercise_id: e.exerciseId,
+    rest_seconds: e.restSeconds ?? null,
+    notes: e.notes || null,
+    sets: e.sets.map((s) => ({ target_reps: s.targetReps, target_weight: s.targetWeight, is_failure_target: s.isFailureTarget })),
+  }));
+}

@@ -8,10 +8,9 @@ import { RoutineExerciseListEditor, type RoutineExerciseFormRow } from '@/compon
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyRoutines } from '@/hooks/useMyRoutines';
-import { kgToUnit } from '@/lib/domain/workoutUnits';
+import { formRowsToRoutineInput, routineExerciseToFormRow, routineInputToArgs } from '@/lib/domain/routineForm';
 import { routineSchema } from '@/lib/validation/schemas';
 import { colors, spacing } from '@/constants/theme';
-import type { RoutineExerciseArg } from '@/lib/supabase/types';
 
 export default function EditRoutineScreen() {
   const { routineId } = useLocalSearchParams<{ routineId: string }>();
@@ -27,19 +26,18 @@ export default function EditRoutineScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Only seeds the form once the routine actually loads — refetches from
+  // Only seeds the form once the routine actually loads — refetching from
   // useMyRoutines after saving shouldn't stomp on further edits in progress.
   useEffect(() => {
     if (routine && !isInitialized) {
       setName(routine.name);
       setExercises(
-        routine.exercises.map((e) => ({
-          exerciseId: e.exercise_id,
-          exerciseName: e.exercise.name,
-          targetSets: String(e.target_sets),
-          targetReps: String(e.target_reps),
-          targetWeight: e.target_weight_kg !== null ? String(kgToUnit(e.target_weight_kg, unit)) : '',
-        }))
+        routine.exercises.map((e) =>
+          routineExerciseToFormRow(
+            { exercise_id: e.exercise_id, exercise_name: e.exercise.name, rest_seconds: e.rest_seconds, notes: e.notes, sets: e.sets },
+            unit
+          )
+        )
       );
       setIsInitialized(true);
     }
@@ -47,16 +45,7 @@ export default function EditRoutineScreen() {
 
   const handleSubmit = async () => {
     if (!routine) return;
-    const result = routineSchema.safeParse({
-      name,
-      groupId: routine.group_id,
-      exercises: exercises.map((e) => ({
-        exerciseId: e.exerciseId,
-        targetSets: Number(e.targetSets) || 0,
-        targetReps: Number(e.targetReps) || 0,
-        targetWeight: e.targetWeight ? Number(e.targetWeight) : undefined,
-      })),
-    });
+    const result = routineSchema.safeParse({ name, groupId: routine.group_id, exercises: formRowsToRoutineInput(exercises) });
     if (!result.success) {
       setError(result.error.issues[0]?.message);
       return;
@@ -64,13 +53,7 @@ export default function EditRoutineScreen() {
     setError(undefined);
     setIsSubmitting(true);
     try {
-      const args: RoutineExerciseArg[] = result.data.exercises.map((e) => ({
-        exercise_id: e.exerciseId,
-        target_sets: e.targetSets,
-        target_reps: e.targetReps,
-        target_weight: e.targetWeight,
-      }));
-      await updateRoutine(routine.id, result.data.name, args, unit);
+      await updateRoutine(routine.id, result.data.name, routineInputToArgs(result.data.exercises), unit);
       router.back();
     } catch (err) {
       Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');

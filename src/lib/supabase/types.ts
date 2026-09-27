@@ -527,15 +527,24 @@ export type Routine = {
   updated_at: string;
 };
 
+/** One exercise slot in a routine — rest_seconds is the target rest for THIS exercise (shown "Rest Timer: 2min 0s" style); its planned sets live in RoutineExerciseSet, not here. */
 export type RoutineExercise = {
   id: string;
   routine_id: string;
   exercise_id: string;
   sort_order: number;
-  target_sets: number;
+  rest_seconds: number | null;
+  notes: string | null;
+};
+
+/** One individually-editable planned set (the SET / weight / REPS / F table) — its own target reps/weight, and whether it's meant to be taken to failure. */
+export type RoutineExerciseSet = {
+  id: string;
+  routine_exercise_id: string;
+  set_number: number;
   target_reps: number;
   target_weight_kg: number | null;
-  notes: string | null;
+  is_failure_target: boolean;
 };
 
 export type WorkoutSessionStatus = 'in_progress' | 'completed';
@@ -554,15 +563,20 @@ export type WorkoutSession = {
   created_at: string;
 };
 
-/** One exercise within a specific session — copied from routine_exercises at start time (or added freeform, with null targets), independent of the routine afterwards. */
+/** One planned set inside WorkoutSessionExercise.target_sets_snapshot — frozen from routine_exercise_sets at the moment the session started. */
+export type WorkoutSessionSetTarget = {
+  target_reps: number;
+  target_weight_kg: number | null;
+  is_failure_target: boolean;
+};
+
+/** One exercise within a specific session — copied from routine_exercises/routine_exercise_sets at start time (or added freeform, with an empty snapshot), independent of the routine afterwards. */
 export type WorkoutSessionExercise = {
   id: string;
   session_id: string;
   exercise_id: string;
   sort_order: number;
-  target_sets: number | null;
-  target_reps: number | null;
-  target_weight_kg: number | null;
+  target_sets_snapshot: WorkoutSessionSetTarget[];
   created_at: string;
 };
 
@@ -577,13 +591,19 @@ export type WorkoutSet = {
   completed_at: string;
 };
 
-/** The shape create_routine/update_routine take for their exercise list — target_weight is in whichever unit that same call's p_unit declares. */
-export type RoutineExerciseArg = {
-  exercise_id: string;
-  target_sets: number;
+/** One planned set inside a RoutineExerciseArg — target_weight is in whichever unit that same create_routine/update_routine call's p_unit declares. */
+export type RoutineExerciseSetArg = {
   target_reps: number;
   target_weight?: number | null;
+  is_failure_target?: boolean;
+};
+
+/** The shape create_routine/update_routine take for their exercise list. */
+export type RoutineExerciseArg = {
+  exercise_id: string;
+  rest_seconds?: number | null;
   notes?: string | null;
+  sets: RoutineExerciseSetArg[];
 };
 
 type NoRelationships = { Relationships: [] };
@@ -640,6 +660,7 @@ export type Database = {
       exercises: { Row: Exercise; Insert: never; Update: never } & NoRelationships;
       routines: { Row: Routine; Insert: never; Update: never } & NoRelationships;
       routine_exercises: { Row: RoutineExercise; Insert: never; Update: never } & NoRelationships;
+      routine_exercise_sets: { Row: RoutineExerciseSet; Insert: never; Update: never } & NoRelationships;
       workout_sessions: { Row: WorkoutSession; Insert: never; Update: never } & NoRelationships;
       workout_session_exercises: { Row: WorkoutSessionExercise; Insert: never; Update: never } & NoRelationships;
       workout_sets: { Row: WorkoutSet; Insert: never; Update: never } & NoRelationships;

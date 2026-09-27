@@ -125,12 +125,18 @@ export const excuseRequestSchema = z
     path: ['proofImageUris'],
   });
 
-export const routineExerciseSchema = z.object({
-  exerciseId: z.string().uuid(),
-  targetSets: z.number().int().min(1).max(20),
+export const routineExerciseSetSchema = z.object({
   targetReps: z.number().int().min(1).max(100),
   targetWeight: z.number().min(0).optional(),
+  isFailureTarget: z.boolean().default(false),
+});
+
+export const routineExerciseSchema = z.object({
+  exerciseId: z.string().uuid(),
+  /** Rest between sets, in whole seconds — the form collects minutes + seconds and combines them. */
+  restSeconds: z.number().int().min(0).max(1800).optional(),
   notes: z.string().trim().max(200).optional().or(z.literal('')),
+  sets: z.array(routineExerciseSetSchema).min(1, 'Agrega al menos una serie').max(15, 'Máximo 15 series por ejercicio'),
 });
 
 export const routineSchema = z.object({
@@ -148,3 +154,4 @@ export type RuleProposalInput = z.infer<typeof ruleProposalSchema>;
 export type ExcuseRequestInput = z.infer<typeof excuseRequestSchema>;
 export type RoutineInput = z.infer<typeof routineSchema>;
 export type RoutineExerciseInput = z.infer<typeof routineExerciseSchema>;
+export type RoutineExerciseSetInput = z.infer<typeof routineExerciseSetSchema>;

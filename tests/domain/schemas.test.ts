@@ -247,18 +247,19 @@ describe('excuseRequestSchema', () => {
 });
 
 describe('routineSchema', () => {
-  const exercise = { exerciseId: '11111111-1111-4111-8111-111111111111', targetSets: 4, targetReps: 8 };
+  const oneSet = { targetReps: 8 };
+  const exercise = { exerciseId: '11111111-1111-4111-8111-111111111111', sets: [oneSet] };
 
   it('accepts a personal routine with one exercise', () => {
     const result = routineSchema.safeParse({ name: 'Empuje', groupId: null, exercises: [exercise] });
     expect(result.success).toBe(true);
   });
 
-  it('accepts a group-shared routine and an optional target weight', () => {
+  it('accepts a group-shared routine, an optional target weight, and a failure-target set', () => {
     const result = routineSchema.safeParse({
       name: 'Día de pierna',
       groupId: '22222222-2222-4222-8222-222222222222',
-      exercises: [{ ...exercise, targetWeight: 60 }],
+      exercises: [{ ...exercise, restSeconds: 120, sets: [{ targetReps: 8, targetWeight: 60 }, { targetReps: 6, isFailureTarget: true }] }],
     });
     expect(result.success).toBe(true);
   });
@@ -282,8 +283,20 @@ describe('routineSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects sets/reps out of range', () => {
-    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, targetSets: 0 }] }).success).toBe(false);
-    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, targetReps: 101 }] }).success).toBe(false);
+  it('rejects an exercise with no sets, or more than 15', () => {
+    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [] }] }).success).toBe(false);
+    expect(
+      routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: Array.from({ length: 16 }, () => oneSet) }] })
+        .success
+    ).toBe(false);
+  });
+
+  it('rejects reps out of range', () => {
+    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [{ targetReps: 0 }] }] }).success).toBe(
+      false
+    );
+    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [{ targetReps: 101 }] }] }).success).toBe(
+      false
+    );
   });
 });

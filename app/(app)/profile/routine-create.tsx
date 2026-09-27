@@ -9,9 +9,9 @@ import { RoutineExerciseListEditor, type RoutineExerciseFormRow } from '@/compon
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyRoutines } from '@/hooks/useMyRoutines';
+import { formRowsToRoutineInput, routineInputToArgs } from '@/lib/domain/routineForm';
 import { routineSchema } from '@/lib/validation/schemas';
 import { colors, spacing } from '@/constants/theme';
-import type { RoutineExerciseArg } from '@/lib/supabase/types';
 
 const SCOPE_OPTIONS: { key: 'personal' | 'group'; label: string }[] = [
   { key: 'personal', label: 'Personal' },
@@ -33,12 +33,7 @@ export default function CreateRoutineScreen() {
     const result = routineSchema.safeParse({
       name,
       groupId: scope === 'group' ? (group?.id ?? null) : null,
-      exercises: exercises.map((e) => ({
-        exerciseId: e.exerciseId,
-        targetSets: Number(e.targetSets) || 0,
-        targetReps: Number(e.targetReps) || 0,
-        targetWeight: e.targetWeight ? Number(e.targetWeight) : undefined,
-      })),
+      exercises: formRowsToRoutineInput(exercises),
     });
     if (!result.success) {
       setError(result.error.issues[0]?.message);
@@ -47,13 +42,7 @@ export default function CreateRoutineScreen() {
     setError(undefined);
     setIsSubmitting(true);
     try {
-      const args: RoutineExerciseArg[] = result.data.exercises.map((e) => ({
-        exercise_id: e.exerciseId,
-        target_sets: e.targetSets,
-        target_reps: e.targetReps,
-        target_weight: e.targetWeight,
-      }));
-      await createRoutine(result.data.name, args, result.data.groupId, unit);
+      await createRoutine(result.data.name, routineInputToArgs(result.data.exercises), result.data.groupId, unit);
       router.back();
     } catch (err) {
       Alert.alert('No se pudo crear la rutina', err instanceof Error ? err.message : 'Intenta de nuevo');

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import type { Exercise, Routine, RoutineExercise, RoutineExerciseArg } from '@/lib/supabase/types';
+import type { Exercise, Routine, RoutineExercise, RoutineExerciseArg, RoutineExerciseSet } from '@/lib/supabase/types';
 import type { WeightUnit } from '@/lib/domain/workoutUnits';
 
 export interface RoutineExerciseWithDetails extends RoutineExercise {
   exercise: Exercise;
+  sets: RoutineExerciseSet[];
 }
 
 export interface RoutineWithExercises extends Routine {
@@ -34,11 +35,16 @@ export function useMyRoutines(groupId: string | null) {
     // Nested-select ordering (`.order(..., { foreignTable })`) is finicky once the relation
     // itself is aliased, so the exercise list is sorted client-side instead — a handful of
     // rows per routine, cheap either way, and guaranteed correct.
-    let query = supabase.from('routines').select('*, exercises:routine_exercises(*, exercise:exercises(*))');
+    let query = supabase
+      .from('routines')
+      .select('*, exercises:routine_exercises(*, exercise:exercises(*), sets:routine_exercise_sets(*))');
     query = groupId ? query.or(`owner_user_id.eq.${userId},group_id.eq.${groupId}`) : query.eq('owner_user_id', userId);
     const { data } = await query.order('created_at', { ascending: false });
     const rows = (data as unknown as RoutineWithExercises[]) ?? [];
-    for (const routine of rows) routine.exercises.sort((a, b) => a.sort_order - b.sort_order);
+    for (const routine of rows) {
+      routine.exercises.sort((a, b) => a.sort_order - b.sort_order);
+      for (const exercise of routine.exercises) exercise.sets.sort((a, b) => a.set_number - b.set_number);
+    }
     setRoutines(rows);
     setIsLoading(false);
   }, [userId, groupId]);
