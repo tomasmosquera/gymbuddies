@@ -28,7 +28,7 @@ export default function AppLayout() {
   const { group, membership, isLoading } = useActiveGroup();
   useLeagueChampionsSync();
   const cycleResults = useLeagueCycleResultsPrompt(group);
-  useWorkoutLiveActivity(group);
+  useWorkoutLiveActivity();
 
   if (isInitializing || isLoading) return null;
   if (!isSignedIn) return <Redirect href="/sign-in" />;

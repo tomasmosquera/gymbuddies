@@ -14,7 +14,7 @@ jest.mock('@/lib/liveActivity/WorkoutActivity', () => ({
 const props: WorkoutActivityProps = {
   startedAt: '2026-09-28T14:00:00Z',
   minMinutes: 45,
-  groupName: 'Mis 59',
+  groupLabel: 'Mis 59',
   checkoutUrl: WORKOUT_ACTIVITY_URL,
 };
 const instance = () => ({ update: jest.fn().mockResolvedValue(undefined), end: jest.fn().mockResolvedValue(undefined) });

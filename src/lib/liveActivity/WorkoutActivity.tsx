@@ -49,7 +49,7 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
         <HStack>
           <Text modifiers={[font({ weight: 'bold', size: 13 }), foregroundStyle(green)]}>Gym Buddies</Text>
           <Spacer />
-          <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupName}</Text>
+          <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupLabel}</Text>
         </HStack>
         <Text
           timerInterval={{ lower: start, upper: timerEnd }}
@@ -119,7 +119,7 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
     expandedLeading: (
       <VStack modifiers={[padding({ all: 14 })]}>
         <Text modifiers={[font({ weight: 'bold', size: 14 }), foregroundStyle(green)]}>Gym Buddies</Text>
-        <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupName}</Text>
+        <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupLabel}</Text>
       </VStack>
     ),
     expandedTrailing: (
