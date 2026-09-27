@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ExercisePickerModal } from '@/components/ui/ExercisePickerModal';
@@ -143,6 +144,7 @@ export default function WorkoutSessionScreen() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const restTimer = useRestTimer();
+  const insets = useSafeAreaInsets();
   const unit = profile?.weight_unit ?? 'kg';
 
   // Redirects out once there's genuinely nothing to show (finished/discarded, or none was ever started) —
@@ -217,12 +219,26 @@ export default function WorkoutSessionScreen() {
 
   return (
     <View style={styles.flex}>
-      <View style={styles.header}>
-        <Button label="Cancelar" variant="secondary" onPress={handleDiscard} />
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable onPress={handleDiscard} hitSlop={8} style={styles.headerAction} accessibilityRole="button">
+          <Text style={styles.headerActionTextSecondary}>Cancelar</Text>
+        </Pressable>
         <Text style={styles.title} numberOfLines={1}>
           {session.routine_name_snapshot ?? 'Entreno libre'}
         </Text>
-        <Button label="Terminar" onPress={handleFinish} loading={isFinishing} />
+        <Pressable
+          onPress={handleFinish}
+          hitSlop={8}
+          disabled={isFinishing}
+          style={styles.headerAction}
+          accessibilityRole="button"
+        >
+          {isFinishing ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={styles.headerActionText}>Terminar</Text>
+          )}
+        </Pressable>
       </View>
 
       {restTimer.isActive ? (
@@ -267,10 +283,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
+  headerAction: { minWidth: 68, paddingVertical: spacing.xs, alignItems: 'center', justifyContent: 'center' },
+  headerActionText: { color: colors.primary, fontWeight: '700', fontSize: 15 },
+  headerActionTextSecondary: { color: colors.textMuted, fontWeight: '600', fontSize: 15 },
   title: { ...typography.heading, fontSize: 16, color: colors.text, flex: 1, textAlign: 'center' },
   restBar: {
     flexDirection: 'row',

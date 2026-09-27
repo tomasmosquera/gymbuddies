@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EQUIPMENT_LABELS, EQUIPMENT_ORDER } from '@/constants/equipment';
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from '@/constants/muscleGroups';
 import { useExerciseCatalog } from '@/hooks/useExerciseCatalog';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-import type { Exercise } from '@/lib/supabase/types';
+import type { Equipment, Exercise, MuscleGroup } from '@/lib/supabase/types';
+
+type MuscleFilter = MuscleGroup | 'all';
+type EquipmentFilter = Equipment | 'all';
 
 interface ExercisePickerModalProps {
   visible: boolean;
@@ -15,15 +19,30 @@ interface ExercisePickerModalProps {
   excludeIds?: string[];
 }
 
-/** Searchable "pick one exercise from the ~100+ catalog" sheet, grouped by muscle group — same shape as TimezonePicker. */
+function FilterChip({ label, isActive, onPress }: { label: string; isActive: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.chip, isActive && styles.chipActive]} accessibilityRole="button">
+      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** Searchable, filterable "pick one exercise from the ~100+ catalog" sheet — search by name, plus chip filters by muscle group and equipment, same shape as TimezonePicker. */
 export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [] }: ExercisePickerModalProps) {
   const { exercises } = useExerciseCatalog();
   const [query, setQuery] = useState('');
+  const [muscleFilter, setMuscleFilter] = useState<MuscleFilter>('all');
+  const [equipmentFilter, setEquipmentFilter] = useState<EquipmentFilter>('all');
   const insets = useSafeAreaInsets();
 
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = q ? exercises.filter((e) => e.name.toLowerCase().includes(q)) : exercises;
+    const filtered = exercises.filter(
+      (e) =>
+        (!q || e.name.toLowerCase().includes(q)) &&
+        (muscleFilter === 'all' || e.muscle_group === muscleFilter) &&
+        (equipmentFilter === 'all' || e.equipment === equipmentFilter)
+    );
     const byGroup = new Map<string, Exercise[]>();
     for (const exercise of filtered) {
       const list = byGroup.get(exercise.muscle_group) ?? [];
@@ -34,10 +53,12 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
       title: MUSCLE_GROUP_LABELS[g],
       data: byGroup.get(g)!,
     }));
-  }, [exercises, query]);
+  }, [exercises, query, muscleFilter, equipmentFilter]);
 
   const close = () => {
     setQuery('');
+    setMuscleFilter('all');
+    setEquipmentFilter('all');
     onClose();
   };
 
@@ -60,6 +81,23 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
             style={styles.search}
             autoCorrect={false}
           />
+
+          <Text style={styles.filterLabel}>Músculo</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={styles.chipRowContent}>
+            <FilterChip label="Todos" isActive={muscleFilter === 'all'} onPress={() => setMuscleFilter('all')} />
+            {MUSCLE_GROUP_ORDER.map((g) => (
+              <FilterChip key={g} label={MUSCLE_GROUP_LABELS[g]} isActive={muscleFilter === g} onPress={() => setMuscleFilter(g)} />
+            ))}
+          </ScrollView>
+
+          <Text style={styles.filterLabel}>Equipo</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={styles.chipRowContent}>
+            <FilterChip label="Todos" isActive={equipmentFilter === 'all'} onPress={() => setEquipmentFilter('all')} />
+            {EQUIPMENT_ORDER.map((eq) => (
+              <FilterChip key={eq} label={EQUIPMENT_LABELS[eq]} isActive={equipmentFilter === eq} onPress={() => setEquipmentFilter(eq)} />
+            ))}
+          </ScrollView>
+
           <SectionList
             sections={sections}
             keyExtractor={(item) => item.id}
@@ -81,7 +119,7 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
                 </Pressable>
               );
             }}
-            ListEmptyComponent={<Text style={styles.empty}>No hay ejercicios con ese nombre.</Text>}
+            ListEmptyComponent={<Text style={styles.empty}>No hay ejercicios con esos filtros.</Text>}
             keyboardShouldPersistTaps="handled"
             style={styles.list}
           />
@@ -100,7 +138,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii.lg,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    maxHeight: '85%',
+    maxHeight: '88%',
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   sheetTitle: { ...typography.heading, fontSize: 17, color: colors.text },
@@ -115,6 +153,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: spacing.sm,
   },
+  filterLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.xs },
+  chipRow: { flexGrow: 0, marginBottom: spacing.sm },
+  chipRowContent: { gap: spacing.xs, paddingRight: spacing.md },
+  chip: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  chipTextActive: { color: colors.primaryText },
   list: { flexGrow: 0 },
   sectionHeader: {
     color: colors.textMuted,
