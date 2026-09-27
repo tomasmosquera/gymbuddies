@@ -10,11 +10,38 @@ import { useMyRoutines, type RoutineWithExercises } from '@/hooks/useMyRoutines'
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
-function RoutineCard({ routine, groupName, onPress }: { routine: RoutineWithExercises; groupName: string | null; onPress: () => void }) {
+/** Same shape as Hevy's own routine card: name + "•••" (edit/borrar) up top, exercise summary, one full-width "Empezar". No card-body tap — editing only lives behind the "•••" now. */
+function RoutineCard({
+  routine,
+  groupName,
+  canStart,
+  isStarting,
+  isDeleting,
+  onStart,
+  onEdit,
+  onDelete,
+}: {
+  routine: RoutineWithExercises;
+  groupName: string | null;
+  canStart: boolean;
+  isStarting: boolean;
+  isDeleting: boolean;
+  onStart: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const openMenu = () => {
+    Alert.alert(routine.name, undefined, [
+      { text: 'Editar', onPress: onEdit },
+      { text: 'Borrar', style: 'destructive', onPress: onDelete },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  };
+
   return (
-    <Pressable onPress={onPress} accessibilityRole="button">
-      <Card style={styles.routineCard}>
-        <View style={styles.routineHeader}>
+    <Card style={styles.routineCard}>
+      <View style={styles.routineHeader}>
+        <View style={styles.routineTitleWrap}>
           <Text style={styles.routineName} numberOfLines={1}>
             {routine.name}
           </Text>
@@ -27,11 +54,18 @@ function RoutineCard({ routine, groupName, onPress }: { routine: RoutineWithExer
             </View>
           ) : null}
         </View>
-        <Text style={styles.exercisesSummary} numberOfLines={2}>
-          {routine.exercises.map((e) => e.exercise.name).join(' · ') || 'Sin ejercicios'}
-        </Text>
-      </Card>
-    </Pressable>
+        <Pressable onPress={openMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Opciones de la rutina">
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
+        </Pressable>
+      </View>
+
+      <Text style={styles.exercisesSummary} numberOfLines={2}>
+        {routine.exercises.map((e) => e.exercise.name).join(', ') || 'Sin ejercicios'}
+      </Text>
+
+      {canStart ? <Button label="Empezar" onPress={onStart} loading={isStarting} /> : null}
+      {isDeleting ? <ActivityIndicator color={colors.danger} /> : null}
+    </Card>
   );
 }
 
@@ -101,6 +135,20 @@ export default function RoutinesScreen() {
   const personalRoutines = routines.filter((r) => !r.group_id);
   const groupRoutines = routines.filter((r) => r.group_id);
 
+  const renderCard = (routine: RoutineWithExercises, groupName: string | null) => (
+    <RoutineCard
+      key={routine.id}
+      routine={routine}
+      groupName={groupName}
+      canStart={!activeSession}
+      isStarting={isStarting === routine.id}
+      isDeleting={isDeleting === routine.id}
+      onStart={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
+      onEdit={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
+      onDelete={() => confirmDelete(routine)}
+    />
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.hint}>
@@ -137,30 +185,7 @@ export default function RoutinesScreen() {
         {personalRoutines.length === 0 ? (
           <EmptyState title="Sin rutinas propias" description="Crea tu primera rutina con el botón de arriba." />
         ) : (
-          personalRoutines.map((routine) => (
-            <View key={routine.id} style={styles.cardWrap}>
-              <RoutineCard
-                routine={routine}
-                groupName={null}
-                onPress={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
-              />
-              <View style={styles.actionsRow}>
-                {!activeSession ? (
-                  <Button
-                    label="Empezar"
-                    onPress={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
-                    loading={isStarting === routine.id}
-                  />
-                ) : null}
-                <Button
-                  label="Borrar"
-                  variant="danger"
-                  onPress={() => confirmDelete(routine)}
-                  loading={isDeleting === routine.id}
-                />
-              </View>
-            </View>
-          ))
+          personalRoutines.map((routine) => renderCard(routine, null))
         )}
       </View>
 
@@ -173,30 +198,7 @@ export default function RoutinesScreen() {
               description="Cualquier miembro puede crear una rutina y compartirla con este grupo."
             />
           ) : (
-            groupRoutines.map((routine) => (
-              <View key={routine.id} style={styles.cardWrap}>
-                <RoutineCard
-                  routine={routine}
-                  groupName={group.name}
-                  onPress={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
-                />
-                <View style={styles.actionsRow}>
-                  {!activeSession ? (
-                    <Button
-                      label="Empezar"
-                      onPress={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
-                      loading={isStarting === routine.id}
-                    />
-                  ) : null}
-                  <Button
-                    label="Borrar"
-                    variant="danger"
-                    onPress={() => confirmDelete(routine)}
-                    loading={isDeleting === routine.id}
-                  />
-                </View>
-              </View>
-            ))
+            groupRoutines.map((routine) => renderCard(routine, group.name))
           )}
         </View>
       ) : null}
@@ -225,10 +227,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
   },
-  cardWrap: { gap: spacing.xs, marginBottom: spacing.sm },
-  actionsRow: { flexDirection: 'row', gap: spacing.sm },
-  routineCard: { gap: spacing.xs },
+  routineCard: { gap: spacing.sm, marginBottom: spacing.sm },
   routineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  routineTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   routineName: { ...typography.heading, fontSize: 16, color: colors.text, flexShrink: 1 },
   groupPill: {
     flexDirection: 'row',
