@@ -122,6 +122,7 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
             ListEmptyComponent={<Text style={styles.empty}>No hay ejercicios con esos filtros.</Text>}
             keyboardShouldPersistTaps="handled"
             style={styles.list}
+            contentContainerStyle={sections.length === 0 ? styles.listContentEmpty : undefined}
           />
         </View>
       </View>
@@ -138,7 +139,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii.lg,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    maxHeight: '88%',
+    height: '88%',
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   sheetTitle: { ...typography.heading, fontSize: 17, color: colors.text },
@@ -168,7 +169,8 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   chipTextActive: { color: colors.primaryText },
-  list: { flexGrow: 0 },
+  list: { flex: 1 },
+  listContentEmpty: { flexGrow: 1, justifyContent: 'center' },
   sectionHeader: {
     color: colors.textMuted,
     fontSize: 12,
