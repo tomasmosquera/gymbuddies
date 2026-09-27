@@ -30,6 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# /brag launch-video project — third-party licensed music/sfx, never meant to be redistributed
+brag-output/
+
 # local env files
 .env
 .env*.local
