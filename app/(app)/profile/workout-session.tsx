@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -227,11 +227,19 @@ export default function WorkoutSessionScreen() {
   const restTimer = useRestTimer();
   const insets = useSafeAreaInsets();
   const unit = profile?.weight_unit ?? 'kg';
+  // finish()/discard() both await refresh() internally, which sets `session`
+  // to null the moment either succeeds — the exact same instant handleFinish/
+  // handleDiscard, below, are themselves about to navigate somewhere specific
+  // (checkout for a finish, Rutinas for a discard). Without this flag, the
+  // effect right below reacts to that same session-goes-null transition and
+  // its own router.replace('/profile/routines') races the intentional
+  // navigation and always wins (same race as preview.tsx's own draft effect).
+  const isNavigatingAwayRef = useRef(false);
 
   // Redirects out once there's genuinely nothing to show (finished/discarded, or none was ever started) —
   // this screen doesn't create one itself, only Rutinas does.
   useEffect(() => {
-    if (!isLoading && !session) {
+    if (!isLoading && !session && !isNavigatingAwayRef.current) {
       router.replace('/profile/routines');
     }
   }, [isLoading, session]);
@@ -269,6 +277,7 @@ export default function WorkoutSessionScreen() {
       {
         text: 'Terminar',
         onPress: async () => {
+          isNavigatingAwayRef.current = true;
           setIsFinishing(true);
           try {
             await finish(session.id);
@@ -299,6 +308,7 @@ export default function WorkoutSessionScreen() {
         text: 'Cancelar entreno',
         style: 'destructive',
         onPress: async () => {
+          isNavigatingAwayRef.current = true;
           await discard(session.id);
           router.replace('/profile/routines');
         },

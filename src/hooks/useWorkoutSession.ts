@@ -62,9 +62,10 @@ export function useWorkoutSession() {
 
   const startFreeform = useCallback(
     async (checkinId: string | null = null) => {
-      const { error } = await supabase.rpc('start_workout_session', { p_checkin_id: checkinId });
-      if (error) throw new Error(error.message);
+      const { data, error } = await supabase.rpc('start_workout_session', { p_checkin_id: checkinId });
+      if (error || !data) throw new Error(error?.message ?? 'No se pudo iniciar el entreno');
       await refresh();
+      return data;
     },
     [refresh]
   );

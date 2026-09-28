@@ -133,7 +133,7 @@ export default function RoutinesScreen() {
     }
   };
 
-  const handleStart = async (starter: () => Promise<void>, key: string) => {
+  const handleStart = async (starter: () => Promise<unknown>, key: string) => {
     setIsStarting(key);
     try {
       await starter();
