@@ -1,4 +1,4 @@
-import { kgToLbs, kgToUnit, lbsToKg, unitToKg } from '@/lib/domain/workoutUnits';
+import { kgToLbs, kgToUnit, lbsToKg, sanitizeWeightInput, unitToKg } from '@/lib/domain/workoutUnits';
 
 describe('kgToLbs / lbsToKg', () => {
   it('round-trips (within floating-point tolerance)', () => {
@@ -24,5 +24,20 @@ describe('unitToKg', () => {
   it('passes kg through unchanged and converts lbs', () => {
     expect(unitToKg(60, 'kg')).toBe(60);
     expect(unitToKg(220, 'lbs')).toBeCloseTo(99.79, 1);
+  });
+});
+
+describe('sanitizeWeightInput', () => {
+  it('keeps digits and a period as-is', () => {
+    expect(sanitizeWeightInput('60.5')).toBe('60.5');
+  });
+
+  it('normalizes a comma decimal separator to a period (es-* decimal-pad keyboards)', () => {
+    expect(sanitizeWeightInput('60,5')).toBe('60.5');
+  });
+
+  it('strips anything that is not a digit, period, or comma', () => {
+    expect(sanitizeWeightInput('60kg')).toBe('60');
+    expect(sanitizeWeightInput('abc')).toBe('');
   });
 });

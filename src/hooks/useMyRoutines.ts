@@ -91,5 +91,28 @@ export function useMyRoutines(groupId: string | null) {
     [refresh]
   );
 
-  return { routines, isLoading, refresh, createRoutine, updateRoutine, deleteRoutine };
+  // Personal <-> group: a full independent copy (own id, own sets), not a
+  // re-share of the same routine — editing the copy afterwards never
+  // touches the original. target_weight_kg is already canonical kg, so
+  // every exercise copies through with unit: 'kg' regardless of what unit
+  // it was originally entered in.
+  const copyRoutine = useCallback(
+    async (routine: RoutineWithExercises, targetGroupId: string | null) => {
+      const exercises: RoutineExerciseArg[] = routine.exercises.map((e) => ({
+        exercise_id: e.exercise_id,
+        rest_seconds: e.rest_seconds,
+        notes: e.notes,
+        unit: 'kg',
+        sets: e.sets.map((s) => ({
+          target_reps: s.target_reps,
+          target_weight: s.target_weight_kg,
+          is_failure_target: s.is_failure_target,
+        })),
+      }));
+      return createRoutine(`${routine.name} (copia)`, exercises, targetGroupId);
+    },
+    [createRoutine]
+  );
+
+  return { routines, isLoading, refresh, createRoutine, updateRoutine, deleteRoutine, copyRoutine };
 }

@@ -10,15 +10,18 @@ import { useMyRoutines, type RoutineWithExercises } from '@/hooks/useMyRoutines'
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
-/** Same shape as Hevy's own routine card: name + "•••" (edit/borrar) up top, exercise summary, one full-width "Empezar". No card-body tap — editing only lives behind the "•••" now. */
+/** Same shape as Hevy's own routine card: name + "•••" (edit/copiar/borrar) up top, exercise summary, one full-width "Empezar". No card-body tap — editing only lives behind the "•••" now. */
 function RoutineCard({
   routine,
   groupName,
   canStart,
   isStarting,
   isDeleting,
+  isCopying,
+  copyLabel,
   onStart,
   onEdit,
+  onCopy,
   onDelete,
 }: {
   routine: RoutineWithExercises;
@@ -26,15 +29,20 @@ function RoutineCard({
   canStart: boolean;
   isStarting: boolean;
   isDeleting: boolean;
+  isCopying: boolean;
+  /** null when there's nowhere to copy this routine to (personal routine, no active group) — hides the option instead of offering a no-op. */
+  copyLabel: string | null;
   onStart: () => void;
   onEdit: () => void;
+  onCopy: () => void;
   onDelete: () => void;
 }) {
   const openMenu = () => {
     Alert.alert(routine.name, undefined, [
       { text: 'Editar', onPress: onEdit },
-      { text: 'Borrar', style: 'destructive', onPress: onDelete },
-      { text: 'Cancelar', style: 'cancel' },
+      ...(copyLabel ? [{ text: copyLabel, onPress: onCopy }] : []),
+      { text: 'Borrar', style: 'destructive' as const, onPress: onDelete },
+      { text: 'Cancelar', style: 'cancel' as const },
     ]);
   };
 
@@ -64,7 +72,7 @@ function RoutineCard({
       </Text>
 
       {canStart ? <Button label="Empezar" onPress={onStart} loading={isStarting} /> : null}
-      {isDeleting ? <ActivityIndicator color={colors.danger} /> : null}
+      {isDeleting || isCopying ? <ActivityIndicator color={isDeleting ? colors.danger : colors.primary} /> : null}
     </Card>
   );
 }
@@ -76,10 +84,11 @@ function RoutineCard({
  */
 export default function RoutinesScreen() {
   const { group } = useActiveGroup();
-  const { routines, isLoading, refresh, deleteRoutine } = useMyRoutines(group?.id ?? null);
+  const { routines, isLoading, refresh, deleteRoutine, copyRoutine } = useMyRoutines(group?.id ?? null);
   const { session: activeSession, isLoading: isSessionLoading, startFromRoutine, startFreeform, refresh: refreshSession } = useWorkoutSession();
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState<string | null>(null);
+  const [isCopying, setIsCopying] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -112,6 +121,18 @@ export default function RoutinesScreen() {
     );
   };
 
+  const handleCopy = async (routine: RoutineWithExercises, targetGroupId: string | null, destinationLabel: string) => {
+    setIsCopying(routine.id);
+    try {
+      await copyRoutine(routine, targetGroupId);
+      Alert.alert('Copiada', `"${routine.name}" se copió a ${destinationLabel}.`);
+    } catch (err) {
+      Alert.alert('No se pudo copiar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsCopying(null);
+    }
+  };
+
   const handleStart = async (starter: () => Promise<void>, key: string) => {
     setIsStarting(key);
     try {
@@ -135,19 +156,28 @@ export default function RoutinesScreen() {
   const personalRoutines = routines.filter((r) => !r.group_id);
   const groupRoutines = routines.filter((r) => r.group_id);
 
-  const renderCard = (routine: RoutineWithExercises, groupName: string | null) => (
-    <RoutineCard
-      key={routine.id}
-      routine={routine}
-      groupName={groupName}
-      canStart={!activeSession}
-      isStarting={isStarting === routine.id}
-      isDeleting={isDeleting === routine.id}
-      onStart={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
-      onEdit={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
-      onDelete={() => confirmDelete(routine)}
-    />
-  );
+  // A personal routine copies TO the active group (if there is one); a
+  // group routine always copies back to Mis Rutinas. null hides the menu
+  // option entirely rather than offering a copy with nowhere to go.
+  const renderCard = (routine: RoutineWithExercises, groupName: string | null) => {
+    const copyTarget = routine.group_id ? { groupId: null, label: 'Mis Rutinas' } : group ? { groupId: group.id, label: group.name } : null;
+    return (
+      <RoutineCard
+        key={routine.id}
+        routine={routine}
+        groupName={groupName}
+        canStart={!activeSession}
+        isStarting={isStarting === routine.id}
+        isDeleting={isDeleting === routine.id}
+        isCopying={isCopying === routine.id}
+        copyLabel={copyTarget ? `Copiar a ${copyTarget.label}` : null}
+        onStart={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
+        onEdit={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
+        onCopy={() => copyTarget && handleCopy(routine, copyTarget.groupId, copyTarget.label)}
+        onDelete={() => confirmDelete(routine)}
+      />
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>

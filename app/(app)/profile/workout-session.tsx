@@ -12,7 +12,7 @@ import { useWorkoutSession, type WorkoutSessionExerciseWithDetails } from '@/hoo
 import { usePreviousExercisePerformance } from '@/hooks/usePreviousExercisePerformance';
 import { formatSetLine } from '@/lib/domain/workoutSets';
 import { formatDuration, initialPendingRows, nextPendingRow, type PendingSetRow } from '@/lib/domain/workoutSession';
-import { kgToUnit, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise } from '@/lib/supabase/types';
 
@@ -114,7 +114,7 @@ function ExerciseCard({
           <TextInput
             style={[styles.setInput, styles.weightColumn]}
             value={row.targetWeight}
-            onChangeText={(t) => updatePending(index, { targetWeight: t.replace(/[^0-9.]/g, '') })}
+            onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
             keyboardType="decimal-pad"
             placeholder="—"
             placeholderTextColor={colors.textMuted}

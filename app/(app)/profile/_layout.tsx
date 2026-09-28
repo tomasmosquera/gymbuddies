@@ -104,6 +104,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="routine-edit" options={{ title: 'Editar rutina' }} />
       <Stack.Screen name="workout-session" options={{ title: 'Entreno', headerShown: false }} />
       <Stack.Screen name="exercise-detail" options={{ title: 'Ejercicio' }} />
+      <Stack.Screen name="workout-history" options={{ title: 'Historial de entrenos' }} />
       <Stack.Screen name="king-of-the-hill" options={{ title: 'King of the Hill' }} />
       <Stack.Screen name="king-of-the-hill-exercise" options={{ title: 'King of the Hill' }} />
       <Stack.Screen name="king-of-the-hill-claim" options={{ title: 'Reclamar récord' }} />

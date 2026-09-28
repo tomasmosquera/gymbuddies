@@ -123,6 +123,7 @@ export default function SettingsScreen() {
           desde aquí.
         </Text>
         <Button label="Ver mis rutinas" variant="secondary" onPress={() => router.push('/profile/routines')} />
+        <Button label="Historial de entrenos" variant="secondary" onPress={() => router.push('/profile/workout-history')} />
       </Card>
 
       <Card style={styles.section}>

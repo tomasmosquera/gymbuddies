@@ -21,3 +21,14 @@ export function kgToUnit(kg: number, unit: WeightUnit): number {
 export function unitToKg(value: number, unit: WeightUnit): number {
   return unit === 'lbs' ? lbsToKg(value) : value;
 }
+
+/**
+ * Strips a weight TextInput down to digits + one decimal separator, and
+ * normalizes a comma to a period — es-* keyboards' `decimal-pad` often types
+ * "," for the decimal point (Spanish locale convention), and a naive
+ * digits-and-period filter silently ate it, making decimals impossible to
+ * enter on those devices even though `Number()` parses "60.5" just fine.
+ */
+export function sanitizeWeightInput(raw: string): string {
+  return raw.replace(/[^0-9.,]/g, '').replace(',', '.');
+}

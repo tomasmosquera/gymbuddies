@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { ExercisePickerModal } from '@/components/ui/ExercisePickerModal';
 import { colors, radii, spacing } from '@/constants/theme';
-import { kgToUnit, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise } from '@/lib/supabase/types';
 
 /** One row of the planned SET / weight / REPS table — raw strings while editing, same reason MoneyField/PrizeSplitEditor keep numeric fields as text (never flash NaN). */
@@ -176,7 +176,7 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
               <TextInput
                 style={[styles.setInput, styles.weightColumn]}
                 value={set.targetWeight}
-                onChangeText={(t) => updateSet(exerciseIndex, setIndex, { targetWeight: t.replace(/[^0-9.]/g, '') })}
+                onChangeText={(t) => updateSet(exerciseIndex, setIndex, { targetWeight: sanitizeWeightInput(t) })}
                 keyboardType="decimal-pad"
                 placeholder="—"
                 placeholderTextColor={colors.textMuted}
