@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { ExercisePickerModal } from '@/components/ui/ExercisePickerModal';
@@ -101,9 +102,15 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
       {values.map((exercise, exerciseIndex) => (
         <View key={exercise.exerciseId} style={styles.exerciseCard}>
           <View style={styles.exerciseHeader}>
-            <Text style={styles.exerciseName} numberOfLines={2}>
-              {exercise.exerciseName}
-            </Text>
+            <Pressable
+              style={styles.exerciseNameButton}
+              onPress={() => router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: exercise.exerciseId } })}
+              accessibilityRole="button"
+            >
+              <Text style={styles.exerciseName} numberOfLines={2}>
+                {exercise.exerciseName}
+              </Text>
+            </Pressable>
             <Pressable
               onPress={() => toggleUnit(exerciseIndex)}
               style={styles.unitPill}
@@ -217,7 +224,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  exerciseName: { flex: 1, color: colors.primary, fontWeight: '700', fontSize: 16 },
+  exerciseNameButton: { flex: 1 },
+  exerciseName: { color: colors.primary, fontWeight: '700', fontSize: 16, textDecorationLine: 'underline' },
   unitPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,

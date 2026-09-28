@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { LineChart } from '@/components/stats/LineChart';
+import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useAuth } from '@/hooks/useAuth';
 import { useExerciseCatalog } from '@/hooks/useExerciseCatalog';
+import { useExerciseGroupLeaderboard } from '@/hooks/useExerciseGroupLeaderboard';
 import { useExerciseHistory } from '@/hooks/useExerciseHistory';
 import { useExerciseSessionHistory } from '@/hooks/useExerciseSessionHistory';
 import {
@@ -16,8 +18,10 @@ import {
   chartValuesFor,
   computeExerciseRecords,
   dailyExerciseSeries,
+  rankGroupLeaderboard,
   type AnnotatedHistorySet,
   type ExerciseChartMetric,
+  type RankedGroupLeaderboardMember,
 } from '@/lib/domain/exerciseRecords';
 import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { MUSCLE_GROUP_LABELS } from '@/constants/muscleGroups';
@@ -45,15 +49,6 @@ function formatShortDate(iso: string): string {
 function formatFullDate(iso: string): string {
   return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(
     new Date(iso)
-  );
-}
-
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <View style={styles.comingSoon}>
-      <Ionicons name="time-outline" size={28} color={colors.textMuted} />
-      <Text style={styles.comingSoonText}>{label} — próximamente.</Text>
-    </View>
   );
 }
 
@@ -139,6 +134,147 @@ function ExplanationTab({ instructions }: { instructions: string[] }) {
   );
 }
 
+function ComparisonBar({ label, value, pct, isYou }: { label: string; value: string; pct: number; isYou: boolean }) {
+  return (
+    <View style={styles.comparisonBarRow}>
+      <Text style={styles.comparisonBarLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <View style={styles.comparisonBarTrack}>
+        <View style={[styles.comparisonBarFill, { width: `${pct}%` }, isYou ? styles.comparisonBarFillYou : styles.comparisonBarFillOther]} />
+      </View>
+      <Text style={styles.comparisonBarValue}>{value}</Text>
+    </View>
+  );
+}
+
+/** One metric's "you vs them" comparison — two bars scaled to whichever value is larger, plus a % delta. */
+function ComparisonMetric({
+  label,
+  youKg,
+  otherKg,
+  otherName,
+  unit,
+}: {
+  label: string;
+  youKg: number | null;
+  otherKg: number | null;
+  otherName: string;
+  unit: WeightUnit;
+}) {
+  const maxKg = Math.max(youKg ?? 0, otherKg ?? 0, 1);
+  const deltaPct = youKg !== null && otherKg !== null && otherKg > 0 ? Math.round(((youKg - otherKg) / otherKg) * 100) : null;
+  return (
+    <View style={styles.comparisonMetric}>
+      <View style={styles.comparisonMetricHeader}>
+        <Text style={styles.comparisonMetricLabel}>{label}</Text>
+        {deltaPct !== null ? (
+          <View style={styles.comparisonDeltaRow}>
+            <Ionicons name={deltaPct >= 0 ? 'arrow-up' : 'arrow-down'} size={12} color={deltaPct >= 0 ? colors.primary : colors.danger} />
+            <Text style={[styles.comparisonDeltaText, { color: deltaPct >= 0 ? colors.primary : colors.danger }]}>
+              {Math.abs(deltaPct)}%
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <ComparisonBar
+        label="Tú"
+        value={youKg !== null ? `${kgToUnit(youKg, unit)} ${unit}` : '—'}
+        pct={youKg !== null ? (youKg / maxKg) * 100 : 0}
+        isYou
+      />
+      <ComparisonBar
+        label={otherName}
+        value={otherKg !== null ? `${kgToUnit(otherKg, unit)} ${unit}` : '—'}
+        pct={otherKg !== null ? (otherKg / maxKg) * 100 : 0}
+        isYou={false}
+      />
+    </View>
+  );
+}
+
+/** Grupo: this exercise's leaderboard across the active group (switchable metric, same pills as Resumen), plus a "you vs them" comparison when a member is tapped. */
+function GroupTab({ exerciseId, unit, currentUserId }: { exerciseId: string; unit: WeightUnit; currentUserId: string | null }) {
+  const { group } = useActiveGroup();
+  const { members, isLoading } = useExerciseGroupLeaderboard(exerciseId, group?.id ?? null);
+  const [metric, setMetric] = useState<ExerciseChartMetric>('heaviestWeight');
+  const [comparedUserId, setComparedUserId] = useState<string | null>(null);
+
+  if (!group) {
+    return <EmptyState title="Sin grupo activo" description="Únete a un grupo para comparar tu progreso con los demás." />;
+  }
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  const ranked = rankGroupLeaderboard(members ?? [], metric);
+  const you = ranked.find((m) => m.userId === currentUserId) ?? null;
+  const compared = ranked.find((m) => m.userId === comparedUserId) ?? null;
+  const metricLabel = METRIC_OPTIONS.find((m) => m.key === metric)!.label;
+
+  return (
+    <View style={styles.tabContent}>
+      <SegmentedControl options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
+
+      <Card style={styles.leaderboardCard}>
+        <Text style={styles.recordsTitle}>Leaderboard del Grupo · {metricLabel}</Text>
+        {ranked.map((m: RankedGroupLeaderboardMember) => {
+          const isYou = m.userId === currentUserId;
+          const value = m[metric === 'heaviestWeight' ? 'heaviestWeightKg' : metric === 'oneRepMax' ? 'best1RmKg' : 'bestSetVolumeKg'];
+          return (
+            <Pressable
+              key={m.userId}
+              disabled={isYou}
+              onPress={() => setComparedUserId(m.userId)}
+              style={[styles.leaderboardRow, comparedUserId === m.userId && styles.leaderboardRowActive]}
+            >
+              <Text style={styles.leaderboardRank}>{m.rank}</Text>
+              <Text style={[styles.leaderboardName, isYou && styles.leaderboardNameYou]} numberOfLines={1}>
+                {isYou ? 'Tú' : m.fullName}
+              </Text>
+              <Text style={styles.leaderboardValue}>{value !== null ? `${kgToUnit(value, unit)} ${unit}` : '—'}</Text>
+            </Pressable>
+          );
+        })}
+      </Card>
+
+      {compared && you ? (
+        <Card style={styles.comparisonCard}>
+          <View style={styles.comparisonHeader}>
+            <Text style={styles.recordsTitle}>Tú vs {compared.fullName}</Text>
+            {you.rank !== compared.rank ? (
+              <View style={[styles.strongerBadge, you.rank < compared.rank ? styles.strongerBadgeYes : styles.strongerBadgeNo]}>
+                <Text style={styles.strongerBadgeText}>{you.rank < compared.rank ? 'MÁS FUERTE' : 'MENOS FUERTE'}</Text>
+              </View>
+            ) : null}
+          </View>
+          <ComparisonMetric label="One Rep Max" youKg={you.best1RmKg} otherKg={compared.best1RmKg} otherName={compared.fullName} unit={unit} />
+          <ComparisonMetric
+            label="Peso Máximo"
+            youKg={you.heaviestWeightKg}
+            otherKg={compared.heaviestWeightKg}
+            otherName={compared.fullName}
+            unit={unit}
+          />
+          <ComparisonMetric
+            label="Mejor Set (Volumen)"
+            youKg={you.bestSetVolumeKg}
+            otherKg={compared.bestSetVolumeKg}
+            otherName={compared.fullName}
+            unit={unit}
+          />
+        </Card>
+      ) : (
+        <Text style={styles.comparisonHint}>Toca a alguien del grupo para comparar tu progreso con el suyo.</Text>
+      )}
+    </View>
+  );
+}
+
 /** Resumen: demo image, a progress chart switchable between 3 metrics, and all-time Personal Records — same shape as the Hevy reference screenshot. */
 function SummaryTab({ exerciseId, unit }: { exerciseId: string; unit: 'kg' | 'lbs' }) {
   const { entries, isLoading } = useExerciseHistory(exerciseId);
@@ -213,7 +349,7 @@ function SummaryTab({ exerciseId, unit }: { exerciseId: string; unit: 'kg' | 'lb
 
 export default function ExerciseDetailScreen() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
-  const { profile } = useAuth();
+  const { profile, session: authSession } = useAuth();
   const { exercises, isLoading } = useExerciseCatalog();
   const [tab, setTab] = useState<DetailTab>('resumen');
   const unit = profile?.weight_unit ?? 'kg';
@@ -259,7 +395,7 @@ export default function ExerciseDetailScreen() {
 
       {tab === 'resumen' ? <SummaryTab exerciseId={exercise.id} unit={unit} /> : null}
       {tab === 'historico' ? <HistoryTab exerciseId={exercise.id} unit={unit} /> : null}
-      {tab === 'grupo' ? <ComingSoon label="Comparación con el grupo" /> : null}
+      {tab === 'grupo' ? <GroupTab exerciseId={exercise.id} unit={unit} currentUserId={authSession?.user.id ?? null} /> : null}
       {tab === 'explicacion' ? <ExplanationTab instructions={exercise.instructions} /> : null}
     </ScrollView>
   );
@@ -301,8 +437,6 @@ const styles = StyleSheet.create({
   setRecordsSection: { marginTop: spacing.sm },
   setRecordsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.sm },
   setRecordsHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  comingSoon: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
-  comingSoonText: { color: colors.textMuted, fontSize: 13 },
   setsTableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   tableHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
   historyCard: { gap: 2 },
@@ -335,4 +469,38 @@ const styles = StyleSheet.create({
   instructionRow: { flexDirection: 'row', gap: spacing.sm },
   instructionNumber: { color: colors.primary, fontWeight: '700', fontSize: 14, width: 20 },
   instructionText: { color: colors.text, fontSize: 14, lineHeight: 20, flex: 1 },
+  leaderboardCard: { gap: 2 },
+  leaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    borderRadius: radii.sm,
+  },
+  leaderboardRowActive: { backgroundColor: colors.surfaceAlt },
+  leaderboardRank: { width: 24, color: colors.textMuted, fontWeight: '700', fontSize: 13, textAlign: 'center' },
+  leaderboardName: { flex: 1, color: colors.text, fontSize: 14 },
+  leaderboardNameYou: { fontWeight: '700', color: colors.primary },
+  leaderboardValue: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  comparisonHint: { color: colors.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: spacing.md },
+  comparisonCard: { gap: spacing.md },
+  comparisonHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  strongerBadge: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radii.pill },
+  strongerBadgeYes: { backgroundColor: 'rgba(61, 220, 151, 0.15)' },
+  strongerBadgeNo: { backgroundColor: 'rgba(255, 107, 107, 0.15)' },
+  strongerBadgeText: { fontSize: 10, fontWeight: '800', color: colors.text },
+  comparisonMetric: { gap: 4 },
+  comparisonMetricHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  comparisonMetricLabel: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  comparisonDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  comparisonDeltaText: { fontSize: 12, fontWeight: '700' },
+  comparisonBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  comparisonBarLabel: { width: 60, color: colors.textMuted, fontSize: 12 },
+  comparisonBarTrack: { flex: 1, height: 10, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  comparisonBarFill: { height: '100%', borderRadius: radii.pill },
+  comparisonBarFillYou: { backgroundColor: colors.primary },
+  comparisonBarFillOther: { backgroundColor: colors.textMuted },
+  comparisonBarValue: { width: 64, textAlign: 'right', color: colors.text, fontSize: 12, fontWeight: '600' },
 });

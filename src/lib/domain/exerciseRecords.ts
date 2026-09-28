@@ -135,3 +135,37 @@ export function computeExerciseRecords(entries: ExerciseHistoryEntry[]): Exercis
       .sort((a, b) => a.reps - b.reps),
   };
 }
+
+export interface GroupLeaderboardMember {
+  userId: string;
+  fullName: string;
+  heaviestWeightKg: number | null;
+  best1RmKg: number | null;
+  bestSetVolumeKg: number | null;
+}
+
+export interface RankedGroupLeaderboardMember extends GroupLeaderboardMember {
+  /** 1-based, standard competition ranking (1,2,2,4) — same convention as rankMembersByConsistency. A member with no data for this exercise (null metric) always sorts last. */
+  rank: number;
+}
+
+function metricKey(metric: ExerciseChartMetric): 'heaviestWeightKg' | 'best1RmKg' | 'bestSetVolumeKg' {
+  return metric === 'heaviestWeight' ? 'heaviestWeightKg' : metric === 'oneRepMax' ? 'best1RmKg' : 'bestSetVolumeKg';
+}
+
+/** Ranks a group's members for one exercise by whichever metric the pill selector currently shows. */
+export function rankGroupLeaderboard(members: GroupLeaderboardMember[], metric: ExerciseChartMetric): RankedGroupLeaderboardMember[] {
+  const key = metricKey(metric);
+  const sorted = [...members].sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
+  let rank = 0;
+  let seen = 0;
+  let lastValue: number | null | undefined = undefined;
+  return sorted.map((m) => {
+    seen++;
+    if (lastValue === undefined || m[key] !== lastValue) {
+      rank = seen;
+      lastValue = m[key];
+    }
+    return { ...m, rank };
+  });
+}

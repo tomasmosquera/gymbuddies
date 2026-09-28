@@ -64,9 +64,15 @@ function ExerciseCard({
   return (
     <Card style={styles.exerciseCard}>
       <View style={styles.exerciseHeader}>
-        <Text style={styles.exerciseName} numberOfLines={2}>
-          {sessionExercise.exercise.name}
-        </Text>
+        <Pressable
+          style={styles.exerciseNameButton}
+          onPress={() => router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: sessionExercise.exercise_id } })}
+          accessibilityRole="button"
+        >
+          <Text style={styles.exerciseName} numberOfLines={2}>
+            {sessionExercise.exercise.name}
+          </Text>
+        </Pressable>
         <Pressable onPress={toggleUnit} style={styles.unitPill} accessibilityRole="button">
           <Text style={styles.unitPillText}>{unit.toUpperCase()}</Text>
         </Pressable>
@@ -306,7 +312,8 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md },
   exerciseCard: { gap: spacing.sm },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  exerciseName: { flex: 1, color: colors.primary, fontWeight: '700', fontSize: 16 },
+  exerciseNameButton: { flex: 1 },
+  exerciseName: { color: colors.primary, fontWeight: '700', fontSize: 16, textDecorationLine: 'underline' },
   unitPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
