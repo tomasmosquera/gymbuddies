@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyRoutines, type RoutineWithExercises } from '@/hooks/useMyRoutines';
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
+import { replaceThenCrossTabPush } from '@/lib/navigation';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /** One tappable routine — same summary line as Rutinas' own card, no "···" menu here (this screen only starts a routine, never edits one). */
@@ -58,20 +59,11 @@ export default function CheckinRoutineChoiceScreen() {
   const { session: activeSession, isLoading: isSessionLoading, startFromRoutine, startFreeform, finish } = useWorkoutSession();
   const [startingKey, setStartingKey] = useState<string | null>(null);
 
-  // Cross-tab jump (this screen lives in the checkin tab's own stack,
-  // /profile/workout-session belongs to a different tab's) — push, not
-  // replace: replace has no well-defined meaning across tabs and was
-  // silently falling back to this stack's own index instead of actually
-  // navigating. This does leave THIS screen sitting behind, unfocused, in
-  // the checkin tab's own history — unlike workout-session.tsx's own
-  // Terminar → checkout jump, that's not chasing a real bug here (this
-  // screen has no "stuck forever" render path if revisited: worst case it
-  // briefly re-shows the routine list or the resume spinner, no dead end) —
-  // and a replace() dispatched right before this push turned out to
-  // silently swallow the push (confirmed: doing that broke this exact
-  // navigation), so it deliberately stays a single call.
+  // Confirmed this screen DOES have a stuck-forever risk if left dangling
+  // in the checkin tab's own history (reported: revisiting it via the back
+  // button showed a spinner that never resolved) — see replaceThenCrossTabPush.
   const goToWorkoutSession = () => {
-    router.push('/profile/workout-session');
+    replaceThenCrossTabPush('/checkin', '/profile/workout-session');
   };
 
   useEffect(() => {

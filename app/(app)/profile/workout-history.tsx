@@ -50,7 +50,7 @@ function SessionCard({ session, isDeleting, onDelete }: { session: WorkoutHistor
   );
 }
 
-/** Configuración → Historial de entrenos: every completed session, newest first, with a delete action — the fix for "guardé una rutina sin querer y no sé cómo borrarla". */
+/** Perfil → Rutinas → Historial de entrenos: every completed session, newest first, with a delete action — the fix for "guardé una rutina sin querer y no sé cómo borrarla". */
 export default function WorkoutHistoryScreen() {
   const { sessions, isLoading, refresh, deleteSession } = useWorkoutHistory();
   const [deletingId, setDeletingId] = useState<string | null>(null);

@@ -276,6 +276,15 @@ export default function ProfileScreen() {
       ) : null}
 
       <View>
+        <SectionLabel>RUTINAS</SectionLabel>
+        <Card style={styles.stackCard}>
+          <Button label="Rutinas de entreno" variant="secondary" onPress={() => router.push('/profile/routines')} />
+          <Button label="Historial de entrenos" variant="secondary" onPress={() => router.push('/profile/workout-history')} />
+          <Button label="Ejercicios" variant="secondary" onPress={() => router.push('/profile/exercises')} />
+        </Card>
+      </View>
+
+      <View>
         <SectionLabel>PREFERENCIAS</SectionLabel>
         <Card style={styles.stackCard}>
           <Button label="Configuración" variant="secondary" onPress={() => router.push('/profile/settings')} />

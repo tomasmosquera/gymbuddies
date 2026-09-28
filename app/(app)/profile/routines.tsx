@@ -77,11 +77,7 @@ function RoutineCard({
   );
 }
 
-/**
- * Fase 1/2's temporary home — reachable from Perfil → Configuración while
- * this feature is being built and reviewed. Where it really lives in the
- * navigation (its own tab? nested somewhere else?) is a later decision (Fase 5).
- */
+/** Reachable from Perfil → Rutinas, alongside Historial de entrenos and Ejercicios. */
 export default function RoutinesScreen() {
   const { group } = useActiveGroup();
   const { routines, isLoading, refresh, deleteRoutine, copyRoutine } = useMyRoutines(group?.id ?? null);

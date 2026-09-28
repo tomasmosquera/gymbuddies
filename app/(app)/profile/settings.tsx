@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -113,19 +113,6 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* Fase 1 (en construcción): entrada temporal a Rutinas de entreno mientras se decide dónde vive de verdad en la navegación (Fase 5). */}
-      <Card style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Rutinas de entreno (nuevo)</Text>
-        </View>
-        <Text style={styles.hint}>
-          Crea rutinas con ejercicios de un catálogo — series, repeticiones y peso objetivo. Por ahora se administran
-          desde aquí.
-        </Text>
-        <Button label="Ver mis rutinas" variant="secondary" onPress={() => router.push('/profile/routines')} />
-        <Button label="Historial de entrenos" variant="secondary" onPress={() => router.push('/profile/workout-history')} />
-      </Card>
-
       <Card style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Unidad de peso</Text>

@@ -13,6 +13,7 @@ import { usePreviousExercisePerformance } from '@/hooks/usePreviousExercisePerfo
 import { formatSetLine } from '@/lib/domain/workoutSets';
 import { formatDuration, initialPendingRows, nextPendingRow, type PendingSetRow } from '@/lib/domain/workoutSession';
 import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { replaceThenCrossTabPush } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSet } from '@/lib/supabase/types';
 
@@ -214,10 +215,10 @@ function ExerciseCard({
 }
 
 /**
- * The live workout — Fase 2. Reachable for now only from Perfil →
- * Configuración → Rutinas (start a routine, or "Entreno libre"); no
- * check-in integration yet. At most one session in_progress at a time, so
- * this screen takes no params — it always shows whichever one that is.
+ * The live workout. Reachable from Perfil → Rutinas (start a routine, or
+ * "Elegir ejercicios"), or from the check-in flow's own routine-choice step.
+ * At most one session in_progress at a time, so this screen takes no
+ * params — it always shows whichever one that is.
  */
 export default function WorkoutSessionScreen() {
   const { profile } = useAuth();
@@ -299,14 +300,11 @@ export default function WorkoutSessionScreen() {
             // checkout photo, not "go manage your routines" — checkin/index.tsx
             // already knows on its own whether one's actually pending (Paso 2)
             // or there's nothing to do, so this always routes there and lets
-            // it decide what to show. push, not replace: cross-tab (this
-            // screen is in the Profile tab's own stack, /checkin is a
-            // different tab) — see the useFocusEffect above for how this
-            // screen being left behind, unfocused, in Profile's history gets
-            // handled instead of dispatching a second navigation call here
-            // (two router calls back to back turned out to silently drop
-            // the second one — confirmed: doing that broke this exact push).
-            router.push('/checkin');
+            // it decide what to show. replaceThenCrossTabPush also cleans this
+            // screen out of the Profile tab's own history — the useFocusEffect
+            // above is a second line of defense for however else this screen
+            // might be left dangling, not a substitute for this.
+            replaceThenCrossTabPush('/profile', '/checkin');
           } catch (err) {
             Alert.alert('No se pudo terminar', err instanceof Error ? err.message : 'Intenta de nuevo');
           } finally {
