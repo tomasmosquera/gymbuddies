@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background },
   flex: { flex: 1 },
   card: { gap: spacing.xs },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   label: { ...typography.heading, fontSize: 16, color: colors.text },
   date: { color: colors.textMuted, fontSize: 12 },
   summary: { color: colors.textMuted, fontSize: 13 },
