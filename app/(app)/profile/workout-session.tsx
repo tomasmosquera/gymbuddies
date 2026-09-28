@@ -14,19 +14,21 @@ import { formatSetLine } from '@/lib/domain/workoutSets';
 import { formatDuration, initialPendingRows, nextPendingRow, type PendingSetRow } from '@/lib/domain/workoutSession';
 import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-import type { Exercise } from '@/lib/supabase/types';
+import type { Exercise, WorkoutSet } from '@/lib/supabase/types';
 
 /** One exercise card: progressive-overload reference, completed sets (from the DB), and pending/editable rows (local until confirmed). */
 function ExerciseCard({
   sessionExercise,
   sessionId,
   onLogSet,
+  onUpdateSet,
   onDeleteSet,
   defaultUnit,
 }: {
   sessionExercise: WorkoutSessionExerciseWithDetails;
   sessionId: string;
   onLogSet: (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit, restSeconds: number | null) => void;
+  onUpdateSet: (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => void;
   onDeleteSet: (setId: string) => void;
   defaultUnit: WeightUnit;
 }) {
@@ -34,7 +36,44 @@ function ExerciseCard({
   const [pending, setPending] = useState<PendingSetRow[]>(() =>
     initialPendingRows(sessionExercise.target_sets_snapshot, sessionExercise.sets.length, defaultUnit)
   );
+  // A completed (logged) set tapped back open for editing — separate from
+  // `pending` (never-yet-logged rows) since this one already exists in the
+  // DB and needs update_set, not log_set, when confirmed again.
+  const [editingSetId, setEditingSetId] = useState<string | null>(null);
+  const [editWeight, setEditWeight] = useState('');
+  const [editReps, setEditReps] = useState('');
   const { sets: previousSets } = usePreviousExercisePerformance(sessionExercise.exercise_id, sessionId);
+
+  const startEditingSet = (set: WorkoutSet) => {
+    setEditingSetId(set.id);
+    setEditWeight(set.weight_kg !== null ? String(kgToUnit(set.weight_kg, unit)) : '');
+    setEditReps(String(set.reps));
+  };
+
+  const saveEditedSet = () => {
+    if (!editingSetId) return;
+    const reps = Number(editReps) || 0;
+    if (reps <= 0) {
+      Alert.alert('Falta las repeticiones', 'Escribe cuántas repeticiones hiciste.');
+      return;
+    }
+    onUpdateSet(editingSetId, reps, editWeight ? Number(editWeight) : undefined, unit);
+    setEditingSetId(null);
+  };
+
+  const confirmDeleteSet = (setId: string) => {
+    Alert.alert('Borrar esta serie', 'Esto no se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: () => {
+          onDeleteSet(setId);
+          setEditingSetId(null);
+        },
+      },
+    ]);
+  };
 
   const toggleUnit = () => {
     const nextUnit: WeightUnit = unit === 'kg' ? 'lbs' : 'kg';
@@ -91,18 +130,54 @@ function ExerciseCard({
         <View style={styles.actionColumn} />
       </View>
 
-      {sessionExercise.sets.map((set, i) => (
-        <View key={set.id} style={[styles.setRow, styles.setRowCompleted]}>
-          <View style={[styles.setColumn, styles.setBadge, styles.setBadgeCompleted]}>
-            <Text style={styles.setBadgeTextCompleted}>{i + 1}</Text>
+      {sessionExercise.sets.map((set, i) => {
+        if (editingSetId === set.id) {
+          return (
+            <View key={set.id} style={styles.setRow}>
+              <View style={[styles.setColumn, styles.setBadge]}>
+                <Text style={styles.setBadgeText}>{i + 1}</Text>
+              </View>
+              <TextInput
+                style={[styles.setInput, styles.weightColumn]}
+                value={editWeight}
+                onChangeText={(t) => setEditWeight(sanitizeWeightInput(t))}
+                keyboardType="decimal-pad"
+                placeholder="—"
+                placeholderTextColor={colors.textMuted}
+                autoFocus
+              />
+              <TextInput
+                style={[styles.setInput, styles.repsColumn]}
+                value={editReps}
+                onChangeText={(t) => setEditReps(t.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+              />
+              <View style={styles.editActions}>
+                <Pressable onPress={() => confirmDeleteSet(set.id)} hitSlop={8} accessibilityRole="button">
+                  <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                </Pressable>
+                <Pressable onPress={saveEditedSet} hitSlop={8} accessibilityRole="button">
+                  <Ionicons name="checkmark-circle-outline" size={22} color={colors.primary} />
+                </Pressable>
+              </View>
+            </View>
+          );
+        }
+        return (
+          <View key={set.id} style={[styles.setRow, styles.setRowCompleted]}>
+            <View style={[styles.setColumn, styles.setBadge, styles.setBadgeCompleted]}>
+              <Text style={styles.setBadgeTextCompleted}>{i + 1}</Text>
+            </View>
+            <Text style={[styles.completedValue, styles.weightColumn]}>{set.weight_kg !== null ? kgToUnit(set.weight_kg, unit) : '—'}</Text>
+            <Text style={[styles.completedValue, styles.repsColumn]}>{set.reps}</Text>
+            <Pressable onPress={() => startEditingSet(set)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
+              <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+            </Pressable>
           </View>
-          <Text style={[styles.completedValue, styles.weightColumn]}>{set.weight_kg !== null ? kgToUnit(set.weight_kg, unit) : '—'}</Text>
-          <Text style={[styles.completedValue, styles.repsColumn]}>{set.reps}</Text>
-          <Pressable onPress={() => onDeleteSet(set.id)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
-            <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-          </Pressable>
-        </View>
-      ))}
+        );
+      })}
 
       {pending.map((row, index) => (
         <View key={index} style={styles.setRow}>
@@ -146,7 +221,7 @@ function ExerciseCard({
  */
 export default function WorkoutSessionScreen() {
   const { profile } = useAuth();
-  const { session, isLoading, addExercise, logSet, deleteLoggedSet, finish, discard } = useWorkoutSession();
+  const { session, isLoading, addExercise, logSet, updateLoggedSet, deleteLoggedSet, finish, discard } = useWorkoutSession();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const restTimer = useRestTimer();
@@ -170,6 +245,14 @@ export default function WorkoutSessionScreen() {
     }
   };
 
+  const handleUpdateSet = async (setId: string, reps: number, weight: number | undefined, setUnit: WeightUnit) => {
+    try {
+      await updateLoggedSet(setId, reps, weight, setUnit);
+    } catch (err) {
+      Alert.alert('No se pudo actualizar la serie', err instanceof Error ? err.message : 'Intenta de nuevo');
+    }
+  };
+
   const handleAddExercise = async (exercise: Exercise) => {
     if (!session) return;
     try {
@@ -189,7 +272,15 @@ export default function WorkoutSessionScreen() {
           setIsFinishing(true);
           try {
             await finish(session.id);
-            router.replace('/profile/routines');
+            // Terminar the workout is the natural moment to prompt for the
+            // checkout photo, not "go manage your routines" — checkin/index.tsx
+            // already knows on its own whether one's actually pending (Paso 2)
+            // or there's nothing to do, so this always routes there and lets
+            // it decide what to show. push, not replace: this screen lives in
+            // the profile tab's own stack, /checkin is a different tab
+            // (see the routine-choice cross-tab navigation fix for why replace
+            // doesn't reliably work here).
+            router.push('/checkin');
           } catch (err) {
             Alert.alert('No se pudo terminar', err instanceof Error ? err.message : 'Intenta de nuevo');
           } finally {
@@ -264,6 +355,7 @@ export default function WorkoutSessionScreen() {
             sessionExercise={sessionExercise}
             sessionId={session.id}
             onLogSet={handleLogSet}
+            onUpdateSet={handleUpdateSet}
             onDeleteSet={deleteLoggedSet}
             defaultUnit={unit}
           />
@@ -331,6 +423,7 @@ const styles = StyleSheet.create({
   weightColumn: { flex: 1 },
   repsColumn: { flex: 1 },
   actionColumn: { width: 28, alignItems: 'center' },
+  editActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, width: 60, justifyContent: 'flex-end' },
   setBadge: {
     height: 28,
     borderRadius: radii.sm,
