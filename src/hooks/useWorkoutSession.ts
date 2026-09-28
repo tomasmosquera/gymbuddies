@@ -111,11 +111,22 @@ export function useWorkoutSession() {
     [refresh]
   );
 
+  // finish/discard deliberately do NOT await their own refresh() before
+  // returning, unlike every other action in this hook. Both of their only
+  // caller (workout-session.tsx) navigates away immediately after either
+  // succeeds — awaiting refresh() here would set `session` to null WHILE
+  // that screen is still the focused one, and its own "no session -> back to
+  // Rutinas" check would fire on that exact transition and win the race
+  // against the caller's own, more specific navigation (confirmed: this is
+  // why Terminar kept landing back on Rutinas instead of the checkout
+  // prompt). Firing refresh() in the background still keeps `session`
+  // eventually correct for if/when that screen is revisited later — it's
+  // simply no longer racing to finish before this promise resolves.
   const finish = useCallback(
     async (sessionId: string, notes?: string) => {
       const { error } = await supabase.rpc('finish_workout_session', { p_session_id: sessionId, p_notes: notes ?? null });
       if (error) throw new Error(error.message);
-      await refresh();
+      refresh();
     },
     [refresh]
   );
@@ -124,7 +135,7 @@ export function useWorkoutSession() {
     async (sessionId: string) => {
       const { error } = await supabase.rpc('delete_workout_session', { p_session_id: sessionId });
       if (error) throw new Error(error.message);
-      await refresh();
+      refresh();
     },
     [refresh]
   );
