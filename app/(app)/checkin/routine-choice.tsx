@@ -50,9 +50,16 @@ export default function CheckinRoutineChoiceScreen() {
   const { session: activeSession, isLoading: isSessionLoading, startFromRoutine, startFreeform } = useWorkoutSession();
   const [startingKey, setStartingKey] = useState<string | null>(null);
 
+  // router.push, not replace: this screen lives in the checkin tab's own
+  // stack, and /profile/workout-session belongs to a DIFFERENT tab's stack —
+  // replace has no well-defined meaning across tabs here and was silently
+  // falling back to this stack's own index instead of actually navigating
+  // (reproduced: briefly renders this screen, then reverts on its own to
+  // checkin/index). push is the one cross-tab navigation shape already
+  // proven elsewhere in this app (see home/index.tsx's own '/profile/...' push).
   useEffect(() => {
     if (!isSessionLoading && activeSession) {
-      router.replace('/profile/workout-session');
+      router.push('/profile/workout-session');
     }
   }, [isSessionLoading, activeSession]);
 
@@ -60,7 +67,7 @@ export default function CheckinRoutineChoiceScreen() {
     setStartingKey(key);
     try {
       await starter();
-      router.replace('/profile/workout-session');
+      router.push('/profile/workout-session');
     } catch (err) {
       Alert.alert('No se pudo empezar el entreno', err instanceof Error ? err.message : 'Intenta de nuevo');
       setStartingKey(null);
@@ -88,7 +95,7 @@ export default function CheckinRoutineChoiceScreen() {
         onPress={() => handleStart(() => startFreeform(checkinId), 'freeform')}
         loading={startingKey === 'freeform'}
       />
-      <Button label="Ahora no" variant="secondary" onPress={() => router.replace('/home')} disabled={startingKey !== null} />
+      <Button label="Ahora no" variant="secondary" onPress={() => router.push('/home')} disabled={startingKey !== null} />
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>MIS RUTINAS</Text>

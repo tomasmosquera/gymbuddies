@@ -179,6 +179,18 @@ export default function CheckinPreviewScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const viewShotRef = useRef<ComponentRef<typeof ViewShot>>(null);
 
+  // Mount-only (draft deliberately NOT in the dependency array): this
+  // effect's job is "bail out if this screen was somehow entered with no
+  // draft at all" — draft is always already set by the time this screen
+  // mounts (checkin/index.tsx sets it synchronously before navigating
+  // here), so checking it reactively serves no purpose while genuinely
+  // mounted... except a harmful one. handleConfirm calls setDraft(null) on
+  // its own way OUT, right before navigating to wherever a successful
+  // submission actually goes next (routine-choice for a check-in, /home
+  // for a checkout) — with draft in the dependency array, that null re-ran
+  // this effect and its `router.replace('/checkin')` raced (and won
+  // against) that intentional navigation, always landing back on
+  // checkin/index instead of the real destination.
   useEffect(() => {
     if (!draft) {
       router.replace('/checkin');
@@ -194,7 +206,8 @@ export default function CheckinPreviewScreen() {
       .catch(() => {
         // Best-effort only — coordinates alone are still shown on the overlay.
       });
-  }, [draft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!draft || !group || !session) {
     return (
