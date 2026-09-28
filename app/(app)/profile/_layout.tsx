@@ -69,6 +69,7 @@ export default function ProfileStackLayout() {
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
+        headerBackTitle: 'Atrás',
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Perfil' }} />

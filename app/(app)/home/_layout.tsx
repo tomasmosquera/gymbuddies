@@ -10,6 +10,7 @@ export default function HomeStackLayout() {
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
+        headerBackTitle: 'Atrás',
       }}
     >
       <Stack.Screen

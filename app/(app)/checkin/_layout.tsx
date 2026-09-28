@@ -16,6 +16,10 @@ export default function CheckinStackLayout() {
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
+        // Every screen's own title can be long ("¿Qué vas a entrenar?") —
+        // the default back button repeats whatever screen you came from
+        // instead, which can be just as long. A fixed short "Atrás" instead.
+        headerBackTitle: 'Atrás',
       }}
     >
       <Stack.Screen name="index" options={{ title: isAdminOnly ? 'Panel de administrador' : 'Check-in' }} />

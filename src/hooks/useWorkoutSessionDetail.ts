@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import type { MuscleGroup } from '@/lib/supabase/types';
 
 export interface WorkoutDetailSet {
   id: string;
@@ -14,6 +15,7 @@ export interface WorkoutDetailExercise {
   exerciseId: string;
   exerciseName: string;
   gifUrl: string | null;
+  muscleGroup: MuscleGroup;
   sets: WorkoutDetailSet[];
 }
 
@@ -34,7 +36,7 @@ interface SessionRow {
     id: string;
     exercise_id: string;
     sort_order: number;
-    exercise: { name: string; gif_url: string | null } | null;
+    exercise: { name: string; gif_url: string | null; muscle_group: MuscleGroup } | null;
     sets: { id: string; set_number: number; reps: number; weight_kg: number | null; is_warmup: boolean }[];
   }[];
 }
@@ -49,7 +51,7 @@ export function useWorkoutSessionDetail(sessionId: string) {
     const { data } = await supabase
       .from('workout_sessions')
       .select(
-        'id, routine_name_snapshot, started_at, finished_at, exercises:workout_session_exercises(id, exercise_id, sort_order, exercise:exercises(name, gif_url), sets:workout_sets(id, set_number, reps, weight_kg, is_warmup))'
+        'id, routine_name_snapshot, started_at, finished_at, exercises:workout_session_exercises(id, exercise_id, sort_order, exercise:exercises(name, gif_url, muscle_group), sets:workout_sets(id, set_number, reps, weight_kg, is_warmup))'
       )
       .eq('id', sessionId)
       .maybeSingle();
@@ -64,13 +66,19 @@ export function useWorkoutSessionDetail(sessionId: string) {
       label: row.routine_name_snapshot ?? 'Entreno libre',
       startedAt: row.started_at,
       finishedAt: row.finished_at,
+      // An exercise added to the session but never actually logged (0 sets —
+      // e.g. added mid-workout, then abandoned) has nothing to show and was
+      // never really "done" — excluded here so no consumer of this hook has
+      // to filter it out itself (the Muscle Split breakdown included).
       exercises: [...row.exercises]
+        .filter((e) => e.sets.length > 0)
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((e) => ({
           id: e.id,
           exerciseId: e.exercise_id,
           exerciseName: e.exercise?.name ?? '—',
           gifUrl: e.exercise?.gif_url ?? null,
+          muscleGroup: e.exercise?.muscle_group ?? 'full_body',
           sets: [...e.sets]
             .sort((a, b) => a.set_number - b.set_number)
             .map((s) => ({ id: s.id, setNumber: s.set_number, reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup })),

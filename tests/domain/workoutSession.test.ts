@@ -1,4 +1,4 @@
-import { formatDuration, initialPendingRows, nextPendingRow } from '@/lib/domain/workoutSession';
+import { computeMuscleSplit, formatDuration, initialPendingRows, nextPendingRow } from '@/lib/domain/workoutSession';
 import type { WorkoutSessionSetTarget } from '@/lib/supabase/types';
 
 const target = (reps: number, kg: number | null, isFailureTarget = false): WorkoutSessionSetTarget => ({
@@ -58,5 +58,24 @@ describe('formatDuration', () => {
 
   it('never goes negative', () => {
     expect(formatDuration(-10)).toBe('0:00');
+  });
+});
+
+describe('computeMuscleSplit', () => {
+  it('counts and sorts most-common group first', () => {
+    const split = computeMuscleSplit(['chest', 'back', 'chest', 'shoulders', 'chest']);
+    expect(split).toEqual([
+      { group: 'chest', count: 3, percent: 60 },
+      { group: 'back', count: 1, percent: 20 },
+      { group: 'shoulders', count: 1, percent: 20 },
+    ]);
+  });
+
+  it('returns an empty array for no exercises, never divides by zero', () => {
+    expect(computeMuscleSplit([])).toEqual([]);
+  });
+
+  it('gives every group 100% when there is only one', () => {
+    expect(computeMuscleSplit(['legs', 'legs'])).toEqual([{ group: 'legs', count: 2, percent: 100 }]);
   });
 });

@@ -1,11 +1,14 @@
+import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkoutSessionDetail, type WorkoutDetailExercise } from '@/hooks/useWorkoutSessionDetail';
 import { totalVolumeKg } from '@/lib/domain/workoutSets';
+import { computeMuscleSplit } from '@/lib/domain/workoutSession';
 import { kgToUnit } from '@/lib/domain/workoutUnits';
 import { Card } from '@/components/ui/Card';
+import { MUSCLE_GROUP_LABELS } from '@/constants/muscleGroups';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { WeightUnit } from '@/lib/domain/workoutUnits';
 
@@ -63,6 +66,8 @@ export default function WorkoutDetailScreen() {
   const { detail, isLoading } = useWorkoutSessionDetail(sessionId);
   const unit = profile?.weight_unit ?? 'kg';
 
+  const muscleSplit = useMemo(() => computeMuscleSplit(detail?.exercises.map((e) => e.muscleGroup) ?? []), [detail]);
+
   if (isLoading || !detail) {
     return (
       <View style={styles.center}>
@@ -97,6 +102,23 @@ export default function WorkoutDetailScreen() {
         </View>
       </Card>
 
+      {muscleSplit.length > 0 ? (
+        <Card style={styles.splitCard}>
+          <Text style={styles.splitTitle}>Muscle Split</Text>
+          {muscleSplit.map(({ group, percent }) => (
+            <View key={group} style={styles.splitRow}>
+              <Text style={styles.splitLabel}>{MUSCLE_GROUP_LABELS[group]}</Text>
+              <View style={styles.splitBarRow}>
+                <View style={styles.splitBarTrack}>
+                  <View style={[styles.splitBarFill, { width: `${percent}%` }]} />
+                </View>
+                <Text style={styles.splitPercent}>{percent}%</Text>
+              </View>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       {detail.exercises.map((exercise) => (
         <ExerciseDetailCard key={exercise.id} exercise={exercise} unit={unit} />
       ))}
@@ -113,6 +135,14 @@ const styles = StyleSheet.create({
   statBlock: { alignItems: 'center', gap: 2 },
   statLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  splitCard: { gap: spacing.sm },
+  splitTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  splitRow: { gap: 4 },
+  splitLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  splitBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  splitBarTrack: { flex: 1, height: 10, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  splitBarFill: { height: '100%', borderRadius: radii.pill, backgroundColor: colors.primary },
+  splitPercent: { width: 40, textAlign: 'right', color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   exerciseCard: { gap: spacing.sm },
   exerciseHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   thumb: { width: 36, height: 36, borderRadius: radii.sm, backgroundColor: '#FFFFFF' },

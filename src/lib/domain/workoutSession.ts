@@ -40,3 +40,27 @@ export function formatDuration(totalSeconds: number): string {
   const seconds = clamped % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
+
+export interface MuscleSplitEntry<T extends string = string> {
+  group: T;
+  count: number;
+  /** 0-100, rounded — percentages across all groups don't necessarily sum to exactly 100 (each is independently rounded), same tradeoff as any other rounded-percentage breakdown. */
+  percent: number;
+}
+
+/**
+ * What % of a workout's exercises targeted each muscle group — workout-detail.tsx's
+ * "Muscle Split" (per the user's own framing: "cuántos ejercicios fueron de cada
+ * grupo", a plain exercise count, not weighted by sets or volume). Generic over
+ * the group type so this stays decoupled from MuscleGroup specifically — it's
+ * just counting arbitrary labels. Sorted most-common group first, matching the
+ * Hevy reference. Empty input returns no rows rather than dividing by zero.
+ */
+export function computeMuscleSplit<T extends string>(groups: T[]): MuscleSplitEntry<T>[] {
+  if (groups.length === 0) return [];
+  const counts = new Map<T, number>();
+  for (const g of groups) counts.set(g, (counts.get(g) ?? 0) + 1);
+  return Array.from(counts.entries())
+    .map(([group, count]) => ({ group, count, percent: Math.round((count / groups.length) * 100) }))
+    .sort((a, b) => b.count - a.count);
+}

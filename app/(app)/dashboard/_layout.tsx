@@ -9,6 +9,7 @@ export default function DashboardStackLayout() {
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
+        headerBackTitle: 'Atrás',
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Dashboard del grupo' }} />
