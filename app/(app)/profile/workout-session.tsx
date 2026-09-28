@@ -229,21 +229,32 @@ export default function WorkoutSessionScreen() {
   const unit = profile?.weight_unit ?? 'kg';
 
   // Redirects out once there's genuinely nothing to show (finished/discarded, or none was ever started) —
-  // this screen doesn't create one itself, only Rutinas does. useFocusEffect,
-  // not useEffect: a cross-tab push (Terminar → /checkin below) leaves this
-  // screen mounted-but-unfocused behind in the Profile tab's own history
-  // instead of unmounting it, so a plain useEffect's [isLoading, session]
-  // dependencies never change again once they've already settled to
-  // false/null — it would only ever redirect once, and switching back to
-  // this exact tab later would silently re-show this same screen stuck on
-  // its own loading spinner forever (session gone, nothing left to load).
-  // Re-checking on every focus instead means simply returning to this
-  // screen with nothing to show self-heals by redirecting away again, no
-  // matter how it was left behind.
+  // this screen doesn't create one itself. useFocusEffect, not useEffect: a
+  // cross-tab push (Terminar → /checkin below) leaves this screen
+  // mounted-but-unfocused behind in the Profile tab's own history instead of
+  // unmounting it, so a plain useEffect's [isLoading, session] dependencies
+  // never change again once they've already settled to false/null — it
+  // would only ever redirect once, and switching back to this exact tab
+  // later would silently re-show this same screen stuck on its own loading
+  // spinner forever (session gone, nothing left to load). Re-checking on
+  // every focus instead means simply returning to this screen with nothing
+  // to show self-heals by redirecting away again, no matter how it was left
+  // behind.
+  //
+  // Target is /profile (the tab's own root), not /profile/routines: this
+  // screen is reached two structurally different ways — Perfil → Rutinas →
+  // Empezar (a deep stack, replacing with routines still leaves plenty
+  // beneath it to go back to) and the check-in flow's cross-tab push
+  // (Rutina/Elegir ejercicios in routine-choice.tsx), which lands here as
+  // this tab's ONLY stack entry. Replacing that one entry with routines
+  // makes routines the de-facto root — no screen left beneath it — so the
+  // header shows no back button and the tab reads as permanently stuck
+  // there. /profile always has somewhere real to go from it regardless of
+  // which path got here.
   useFocusEffect(
     useCallback(() => {
       if (!isLoading && !session) {
-        router.replace('/profile/routines');
+        router.replace('/profile');
       }
     }, [isLoading, session])
   );
@@ -315,7 +326,11 @@ export default function WorkoutSessionScreen() {
         style: 'destructive',
         onPress: async () => {
           await discard(session.id);
-          router.replace('/profile/routines');
+          // /profile, not /profile/routines — see the useFocusEffect above
+          // for why: this screen can be this tab's only stack entry
+          // (reached via the check-in flow), and replacing that one entry
+          // with routines would leave no screen to go back to.
+          router.replace('/profile');
         },
       },
     ]);
