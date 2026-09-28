@@ -7,8 +7,14 @@ import { fetchGroupMonthlyChallenges } from '@/hooks/useGroupMonthlyChallenges';
 import { fetchGroupBadges } from '@/hooks/useGroupBadges';
 import { consistencyPercent, gbScore, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
 import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
-import type { LeaderboardPeriod } from '@/hooks/useLeaderboard';
 import type { LevelProgress } from '@/lib/domain/xp';
+
+// This screen ("Tus grupos") predates, and is out of scope for, the
+// Ciclo/Total split added to useLeaderboard's own LeaderboardPeriod — it
+// keeps its original 3-period Semana/Mes/Acumulado view for every group
+// regardless of payout mode, so it uses its own narrower type instead of
+// reusing that one.
+export type SummaryPeriod = 'week' | 'month' | 'total';
 
 export interface GroupPeriodStat {
   completedDays: number;
@@ -23,7 +29,7 @@ export interface GroupPeriodStat {
 export interface MyGroupSummary {
   membership: MembershipWithGroup;
   /** null only for a pending_deposit membership — there's no attendance to rank yet. */
-  statsByPeriod: Record<LeaderboardPeriod, GroupPeriodStat> | null;
+  statsByPeriod: Record<SummaryPeriod, GroupPeriodStat> | null;
   /**
    * League mode only, from the exact same source as the money shown on
    * Inicio (liquidate_group_now) — same value regardless of which period
@@ -81,7 +87,7 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
     statsByPeriod: {
       week: buildStat(weekStart, weekEnd),
       month: buildStat(monthStart, todayString),
-      all: buildStat('0001-01-01', todayString),
+      total: buildStat('0001-01-01', todayString),
     },
     leaguePlace: group.payout_mode === 'league' ? (leaguePreview.placeByUserId[userId] ?? null) : null,
     leagueAmount: group.payout_mode === 'league' ? (leaguePreview.amountByUserId[userId] ?? 0) : null,

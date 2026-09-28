@@ -257,7 +257,12 @@ export default function CheckinCameraScreen() {
           title="Necesitamos acceso a tu cámara"
           description="El check-in solo se puede hacer con una foto tomada en el momento, no desde tu galería."
         />
-        <Button label="Dar permiso de cámara" onPress={requestPermission} />
+        {/* Apple rejected 1.1.0 (Guideline 5.1.1(iv)) over this button's old
+            label ("Dar permiso de cámara") — wording that itself frames
+            granting the permission as the action isn't allowed; a neutral
+            "Continuar" that leads to the system's own permission dialog is
+            what they asked for instead. */}
+        <Button label="Continuar" onPress={requestPermission} />
       </View>
     );
   }

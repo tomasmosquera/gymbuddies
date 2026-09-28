@@ -4,9 +4,18 @@ import { getWeekBounds, toZonedDateString } from '@/lib/domain/dateUtils';
 import { consistencyPercent, gbScore, rankMembersByConsistency, tallyAttendance } from '@/lib/domain/attendance';
 import { daysPresentInWeek } from '@/lib/domain/weeklyEvaluation';
 import { useGroupAttendanceRecords, type MemberAttendanceRecord } from '@/hooks/useGroupAttendanceRecords';
+import { fetchCurrentLeagueCycleBounds } from '@/hooks/useCurrentLeagueCycleBounds';
 import type { PayoutMode } from '@/lib/supabase/types';
 
-export type LeaderboardPeriod = 'week' | 'month' | 'all';
+/**
+ * 'cycle' only means something for League/Mixto (scoped to the currently
+ * running league_cycles row — falls back to an empty range, same shape as
+ * "no data yet", when there isn't one). 'total' is the old unbounded
+ * all-time view every period used to call "Acumulado" before the split.
+ * Cooperativo groups only ever read 'total' — the caller/UI is responsible
+ * for not exposing a 'cycle' tab there.
+ */
+export type LeaderboardPeriod = 'week' | 'month' | 'cycle' | 'total';
 
 export interface LeaderboardRow {
   userId: string;
@@ -68,6 +77,8 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
   const { records, isLoading: recordsLoading, refresh: refreshRecords } = useGroupAttendanceRecords(groupId, timezone);
   const [monthChargedAmountByUser, setMonthChargedAmountByUser] = useState<Record<string, number>>({});
   const [allChargedAmountByUser, setAllChargedAmountByUser] = useState<Record<string, number>>({});
+  const [cycleChargedAmountByUser, setCycleChargedAmountByUser] = useState<Record<string, number>>({});
+  const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
   // Per-week frozen amounts, for viewing a past week's already-decided
   // charge instead of the current week's live guaranteed-misses projection.
   const [weeklyChargedAmountByWeekStart, setWeeklyChargedAmountByWeekStart] = useState<Record<string, Record<string, number>>>(
@@ -81,6 +92,8 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     if (!groupId) {
       setMonthChargedAmountByUser({});
       setAllChargedAmountByUser({});
+      setCycleChargedAmountByUser({});
+      setCycleStartDate(null);
       setWeeklyChargedAmountByWeekStart({});
       setGroupRules(null);
       setLastClosedWeek(null);
@@ -90,13 +103,15 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     setResultsLoading(true);
     const { monthStart } = currentMonthBounds(timezone);
 
-    const [resultsRes, groupRes] = await Promise.all([
+    const [resultsRes, groupRes, cycleBounds] = await Promise.all([
       supabase
         .from('weekly_evaluation_results')
         .select('user_id, failed_days, penalty_charged, run:weekly_evaluation_runs(week_start_date, week_end_date)')
         .eq('group_id', groupId),
       supabase.from('groups').select('penalty_amount, weekly_penalty_cap, payout_mode').eq('id', groupId).single(),
+      fetchCurrentLeagueCycleBounds(groupId, timezone),
     ]);
+    setCycleStartDate(cycleBounds?.startDate ?? null);
 
     const results = (resultsRes.data ?? []) as unknown as {
       user_id: string;
@@ -107,12 +122,16 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
 
     const monthChargedAmount: Record<string, number> = {};
     const allChargedAmount: Record<string, number> = {};
+    const cycleChargedAmount: Record<string, number> = {};
     const weeklyChargedAmount: Record<string, Record<string, number>> = {};
     let lastRun: { week_start_date: string; week_end_date: string } | null = null;
     for (const r of results) {
       allChargedAmount[r.user_id] = (allChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
       if (r.run && r.run.week_start_date >= monthStart) {
         monthChargedAmount[r.user_id] = (monthChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
+      }
+      if (cycleBounds && r.run && r.run.week_start_date >= cycleBounds.startDate) {
+        cycleChargedAmount[r.user_id] = (cycleChargedAmount[r.user_id] ?? 0) + r.penalty_charged;
       }
       if (r.run) {
         if (!weeklyChargedAmount[r.run.week_start_date]) weeklyChargedAmount[r.run.week_start_date] = {};
@@ -125,6 +144,7 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     }
     setMonthChargedAmountByUser(monthChargedAmount);
     setAllChargedAmountByUser(allChargedAmount);
+    setCycleChargedAmountByUser(cycleChargedAmount);
     setWeeklyChargedAmountByWeekStart(weeklyChargedAmount);
     setLastClosedWeek(
       lastRun
@@ -237,13 +257,23 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
 
     const week = buildRows(weekStart, weekEnd, weekChargedAmount);
     const month = buildRows(monthStart, todayString, (m) => (monthChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
-    const all = buildRows('0001-01-01', todayString, (m) => (allChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
+    const total = buildRows('0001-01-01', todayString, (m) => (allChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m));
+    // No running cycle (Cooperativo, or League/Mixto between cycles) —
+    // rangeStart after rangeEnd means every day filter comes up empty, so
+    // this reads as "no data yet" rather than silently falling back to
+    // all-time (which would make Ciclo and Total look identical and hide
+    // that there's simply nothing running right now).
+    const cycle = cycleStartDate
+      ? buildRows(cycleStartDate, todayString, (m) => (cycleChargedAmountByUser[m.userId] ?? 0) + liveChargedAmount(m))
+      : buildRows(todayString, '0001-01-01', () => 0);
 
-    return { week, month, all };
+    return { week, month, cycle, total };
   }, [
     records,
     monthChargedAmountByUser,
     allChargedAmountByUser,
+    cycleChargedAmountByUser,
+    cycleStartDate,
     weeklyChargedAmountByWeekStart,
     groupRules,
     referenceDate,

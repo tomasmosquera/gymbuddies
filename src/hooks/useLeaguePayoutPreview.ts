@@ -15,13 +15,13 @@ const EMPTY_PREVIEW: LeaguePayoutPreview = { amountByUserId: {}, placeByUserId: 
  * one group per membership) can call it in a loop/Promise.all without
  * breaking the rules of hooks.
  *
- * League mode only: what each member would get, and their tie-aware place,
- * right now if the league ended today (liquidate_group_now, same dry-run
- * preview Saldo's "Reparto de hoy" already shows — ranked by real attendance
- * for the whole cycle so far, not just closed weeks, and with ties sharing
- * the same place and splitting the prize evenly). Keyed by user_id;
- * missing/unranked members default to 0 / their generic GB-Score rank
- * wherever this is read.
+ * League AND Mixto: what each member would get, and their tie-aware place,
+ * right now if the league cycle ended today (liquidate_group_now, same
+ * dry-run preview Saldo's "Reparto de hoy" already shows — ranked by real
+ * attendance for the whole cycle so far, not just closed weeks, and with
+ * ties sharing the same place and splitting the prize evenly). Keyed by
+ * user_id; missing/unranked members default to 0 / their generic GB-Score
+ * rank wherever this is read.
  *
  * Deliberately overrides the RPC's own answer to empty in two "nothing has
  * really happened yet" cases it doesn't itself distinguish: no running
@@ -32,7 +32,7 @@ const EMPTY_PREVIEW: LeaguePayoutPreview = { amountByUserId: {}, placeByUserId: 
  * before the game has actually started.
  */
 export async function fetchLeaguePayoutPreview(groupId: string, payoutMode: PayoutMode | null): Promise<LeaguePayoutPreview> {
-  if (payoutMode !== 'league') return EMPTY_PREVIEW;
+  if (payoutMode !== 'league' && payoutMode !== 'mixed') return EMPTY_PREVIEW;
 
   const { data: cycle } = await supabase
     .from('league_cycles')
@@ -64,7 +64,7 @@ export function useLeaguePayoutPreview(groupId: string | null, payoutMode: Payou
   const [amountByUserId, setAmountByUserId] = useState<Record<string, number>>({});
   const [placeByUserId, setPlaceByUserId] = useState<Record<string, number>>({});
   // Starts true so a consumer can gate rendering until this first resolves —
-  // without it, LeaderboardCard's Acumulado tab in League mode has nothing
+  // without it, LeaderboardCard's Ciclo tab in League/Mixto has nothing
   // to fall back on except GB Score's generic rank while this is still in
   // flight, then visibly re-sorts to the real league place a moment later.
   const [isLoading, setIsLoading] = useState(true);

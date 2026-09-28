@@ -7,15 +7,14 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AvatarLevelRing } from '@/components/ui/AvatarLevelRing';
 import { useAuth } from '@/hooks/useAuth';
-import { useMyGroupsSummary, type MyGroupSummary } from '@/hooks/useMyGroupsSummary';
+import { useMyGroupsSummary, type MyGroupSummary, type SummaryPeriod } from '@/hooks/useMyGroupsSummary';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
-import type { LeaderboardPeriod } from '@/hooks/useLeaderboard';
 import { colors, spacing, typography } from '@/constants/theme';
 
-const PERIOD_OPTIONS: { key: LeaderboardPeriod; label: string }[] = [
+const PERIOD_OPTIONS: { key: SummaryPeriod; label: string }[] = [
   { key: 'week', label: 'Semana' },
   { key: 'month', label: 'Mes' },
-  { key: 'all', label: 'Acumulado' },
+  { key: 'total', label: 'Acumulado' },
 ];
 
 function getInitials(fullName: string): string {
@@ -33,7 +32,7 @@ function GroupSummaryCard({
   onPress,
 }: {
   summary: MyGroupSummary;
-  period: LeaderboardPeriod;
+  period: SummaryPeriod;
   isActive: boolean;
   initials: string;
   onPress: () => void;
@@ -104,7 +103,7 @@ export default function GroupSummaryScreen() {
   const { summaries, isLoading, refresh } = useMyGroupsSummary();
   const activeGroupId = useActiveGroupStore((s) => s.activeGroupId);
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
-  const [period, setPeriod] = useState<LeaderboardPeriod>('week');
+  const [period, setPeriod] = useState<SummaryPeriod>('week');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // A group switch elsewhere (Perfil, or picking a different group here)

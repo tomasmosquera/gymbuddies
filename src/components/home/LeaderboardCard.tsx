@@ -24,7 +24,7 @@ interface LeaderboardCardProps {
    * table. Every source below that can affect a row's rank/order (or the
    * MVP crown) resolves on its own schedule; rendering as each one trickles
    * in used to mean the visible order could resettle a moment after first
-   * appearing — most noticeably League's Acumulado tab, which fell back to
+   * appearing — most noticeably League/Mixto's Ciclo tab, which fell back to
    * GB Score's rank until leaguePlaceByUserId was ready, then re-sorted.
    * Unlike isRefreshing (a background poll, never worth unmounting the
    * list for), this is specifically for the one moment that matters most:
@@ -33,26 +33,44 @@ interface LeaderboardCardProps {
   isInitialLoading?: boolean;
   /**
    * Set when Home's own week navigation (separate from this card's own
-   * Semana/Mes/Acumulado tabs) is looking at a past week — rowsByPeriod.week
+   * period tabs) is looking at a past week — rowsByPeriod.week
    * already reflects that week's data; this just labels it so "Semana"
    * doesn't silently look like it means "this week" when it doesn't.
    */
   viewedWeekLabel?: string | null;
-  /** Only in League mode: what each member would get right now if the league ended today (see useLeaguePayoutPreview) — replaces the owed/charged line, since League never charges a penalty. Same number in every period tab (Semana/Mes/Acumulado) — it reflects current standing, not a period-scoped total. */
+  /** League and Mixto only: what each member would get right now if the league cycle ended today (see useLeaguePayoutPreview) — replaces the owed/charged line, since League never charges a penalty (Mixto still can — see the payoutMode check below). Same number in every period tab — it reflects current cycle standing, not a period-scoped total. */
   payoutMode?: PayoutMode;
   leaguePayoutByUserId?: Record<string, number>;
-  /** Only in League mode: tie-aware place from the same source as the money (liquidate_group_now) — drives the rank column and the MVP crown instead of GB Score's rank, so the number shown always matches who's actually winning what. */
+  /** League and Mixto only: tie-aware place from the same source as the money (liquidate_group_now) — drives the rank column and the MVP crown on the Ciclo tab instead of GB Score's rank, so the number shown always matches who's actually winning what. */
   leaguePlaceByUserId?: Record<string, number>;
-  /** League mode only, 0/undefined = descenso disabled. Marks the bottom N places as the relegation zone — same cycle-wide league place in every period tab (Semana/Mes/Acumulado), same idea as leaguePayoutByUserId above. A tie right at the boundary marks every tied member, same as the server does. */
+  /** League mode ONLY (descenso doesn't apply to Mixto server-side), 0/undefined = descenso disabled. Marks the bottom N places as the relegation zone — same cycle-wide league place in every period tab, same idea as leaguePayoutByUserId above. A tie right at the boundary marks every tied member, same as the server does. */
   descensoRankCount?: number;
   descensoPenaltyAmount?: number;
 }
 
-const PERIOD_OPTIONS: { key: LeaderboardPeriod; label: string }[] = [
-  { key: 'week', label: 'Semana' },
-  { key: 'month', label: 'Mes' },
-  { key: 'all', label: 'Acumulado' },
-];
+/**
+ * Cooperativo keeps the original 3 tabs — it has no league cycle to scope a
+ * "Ciclo" view to, so it only ever reads the 'total' period, still labeled
+ * "Acumulado" (unchanged behavior/wording for that mode). League/Mixto get
+ * a 4th tab: 'cycle' ("Ciclo", scoped to the currently running cycle — what
+ * decides that cycle's winners and standings) alongside 'total' ("Total",
+ * the old all-time Acumulado view, now just relabeled).
+ */
+function periodOptions(payoutMode?: PayoutMode): { key: LeaderboardPeriod; label: string }[] {
+  if (payoutMode === 'league' || payoutMode === 'mixed') {
+    return [
+      { key: 'week', label: 'Semana' },
+      { key: 'month', label: 'Mes' },
+      { key: 'cycle', label: 'Ciclo' },
+      { key: 'total', label: 'Total' },
+    ];
+  }
+  return [
+    { key: 'week', label: 'Semana' },
+    { key: 'month', label: 'Mes' },
+    { key: 'total', label: 'Acumulado' },
+  ];
+}
 
 function formatShortDate(dateString: string): string {
   const [, month, day] = dateString.split('-');
@@ -88,6 +106,7 @@ export function LeaderboardCard({
 }: LeaderboardCardProps) {
   const [period, setPeriod] = useState<LeaderboardPeriod>('week');
   const rows = rowsByPeriod[period];
+  const PERIOD_OPTIONS = periodOptions(payoutMode);
 
   return (
     <Card style={styles.card}>
@@ -144,24 +163,26 @@ export function LeaderboardCard({
               </View>
               <View style={styles.list}>
                 {(() => {
-                  // League mode's Acumulado tab ranks by the same tie-aware
+                  // League/Mixto's Ciclo tab ranks by the same tie-aware
                   // place the money itself comes from (liquidate_group_now) —
                   // falls back to GB Score's rank only while that data isn't
                   // available yet (e.g. the cycle just started, see
-                  // useLeaguePayoutPreview). Semana/Mes keep GB Score's rank
-                  // regardless of mode: they're about recent form over a
-                  // period, not "who's actually winning the league right now"
-                  // — that's what the money line (always cycle-wide) already
-                  // answers on its own, independent of whichever tab is open.
+                  // useLeaguePayoutPreview). Semana/Mes/Total keep GB Score's
+                  // rank regardless of mode: they're about a specific period,
+                  // not "who's actually winning the current cycle" — that's
+                  // what the money line (always cycle-wide) already answers
+                  // on its own, independent of whichever tab is open.
                   const effectiveRank = (row: LeaderboardRow) =>
-                    payoutMode === 'league' && period === 'all' ? (leaguePlaceByUserId?.[row.userId] ?? row.rank) : row.rank;
+                    (payoutMode === 'league' || payoutMode === 'mixed') && period === 'cycle'
+                      ? (leaguePlaceByUserId?.[row.userId] ?? row.rank)
+                      : row.rank;
                   // Descenso is a cycle-wide standing, same idea as the money
                   // line above (leaguePayoutByUserId) — it has to read the same
-                  // in Semana/Mes/Acumulado, not just when Acumulado happens to
-                  // already be showing the league place. Unlike effectiveRank
-                  // (which drives sort order and legitimately differs per tab),
-                  // this always uses the league place regardless of which tab
-                  // is open.
+                  // in every tab, not just when Ciclo happens to already be
+                  // showing the league place. Unlike effectiveRank (which
+                  // drives sort order and legitimately differs per tab), this
+                  // always uses the league place regardless of which tab is
+                  // open.
                   const leagueRank = (row: LeaderboardRow) => leaguePlaceByUserId?.[row.userId] ?? row.rank;
                   // Tied members (same rank, same MVP/podium spot) are ordered
                   // most-XP-first — the rank number itself never changes, this

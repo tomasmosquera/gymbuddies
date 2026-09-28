@@ -14,6 +14,7 @@ import { CrownIcon } from '@/components/ui/CrownIcon';
 import { useIsLeagueChampion } from '@/hooks/useLeagueChampions';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useCurrentLeagueCycleBounds } from '@/hooks/useCurrentLeagueCycleBounds';
 import {
   useGroupDayAttendance,
   type AdminValidatedMember,
@@ -27,17 +28,31 @@ import { formatZonedDateTime12h, getWeekBounds, toZonedDateString } from '@/lib/
 import { GB_SCORE_EXPLANATION_BODY, GB_SCORE_EXPLANATION_TITLE } from '@/lib/domain/attendance';
 import { CHECKIN_LOCATION_MISMATCH_METERS, distanceMeters } from '@/lib/domain/geo';
 import { REACTION_EMOJIS, aggregateReactionCounts } from '@/lib/domain/reactions';
-import type { CheckinReaction } from '@/lib/supabase/types';
+import type { CheckinReaction, PayoutMode } from '@/lib/supabase/types';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
-type Period = 'week' | 'month' | 'all';
+// 'cycle' only means something for League/Mixto (scoped to the currently
+// running league cycle — what decides that cycle's winners/standings);
+// Cooperativo only ever shows 'total', still labeled "Acumulado". See
+// periodOptions below for which tabs actually render per payout mode.
+type Period = 'week' | 'month' | 'cycle' | 'total';
 type ViewMode = 'days' | 'members' | 'calendar';
 
-const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-  { key: 'week', label: 'Semana' },
-  { key: 'month', label: 'Mes' },
-  { key: 'all', label: 'Acumulado' },
-];
+function periodOptions(payoutMode?: PayoutMode): { key: Period; label: string }[] {
+  if (payoutMode === 'league' || payoutMode === 'mixed') {
+    return [
+      { key: 'week', label: 'Semana' },
+      { key: 'month', label: 'Mes' },
+      { key: 'cycle', label: 'Ciclo' },
+      { key: 'total', label: 'Total' },
+    ];
+  }
+  return [
+    { key: 'week', label: 'Semana' },
+    { key: 'month', label: 'Mes' },
+    { key: 'total', label: 'Acumulado' },
+  ];
+}
 
 const VIEW_MODE_OPTIONS: { key: ViewMode; label: string }[] = [
   { key: 'days', label: 'Por día' },
@@ -597,6 +612,7 @@ export default function DashboardScreen() {
   );
 
   const groupCreatedAt = group?.created_at ?? null;
+  const { bounds: cycleBounds } = useCurrentLeagueCycleBounds(group?.id ?? null, timezone);
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (viewMode === 'calendar') {
       const mm = String(calendarMonth.month).padStart(2, '0');
@@ -611,9 +627,15 @@ export default function DashboardScreen() {
       const [year, month] = todayString.split('-');
       return { rangeStart: `${year}-${month}-01`, rangeEnd: todayString };
     }
+    if (period === 'cycle') {
+      // No running cycle (Cooperativo shouldn't reach here at all, but a
+      // League/Mixto group between cycles can) — an empty range reads as
+      // "no data yet" instead of silently falling back to all-time.
+      return cycleBounds ? { rangeStart: cycleBounds.startDate, rangeEnd: todayString } : { rangeStart: todayString, rangeEnd: '0001-01-01' };
+    }
     const start = groupCreatedAt ? toZonedDateString(new Date(groupCreatedAt), timezone) : todayString;
     return { rangeStart: start, rangeEnd: todayString };
-  }, [viewMode, calendarMonth, period, groupCreatedAt, todayString, timezone]);
+  }, [viewMode, calendarMonth, period, groupCreatedAt, cycleBounds, todayString, timezone]);
 
   const {
     days,
@@ -723,7 +745,7 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
       ) : (
-        <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
+        <SegmentedControl options={periodOptions(group?.payout_mode)} value={period} onChange={setPeriod} />
       )}
       <Card style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Cómo le ha ido al grupo</Text>
