@@ -20,10 +20,11 @@ export default function CheckinStackLayout() {
     >
       <Stack.Screen name="index" options={{ title: isAdminOnly ? 'Panel de administrador' : 'Check-in' }} />
       <Stack.Screen name="preview" options={{ title: 'Confirmar', presentation: 'fullScreenModal' }} />
-      <Stack.Screen
-        name="routine-choice"
-        options={{ title: '¿Qué vas a entrenar?', presentation: 'fullScreenModal', headerBackVisible: false, gestureEnabled: false }}
-      />
+      {/* Deliberately NOT presentation: 'fullScreenModal' — preview.tsx (which IS one) replaces itself with this
+          screen right after a successful check-in, and replacing one modal with another modal (rather than a
+          normal screen, like the pre-existing '/home' redirect this mirrors) is the one untested combination in
+          this codebase; suspected of dismissing back to `index` instead of presenting this screen. */}
+      <Stack.Screen name="routine-choice" options={{ title: '¿Qué vas a entrenar?', headerBackVisible: false, gestureEnabled: false }} />
     </Stack>
   );
 }
