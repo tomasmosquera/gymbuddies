@@ -514,8 +514,14 @@ export type Exercise = {
   name: string;
   muscle_group: MuscleGroup;
   equipment: Equipment;
+  /** Re-hosted in the public exercise-media bucket — see migration 0131. Null until exercise-gif-sync has run for this exercise. */
+  gif_url: string | null;
+  secondary_muscles: string[];
   created_at: string;
 };
+
+/** exercises has no client-facing write RLS policy — only the service role (exercise-gif-sync) writes these, direct to the table rather than through an RPC. */
+export type ExerciseUpdate = Partial<Pick<Exercise, 'gif_url' | 'secondary_muscles'>>;
 
 /** Personal (group_id null) or shared with exactly one of the owner's groups — never a snapshot itself, see WorkoutSession.routine_name_snapshot. */
 export type Routine = {
@@ -661,7 +667,7 @@ export type Database = {
       koth_claims: { Row: KothClaim; Insert: never; Update: never } & NoRelationships;
       koth_claim_votes: { Row: KothClaimVote; Insert: never; Update: never } & NoRelationships;
       koth_records: { Row: KothRecord; Insert: never; Update: never } & NoRelationships;
-      exercises: { Row: Exercise; Insert: never; Update: never } & NoRelationships;
+      exercises: { Row: Exercise; Insert: never; Update: ExerciseUpdate } & NoRelationships;
       routines: { Row: Routine; Insert: never; Update: never } & NoRelationships;
       routine_exercises: { Row: RoutineExercise; Insert: never; Update: never } & NoRelationships;
       routine_exercise_sets: { Row: RoutineExerciseSet; Insert: never; Update: never } & NoRelationships;

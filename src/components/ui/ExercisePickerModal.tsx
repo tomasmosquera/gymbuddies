@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EQUIPMENT_LABELS, EQUIPMENT_ORDER } from '@/constants/equipment';
@@ -105,18 +106,31 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
             renderItem={({ item }) => {
               const isTaken = excludeIds.includes(item.id);
               return (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={isTaken}
-                  onPress={() => {
-                    onSelect(item);
-                    close();
-                  }}
-                  style={[styles.row, isTaken && styles.rowDisabled]}
-                >
-                  <Text style={[styles.label, isTaken && styles.labelDisabled]}>{item.name}</Text>
+                <View style={[styles.row, isTaken && styles.rowDisabled]}>
+                  <Pressable
+                    onPress={() => {
+                      close();
+                      router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: item.id } });
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ver detalle de ${item.name}`}
+                  >
+                    <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isTaken}
+                    onPress={() => {
+                      onSelect(item);
+                      close();
+                    }}
+                    style={styles.rowLabel}
+                  >
+                    <Text style={[styles.label, isTaken && styles.labelDisabled]}>{item.name}</Text>
+                  </Pressable>
                   {isTaken ? <Ionicons name="checkmark-circle" size={18} color={colors.textMuted} /> : null}
-                </Pressable>
+                </View>
               );
             }}
             ListEmptyComponent={<Text style={styles.empty}>No hay ejercicios con esos filtros.</Text>}
@@ -184,12 +198,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.sm,
     paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
   },
   rowDisabled: { opacity: 0.4 },
+  rowLabel: { flex: 1 },
   label: { color: colors.text, fontSize: 15 },
   labelDisabled: { color: colors.textMuted },
   empty: { color: colors.textMuted, textAlign: 'center', padding: spacing.lg },
