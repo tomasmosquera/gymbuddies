@@ -37,7 +37,17 @@ export function useMyRoutines(groupId: string | null) {
     let query = supabase
       .from('routines')
       .select('*, exercises:routine_exercises(*, exercise:exercises(*), sets:routine_exercise_sets(*))');
-    query = groupId ? query.or(`owner_user_id.eq.${userId},group_id.eq.${groupId}`) : query.eq('owner_user_id', userId);
+    // BUG FIXED: `owner_user_id.eq.X,group_id.eq.Y` is two independent OR
+    // branches — since the caller owns EVERY routine they've ever created,
+    // that first branch alone matched all of them regardless of group_id,
+    // leaking a routine shared with one group into every other group the
+    // owner belongs to. The first branch must itself require group_id is
+    // null (a personal routine) for "I own it" to be a reason to show it;
+    // a routine with a real group_id is only shown via the second branch,
+    // by group membership, not by ownership.
+    query = groupId
+      ? query.or(`and(owner_user_id.eq.${userId},group_id.is.null),group_id.eq.${groupId}`)
+      : query.eq('owner_user_id', userId).is('group_id', null);
     const { data } = await query.order('created_at', { ascending: false });
     const rows = (data as unknown as RoutineWithExercises[]) ?? [];
     for (const routine of rows) {
