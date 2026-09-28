@@ -1,0 +1,60 @@
+name: EAS Build
+
+# Manual only, on purpose — a production build/submit is a real App Store
+# side effect, not something that should fire on every push. Trigger it from
+# github.com ("Actions" tab → "EAS Build" → "Run workflow") or from the
+# GitHub mobile app (same path) — no PC needed. Requires the EXPO_TOKEN
+# secret (see README below) to authenticate eas-cli non-interactively; iOS/
+# Android signing credentials themselves stay on EAS's own servers (the same
+# ones `eas build` already uses locally), nothing extra to configure there.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        options: [ios, android, all]
+        default: ios
+      profile:
+        description: 'eas.json build profile'
+        required: true
+        type: choice
+        options: [production, preview, development]
+        default: production
+      auto_submit:
+        description: 'Submit to the App Store / Play Store right after the build finishes'
+        required: true
+        type: boolean
+        default: true
+
+# Only one of these at a time — a second manual trigger while one's already
+# running queues behind it instead of racing it.
+concurrency:
+  group: eas-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: EAS Build
+        run: |
+          eas build \
+            --platform ${{ inputs.platform }} \
+            --profile ${{ inputs.profile }} \
+            --non-interactive \
+            ${{ inputs.auto_submit && '--auto-submit' || '' }}
