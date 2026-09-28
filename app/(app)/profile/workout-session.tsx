@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
@@ -229,17 +229,24 @@ export default function WorkoutSessionScreen() {
   const unit = profile?.weight_unit ?? 'kg';
 
   // Redirects out once there's genuinely nothing to show (finished/discarded, or none was ever started) —
-  // this screen doesn't create one itself, only Rutinas does. handleFinish/
-  // handleDiscard below both replace() this screen themselves the moment
-  // they act, so by the time finish()/discard()'s own refresh() sets
-  // `session` to null, this effect's redirect is a harmless no-op landing on
-  // the exact same place — it only ever does real work for the genuine
-  // "arrived here with nothing in progress" case (e.g. a stale deep link).
-  useEffect(() => {
-    if (!isLoading && !session) {
-      router.replace('/profile/routines');
-    }
-  }, [isLoading, session]);
+  // this screen doesn't create one itself, only Rutinas does. useFocusEffect,
+  // not useEffect: a cross-tab push (Terminar → /checkin below) leaves this
+  // screen mounted-but-unfocused behind in the Profile tab's own history
+  // instead of unmounting it, so a plain useEffect's [isLoading, session]
+  // dependencies never change again once they've already settled to
+  // false/null — it would only ever redirect once, and switching back to
+  // this exact tab later would silently re-show this same screen stuck on
+  // its own loading spinner forever (session gone, nothing left to load).
+  // Re-checking on every focus instead means simply returning to this
+  // screen with nothing to show self-heals by redirecting away again, no
+  // matter how it was left behind.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoading && !session) {
+        router.replace('/profile/routines');
+      }
+    }, [isLoading, session])
+  );
 
   const handleLogSet = async (sessionExerciseId: string, reps: number, weight: number | undefined, setUnit: WeightUnit, restSeconds: number | null) => {
     try {
@@ -281,17 +288,13 @@ export default function WorkoutSessionScreen() {
             // checkout photo, not "go manage your routines" — checkin/index.tsx
             // already knows on its own whether one's actually pending (Paso 2)
             // or there's nothing to do, so this always routes there and lets
-            // it decide what to show.
-            //
-            // replace() THIS screen (same tab, Profile's own stack) before
-            // push()-ing into the Checkin tab — a cross-tab push leaves the
-            // screen it was called from sitting behind in ITS tab's own
-            // history; without this, switching back to the Profile tab later
-            // would land straight back on this exact screen with session
-            // now null, stuck forever on its own loading spinner (this
-            // screen's earlier `if (isLoading || !session) return <Spinner>`
-            // never resolves once there's truly nothing left to load).
-            router.replace('/profile/routines');
+            // it decide what to show. push, not replace: cross-tab (this
+            // screen is in the Profile tab's own stack, /checkin is a
+            // different tab) — see the useFocusEffect above for how this
+            // screen being left behind, unfocused, in Profile's history gets
+            // handled instead of dispatching a second navigation call here
+            // (two router calls back to back turned out to silently drop
+            // the second one — confirmed: doing that broke this exact push).
             router.push('/checkin');
           } catch (err) {
             Alert.alert('No se pudo terminar', err instanceof Error ? err.message : 'Intenta de nuevo');

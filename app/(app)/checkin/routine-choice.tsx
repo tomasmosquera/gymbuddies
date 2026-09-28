@@ -62,14 +62,15 @@ export default function CheckinRoutineChoiceScreen() {
   // /profile/workout-session belongs to a different tab's) — push, not
   // replace: replace has no well-defined meaning across tabs and was
   // silently falling back to this stack's own index instead of actually
-  // navigating. But push alone leaves THIS screen sitting behind in the
-  // checkin tab's own history — replace('/checkin') first so switching back
-  // to the checkin tab later lands on its normal current state, not back on
-  // this exact "¿qué vas a entrenar?" prompt (same fix as workout-session.tsx's
-  // own Terminar → checkout jump, see its comment for the failure mode this
-  // avoids).
+  // navigating. This does leave THIS screen sitting behind, unfocused, in
+  // the checkin tab's own history — unlike workout-session.tsx's own
+  // Terminar → checkout jump, that's not chasing a real bug here (this
+  // screen has no "stuck forever" render path if revisited: worst case it
+  // briefly re-shows the routine list or the resume spinner, no dead end) —
+  // and a replace() dispatched right before this push turned out to
+  // silently swallow the push (confirmed: doing that broke this exact
+  // navigation), so it deliberately stays a single call.
   const goToWorkoutSession = () => {
-    router.replace('/checkin');
     router.push('/profile/workout-session');
   };
 
