@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,7 +26,11 @@ function SessionCard({ session, isDeleting, onDelete }: { session: WorkoutHistor
   return (
     <Card style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.flex}>
+        <Pressable
+          style={styles.flex}
+          onPress={() => router.push({ pathname: '/profile/workout-detail', params: { sessionId: session.id } })}
+          accessibilityRole="button"
+        >
           <Text style={styles.label} numberOfLines={1}>
             {session.label}
           </Text>
@@ -34,7 +38,10 @@ function SessionCard({ session, isDeleting, onDelete }: { session: WorkoutHistor
             {formatDateTime(session.startedAt)}
             {duration ? ` · ${duration}` : ''}
           </Text>
-        </View>
+          <Text style={styles.summary} numberOfLines={2}>
+            {session.exerciseNames.join(', ') || 'Sin ejercicios'} · {session.totalSets} serie{session.totalSets === 1 ? '' : 's'}
+          </Text>
+        </Pressable>
         {isDeleting ? (
           <ActivityIndicator color={colors.danger} />
         ) : (
@@ -43,9 +50,6 @@ function SessionCard({ session, isDeleting, onDelete }: { session: WorkoutHistor
           </Pressable>
         )}
       </View>
-      <Text style={styles.summary} numberOfLines={2}>
-        {session.exerciseNames.join(', ') || 'Sin ejercicios'} · {session.totalSets} serie{session.totalSets === 1 ? '' : 's'}
-      </Text>
     </Card>
   );
 }

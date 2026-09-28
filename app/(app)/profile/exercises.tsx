@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { EQUIPMENT_LABELS, EQUIPMENT_ORDER } from '@/constants/equipment';
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from '@/constants/muscleGroups';
 import { useExerciseCatalog } from '@/hooks/useExerciseCatalog';
+import { useMyPerformedExerciseIds } from '@/hooks/useMyPerformedExerciseIds';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Equipment, Exercise, MuscleGroup } from '@/lib/supabase/types';
 
@@ -109,9 +110,11 @@ function FiltersModal({ visible, onClose, muscleFilter, onMuscleFilterChange, eq
  */
 export default function ExercisesScreen() {
   const { exercises } = useExerciseCatalog();
+  const { ids: performedIds } = useMyPerformedExerciseIds();
   const [query, setQuery] = useState('');
   const [muscleFilter, setMuscleFilter] = useState<MuscleFilter>('all');
   const [equipmentFilter, setEquipmentFilter] = useState<EquipmentFilter>('all');
+  const [performedOnly, setPerformedOnly] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   const activeFilterCount = (muscleFilter !== 'all' ? 1 : 0) + (equipmentFilter !== 'all' ? 1 : 0);
@@ -122,7 +125,8 @@ export default function ExercisesScreen() {
       (e) =>
         (!q || e.name.toLowerCase().includes(q)) &&
         (muscleFilter === 'all' || e.muscle_group === muscleFilter) &&
-        (equipmentFilter === 'all' || e.equipment === equipmentFilter)
+        (equipmentFilter === 'all' || e.equipment === equipmentFilter) &&
+        (!performedOnly || performedIds.has(e.id))
     );
     const byGroup = new Map<string, Exercise[]>();
     for (const exercise of filtered) {
@@ -134,7 +138,7 @@ export default function ExercisesScreen() {
       title: MUSCLE_GROUP_LABELS[g],
       data: byGroup.get(g)!,
     }));
-  }, [exercises, query, muscleFilter, equipmentFilter]);
+  }, [exercises, query, muscleFilter, equipmentFilter, performedOnly, performedIds]);
 
   return (
     <View style={styles.container}>
@@ -147,6 +151,14 @@ export default function ExercisesScreen() {
           style={styles.search}
           autoCorrect={false}
         />
+        <Pressable
+          onPress={() => setPerformedOnly((v) => !v)}
+          style={[styles.filterButton, performedOnly && styles.filterButtonActive]}
+          accessibilityRole="button"
+          accessibilityLabel="Mostrar solo los ejercicios que ya he hecho"
+        >
+          <Ionicons name={performedOnly ? 'star' : 'star-outline'} size={18} color={performedOnly ? colors.primaryText : colors.text} />
+        </Pressable>
         <Pressable
           onPress={() => setIsFiltersOpen(true)}
           style={[styles.filterButton, activeFilterCount > 0 && styles.filterButtonActive]}
@@ -184,7 +196,11 @@ export default function ExercisesScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>No hay ejercicios con esos filtros.</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {performedOnly ? 'Todavía no has registrado ninguno de estos ejercicios.' : 'No hay ejercicios con esos filtros.'}
+          </Text>
+        }
         contentContainerStyle={[styles.listContent, sections.length === 0 && styles.listContentEmpty]}
         keyboardShouldPersistTaps="handled"
       />
