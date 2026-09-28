@@ -403,7 +403,9 @@ export default function CheckinPreviewScreen() {
           ? 'Tu día de hoy ya cuenta. Cuando termines de entrenar, vuelve a esta app y registra tu foto final.'
           : 'Tu día de hoy ya cuenta.') + buddyLine
       );
-      router.replace('/home');
+      // Fase 3: the "¿qué rutina quieres hacer?" step — never for a checkout,
+      // only right after a fresh check-in (see routine-choice.tsx's own doc).
+      router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } });
     } catch (err) {
       Alert.alert(
         draft.mode === 'checkout' ? 'No se pudo registrar la foto final' : 'No se pudo registrar el check-in',

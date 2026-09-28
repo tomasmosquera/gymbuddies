@@ -20,6 +20,10 @@ export default function CheckinStackLayout() {
     >
       <Stack.Screen name="index" options={{ title: isAdminOnly ? 'Panel de administrador' : 'Check-in' }} />
       <Stack.Screen name="preview" options={{ title: 'Confirmar', presentation: 'fullScreenModal' }} />
+      <Stack.Screen
+        name="routine-choice"
+        options={{ title: '¿Qué vas a entrenar?', presentation: 'fullScreenModal', headerBackVisible: false, gestureEnabled: false }}
+      />
     </Stack>
   );
 }
