@@ -37,6 +37,63 @@ export function chartValuesFor(points: ExerciseChartPoint[], metric: ExerciseCha
   return points.map((p) => p[key]);
 }
 
+export interface HistorySet {
+  id: string;
+  setNumber: number;
+  reps: number;
+  weightKg: number | null;
+  isWarmup: boolean;
+}
+
+export interface HistorySession {
+  sessionId: string;
+  date: string;
+  label: string;
+  sets: HistorySet[];
+}
+
+export interface AnnotatedHistorySet extends HistorySet {
+  /** Beat every prior real set's weight/single-set-volume/est. 1RM, as of this exact set — the Hevy-style medal badges. */
+  isWeightPr: boolean;
+  isVolumePr: boolean;
+  isOneRepMaxPr: boolean;
+}
+
+export interface AnnotatedHistorySession extends Omit<HistorySession, 'sets'> {
+  sets: AnnotatedHistorySet[];
+}
+
+/**
+ * Walks sessions oldest-to-newest, tracking the running best weight/volume/1RM
+ * across every real set seen so far, and flags each set that pushed one of
+ * those bests higher at the moment it happened — so a PR badge reflects what
+ * was actually true that day, not today's all-time record recomputed
+ * backwards onto history. Caller re-reverses for newest-first display.
+ */
+export function annotateHistoryWithRecords(sessionsOldestFirst: HistorySession[]): AnnotatedHistorySession[] {
+  let bestWeightKg = -Infinity;
+  let bestVolumeKg = -Infinity;
+  let bestOneRepMaxKg = -Infinity;
+
+  return sessionsOldestFirst.map((session) => ({
+    ...session,
+    sets: session.sets.map((set) => {
+      if (set.isWarmup || set.weightKg === null) {
+        return { ...set, isWeightPr: false, isVolumePr: false, isOneRepMaxPr: false };
+      }
+      const volumeKg = set.weightKg * set.reps;
+      const oneRepMaxKg = estimateOneRepMax(set.weightKg, set.reps);
+      const isWeightPr = set.weightKg > bestWeightKg;
+      const isVolumePr = volumeKg > bestVolumeKg;
+      const isOneRepMaxPr = oneRepMaxKg > bestOneRepMaxKg;
+      bestWeightKg = Math.max(bestWeightKg, set.weightKg);
+      bestVolumeKg = Math.max(bestVolumeKg, volumeKg);
+      bestOneRepMaxKg = Math.max(bestOneRepMaxKg, oneRepMaxKg);
+      return { ...set, isWeightPr, isVolumePr, isOneRepMaxPr };
+    }),
+  }));
+}
+
 export interface SetRecord {
   reps: number;
   weightKg: number;

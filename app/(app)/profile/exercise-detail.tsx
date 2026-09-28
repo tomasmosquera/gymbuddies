@@ -4,13 +4,22 @@ import { useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { LineChart } from '@/components/stats/LineChart';
 import { useAuth } from '@/hooks/useAuth';
 import { useExerciseCatalog } from '@/hooks/useExerciseCatalog';
 import { useExerciseHistory } from '@/hooks/useExerciseHistory';
-import { chartValuesFor, computeExerciseRecords, dailyExerciseSeries, type ExerciseChartMetric } from '@/lib/domain/exerciseRecords';
-import { kgToUnit } from '@/lib/domain/workoutUnits';
+import { useExerciseSessionHistory } from '@/hooks/useExerciseSessionHistory';
+import {
+  annotateHistoryWithRecords,
+  chartValuesFor,
+  computeExerciseRecords,
+  dailyExerciseSeries,
+  type AnnotatedHistorySet,
+  type ExerciseChartMetric,
+} from '@/lib/domain/exerciseRecords';
+import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { MUSCLE_GROUP_LABELS } from '@/constants/muscleGroups';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -33,11 +42,99 @@ function formatShortDate(iso: string): string {
   return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' }).format(new Date(iso));
 }
 
+function formatFullDate(iso: string): string {
+  return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(
+    new Date(iso)
+  );
+}
+
 function ComingSoon({ label }: { label: string }) {
   return (
     <View style={styles.comingSoon}>
       <Ionicons name="time-outline" size={28} color={colors.textMuted} />
       <Text style={styles.comingSoonText}>{label} — próximamente.</Text>
+    </View>
+  );
+}
+
+const PR_BADGES: { key: keyof Pick<AnnotatedHistorySet, 'isWeightPr' | 'isVolumePr' | 'isOneRepMaxPr'>; label: string }[] = [
+  { key: 'isWeightPr', label: 'Peso' },
+  { key: 'isVolumePr', label: 'Volumen' },
+  { key: 'isOneRepMaxPr', label: '1RM' },
+];
+
+/** Histórico: every past completed session with this exercise, newest first, each set's weight/reps plus a 🏅 badge for any category (weight/volume/1RM) it set a new all-time best in AT THE TIME — same idea as Hevy's history view. */
+function HistoryTab({ exerciseId, unit }: { exerciseId: string; unit: WeightUnit }) {
+  const { sessions, isLoading } = useExerciseSessionHistory(exerciseId);
+
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  const annotated = annotateHistoryWithRecords(sessions ?? []).reverse();
+
+  if (annotated.length === 0) {
+    return <EmptyState title="Sin historial todavía" description="Cuando registres series de este ejercicio, van a aparecer aquí." />;
+  }
+
+  return (
+    <View style={styles.tabContent}>
+      {annotated.map((session) => (
+        <Card key={session.sessionId} style={styles.historyCard}>
+          <Text style={styles.historyLabel}>{session.label}</Text>
+          <Text style={styles.historyDate}>{formatFullDate(session.date)}</Text>
+
+          <View style={styles.setsTableHeader}>
+            <Text style={[styles.tableHeaderCell, styles.historySetColumn]}>SET</Text>
+            <Text style={[styles.tableHeaderCell, styles.historyValueColumn]}>PESO Y REPS</Text>
+          </View>
+
+          {session.sets.map((set) => {
+            const badges = PR_BADGES.filter((b) => set[b.key]);
+            return (
+              <View key={set.id} style={[styles.historySetRow, set.isWarmup && styles.historySetRowWarmup]}>
+                <Text style={[styles.historySetNumber, styles.historySetColumn]}>{set.setNumber}</Text>
+                <View style={styles.historyValueColumn}>
+                  <Text style={styles.historySetValue}>
+                    {set.weightKg !== null ? `${kgToUnit(set.weightKg, unit)} ${unit} × ${set.reps}` : `${set.reps} reps`}
+                  </Text>
+                  {badges.length > 0 ? (
+                    <View style={styles.prBadgeRow}>
+                      {badges.map((b) => (
+                        <View key={b.key} style={styles.prBadge}>
+                          <Ionicons name="medal" size={12} color={colors.gold} />
+                          <Text style={styles.prBadgeText}>{b.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+/** Explicación: WorkoutX's own step-by-step instructions for this exercise. The demo image is already shown once, above the tabs — not repeated here. */
+function ExplanationTab({ instructions }: { instructions: string[] }) {
+  if (instructions.length === 0) {
+    return <EmptyState title="Sin instrucciones todavía" description="Todavía no tenemos el paso a paso de este ejercicio." />;
+  }
+  return (
+    <View style={styles.tabContent}>
+      {instructions.map((step, i) => (
+        <View key={i} style={styles.instructionRow}>
+          <Text style={styles.instructionNumber}>{i + 1}.</Text>
+          <Text style={styles.instructionText}>{step}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -161,9 +258,9 @@ export default function ExerciseDetailScreen() {
       />
 
       {tab === 'resumen' ? <SummaryTab exerciseId={exercise.id} unit={unit} /> : null}
-      {tab === 'historico' ? <ComingSoon label="Histórico" /> : null}
+      {tab === 'historico' ? <HistoryTab exerciseId={exercise.id} unit={unit} /> : null}
       {tab === 'grupo' ? <ComingSoon label="Comparación con el grupo" /> : null}
-      {tab === 'explicacion' ? <ComingSoon label="Explicación" /> : null}
+      {tab === 'explicacion' ? <ExplanationTab instructions={exercise.instructions} /> : null}
     </ScrollView>
   );
 }
@@ -173,7 +270,10 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   imageWrap: {
     aspectRatio: 1.4,
-    backgroundColor: colors.surfaceAlt,
+    // White, not the dark theme's surfaceAlt — the WorkoutX GIFs are drawn
+    // on a white background, so a dark card showed a visible white box
+    // around the animation instead of it blending into the card.
+    backgroundColor: '#FFFFFF',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -203,4 +303,36 @@ const styles = StyleSheet.create({
   setRecordsHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   comingSoon: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
   comingSoonText: { color: colors.textMuted, fontSize: 13 },
+  setsTableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  tableHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
+  historyCard: { gap: 2 },
+  historyLabel: { ...typography.heading, fontSize: 15, color: colors.text },
+  historyDate: { color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs },
+  historySetColumn: { width: 32 },
+  historyValueColumn: { flex: 1 },
+  historySetRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  historySetRowWarmup: { opacity: 0.55 },
+  historySetNumber: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  historySetValue: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  prBadgeRow: { flexDirection: 'row', gap: spacing.xs, marginTop: 4, flexWrap: 'wrap' },
+  prBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(245, 197, 66, 0.12)',
+  },
+  prBadgeText: { color: colors.gold, fontSize: 10, fontWeight: '700' },
+  instructionRow: { flexDirection: 'row', gap: spacing.sm },
+  instructionNumber: { color: colors.primary, fontWeight: '700', fontSize: 14, width: 20 },
+  instructionText: { color: colors.text, fontSize: 14, lineHeight: 20, flex: 1 },
 });

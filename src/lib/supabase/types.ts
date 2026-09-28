@@ -517,11 +517,13 @@ export type Exercise = {
   /** Re-hosted in the public exercise-media bucket — see migration 0131. Null until exercise-gif-sync has run for this exercise. */
   gif_url: string | null;
   secondary_muscles: string[];
+  /** Step-by-step, from WorkoutX — the Explicación tab's content. Empty until exercise-gif-sync has run for this exercise. */
+  instructions: string[];
   created_at: string;
 };
 
 /** exercises has no client-facing write RLS policy — only the service role (exercise-gif-sync) writes these, direct to the table rather than through an RPC. */
-export type ExerciseUpdate = Partial<Pick<Exercise, 'gif_url' | 'secondary_muscles'>>;
+export type ExerciseUpdate = Partial<Pick<Exercise, 'gif_url' | 'secondary_muscles' | 'instructions'>>;
 
 /** Personal (group_id null) or shared with exactly one of the owner's groups — never a snapshot itself, see WorkoutSession.routine_name_snapshot. */
 export type Routine = {

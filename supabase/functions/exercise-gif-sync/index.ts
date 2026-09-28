@@ -1,20 +1,24 @@
 // One-off/admin utility — NOT called by the app. Given an exercise slug and
 // its WorkoutX numeric id, downloads that exercise's GIF from WorkoutX's API
 // (server-side only: WORKOUTX_API_KEY never reaches the client) and re-hosts
-// it in the public exercise-media bucket, then stamps exercises.gif_url with
-// the resulting public URL. See migration 0131 for why re-hosting instead of
-// hotlinking: WorkoutX's /gifs endpoint needs the API key on every request
-// (it's not a public CDN), and the free-tier key has a *lifetime* (not
-// monthly) 500-request cap — so each exercise's GIF is fetched from WorkoutX
-// at most once, ever, right here.
+// it in the public exercise-media bucket, and also pulls the exercise's
+// instructions + secondaryMuscles from WorkoutX's own metadata endpoint —
+// both stamped onto the exercises row alongside gif_url. See migration 0131
+// for why the GIF is re-hosted instead of hotlinked: WorkoutX's /gifs
+// endpoint needs the API key on every request (it's not a public CDN).
 //
 // Invoke per exercise (or call repeatedly, one per body):
-//   supabase functions invoke exercise-gif-sync --body '{"slug":"bench_press","workoutxId":"0025"}'
+//   curl -X POST .../exercise-gif-sync -d '{"slug":"bench_press","workoutxId":"0025"}'
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../../src/lib/supabase/types.ts';
 
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+interface WorkoutxExercise {
+  instructions?: string[];
+  secondaryMuscles?: string[];
+}
 
 Deno.serve(async (req) => {
   let slug: string | undefined;
@@ -32,14 +36,20 @@ Deno.serve(async (req) => {
 
   const apiKey = Deno.env.get('WORKOUTX_API_KEY');
   if (!apiKey) return json({ ok: false, error: 'WORKOUTX_API_KEY is not configured' }, 500);
+  const idParam = encodeURIComponent(workoutxId);
 
-  const gifResponse = await fetch(
-    `https://api.workoutxapp.com/v1/gifs/${encodeURIComponent(workoutxId)}.gif?api-key=${apiKey}`
-  );
+  const [gifResponse, metaResponse] = await Promise.all([
+    fetch(`https://api.workoutxapp.com/v1/gifs/${idParam}.gif?api-key=${apiKey}`),
+    fetch(`https://api.workoutxapp.com/v1/exercises/exercise/${idParam}?api-key=${apiKey}`),
+  ]);
   if (!gifResponse.ok) {
-    return json({ ok: false, error: `WorkoutX returned ${gifResponse.status} for id ${workoutxId}` }, 502);
+    return json({ ok: false, error: `WorkoutX gif returned ${gifResponse.status} for id ${workoutxId}` }, 502);
+  }
+  if (!metaResponse.ok) {
+    return json({ ok: false, error: `WorkoutX metadata returned ${metaResponse.status} for id ${workoutxId}` }, 502);
   }
   const gifBytes = new Uint8Array(await gifResponse.arrayBuffer());
+  const meta: WorkoutxExercise = await metaResponse.json();
 
   const supabase = createClient<Database>(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const path = `${slug}.gif`;
@@ -57,8 +67,11 @@ Deno.serve(async (req) => {
   // anyone who'd already viewed it.
   const { data: publicUrlData } = supabase.storage.from('exercise-media').getPublicUrl(path);
   const gifUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
-  const { error: updateError } = await supabase.from('exercises').update({ gif_url: gifUrl }).eq('slug', slug);
+  const { error: updateError } = await supabase
+    .from('exercises')
+    .update({ gif_url: gifUrl, instructions: meta.instructions ?? [], secondary_muscles: meta.secondaryMuscles ?? [] })
+    .eq('slug', slug);
   if (updateError) return json({ ok: false, error: `exercises update failed: ${updateError.message}` }, 500);
 
-  return json({ ok: true, slug, gifUrl }, 200);
+  return json({ ok: true, slug, gifUrl, instructionsCount: meta.instructions?.length ?? 0 }, 200);
 });
