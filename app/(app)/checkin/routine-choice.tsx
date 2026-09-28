@@ -58,16 +58,24 @@ export default function CheckinRoutineChoiceScreen() {
   const { session: activeSession, isLoading: isSessionLoading, startFromRoutine, startFreeform, finish } = useWorkoutSession();
   const [startingKey, setStartingKey] = useState<string | null>(null);
 
-  // router.push, not replace: this screen lives in the checkin tab's own
-  // stack, and /profile/workout-session belongs to a DIFFERENT tab's stack —
-  // replace has no well-defined meaning across tabs here and was silently
-  // falling back to this stack's own index instead of actually navigating
-  // (reproduced: briefly renders this screen, then reverts on its own to
-  // checkin/index). push is the one cross-tab navigation shape already
-  // proven elsewhere in this app (see home/index.tsx's own '/profile/...' push).
+  // Cross-tab jump (this screen lives in the checkin tab's own stack,
+  // /profile/workout-session belongs to a different tab's) — push, not
+  // replace: replace has no well-defined meaning across tabs and was
+  // silently falling back to this stack's own index instead of actually
+  // navigating. But push alone leaves THIS screen sitting behind in the
+  // checkin tab's own history — replace('/checkin') first so switching back
+  // to the checkin tab later lands on its normal current state, not back on
+  // this exact "¿qué vas a entrenar?" prompt (same fix as workout-session.tsx's
+  // own Terminar → checkout jump, see its comment for the failure mode this
+  // avoids).
+  const goToWorkoutSession = () => {
+    router.replace('/checkin');
+    router.push('/profile/workout-session');
+  };
+
   useEffect(() => {
     if (!isSessionLoading && activeSession) {
-      router.push('/profile/workout-session');
+      goToWorkoutSession();
     }
   }, [isSessionLoading, activeSession]);
 
@@ -75,7 +83,7 @@ export default function CheckinRoutineChoiceScreen() {
     setStartingKey(key);
     try {
       await starter();
-      router.push('/profile/workout-session');
+      goToWorkoutSession();
     } catch (err) {
       Alert.alert('No se pudo empezar el entreno', err instanceof Error ? err.message : 'Intenta de nuevo');
       setStartingKey(null);
@@ -86,13 +94,15 @@ export default function CheckinRoutineChoiceScreen() {
   // no exercise detail at all, not even the catalog-driven live-logging
   // screen. Just marks that a workout happened (counts for streaks/checkout)
   // and starts+finishes the session in one step, then goes straight to the
-  // checkout prompt — same destination "Terminar" already routes to.
+  // checkout prompt — same destination "Terminar" already routes to. Same
+  // tab as this screen (checkin), so a plain replace is enough — no
+  // dangling-screen risk to guard against here.
   const handleMarkTrainedOnly = async () => {
     setStartingKey('mark-only');
     try {
       const newSession = await startFreeform(checkinId);
       await finish(newSession.id);
-      router.push('/checkin');
+      router.replace('/checkin');
     } catch (err) {
       Alert.alert('No se pudo registrar el entreno', err instanceof Error ? err.message : 'Intenta de nuevo');
       setStartingKey(null);

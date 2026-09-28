@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -227,19 +227,16 @@ export default function WorkoutSessionScreen() {
   const restTimer = useRestTimer();
   const insets = useSafeAreaInsets();
   const unit = profile?.weight_unit ?? 'kg';
-  // finish()/discard() both await refresh() internally, which sets `session`
-  // to null the moment either succeeds — the exact same instant handleFinish/
-  // handleDiscard, below, are themselves about to navigate somewhere specific
-  // (checkout for a finish, Rutinas for a discard). Without this flag, the
-  // effect right below reacts to that same session-goes-null transition and
-  // its own router.replace('/profile/routines') races the intentional
-  // navigation and always wins (same race as preview.tsx's own draft effect).
-  const isNavigatingAwayRef = useRef(false);
 
   // Redirects out once there's genuinely nothing to show (finished/discarded, or none was ever started) —
-  // this screen doesn't create one itself, only Rutinas does.
+  // this screen doesn't create one itself, only Rutinas does. handleFinish/
+  // handleDiscard below both replace() this screen themselves the moment
+  // they act, so by the time finish()/discard()'s own refresh() sets
+  // `session` to null, this effect's redirect is a harmless no-op landing on
+  // the exact same place — it only ever does real work for the genuine
+  // "arrived here with nothing in progress" case (e.g. a stale deep link).
   useEffect(() => {
-    if (!isLoading && !session && !isNavigatingAwayRef.current) {
+    if (!isLoading && !session) {
       router.replace('/profile/routines');
     }
   }, [isLoading, session]);
@@ -277,7 +274,6 @@ export default function WorkoutSessionScreen() {
       {
         text: 'Terminar',
         onPress: async () => {
-          isNavigatingAwayRef.current = true;
           setIsFinishing(true);
           try {
             await finish(session.id);
@@ -285,10 +281,17 @@ export default function WorkoutSessionScreen() {
             // checkout photo, not "go manage your routines" — checkin/index.tsx
             // already knows on its own whether one's actually pending (Paso 2)
             // or there's nothing to do, so this always routes there and lets
-            // it decide what to show. push, not replace: this screen lives in
-            // the profile tab's own stack, /checkin is a different tab
-            // (see the routine-choice cross-tab navigation fix for why replace
-            // doesn't reliably work here).
+            // it decide what to show.
+            //
+            // replace() THIS screen (same tab, Profile's own stack) before
+            // push()-ing into the Checkin tab — a cross-tab push leaves the
+            // screen it was called from sitting behind in ITS tab's own
+            // history; without this, switching back to the Profile tab later
+            // would land straight back on this exact screen with session
+            // now null, stuck forever on its own loading spinner (this
+            // screen's earlier `if (isLoading || !session) return <Spinner>`
+            // never resolves once there's truly nothing left to load).
+            router.replace('/profile/routines');
             router.push('/checkin');
           } catch (err) {
             Alert.alert('No se pudo terminar', err instanceof Error ? err.message : 'Intenta de nuevo');
@@ -308,7 +311,6 @@ export default function WorkoutSessionScreen() {
         text: 'Cancelar entreno',
         style: 'destructive',
         onPress: async () => {
-          isNavigatingAwayRef.current = true;
           await discard(session.id);
           router.replace('/profile/routines');
         },
