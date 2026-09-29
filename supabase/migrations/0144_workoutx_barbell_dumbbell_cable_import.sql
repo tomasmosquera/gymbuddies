@@ -1,0 +1,72 @@
+-- ============================================================================
+-- Imports 60 new exercises from WorkoutX (20 barbell + 20 dumbbell + 20
+-- cable) — the app owner's own curated pick from the WorkoutX catalog's
+-- exercises not already in our table for these 3 equipment types (601
+-- candidates total; this is a first, deliberately small batch given
+-- WorkoutX's free-tier 500-lifetime-request cap). Base rows only here —
+-- gif_url/instructions/secondary_muscles get filled right after via the
+-- exercise-gif-sync Edge Function, one call per row (see chat for the
+-- slug -> workoutxId mapping used).
+-- ============================================================================
+
+insert into exercises (slug, name, muscle_group, equipment) values
+  ('barbell_pullover_to_press', 'Barbell Pullover to Press', 'back', 'barbell'),
+  ('barbell_alternate_biceps_curl', 'Barbell Alternate Biceps Curl', 'biceps', 'barbell'),
+  ('barbell_decline_bent_arm_pullover', 'Barbell Decline Bent Arm Pullover', 'back', 'barbell'),
+  ('barbell_decline_close_grip_to_skull_press', 'Barbell Decline Close Grip to Skull Press', 'triceps', 'barbell'),
+  ('barbell_decline_wide_grip_pullover', 'Barbell Decline Wide-grip Pullover', 'back', 'barbell'),
+  ('barbell_drag_curl', 'Barbell Drag Curl', 'biceps', 'barbell'),
+  ('barbell_front_raise_and_pullover', 'Barbell Front Raise and Pullover', 'chest', 'barbell'),
+  ('barbell_incline_reverse_grip_press', 'Barbell Incline Reverse-grip Press', 'triceps', 'barbell'),
+  ('barbell_incline_shoulder_raise', 'Barbell Incline Shoulder Raise', 'chest', 'barbell'),
+  ('barbell_jefferson_squat', 'Barbell Jefferson Squat', 'glutes', 'barbell'),
+  ('barbell_rear_delt_raise', 'Barbell Rear Delt Raise', 'shoulders', 'barbell'),
+  ('barbell_reverse_wrist_curl_v2', 'Barbell Reverse Wrist Curl V2', 'forearms', 'barbell'),
+  ('barbell_rollerout_from_bench', 'Barbell Rollerout from Bench', 'core', 'barbell'),
+  ('barbell_rollerout', 'Barbell Rollerout', 'core', 'barbell'),
+  ('barbell_seated_close_grip_concentration_curl', 'Barbell Seated Close-grip Concentration Curl', 'biceps', 'barbell'),
+  ('barbell_seated_overhead_triceps_extension', 'Barbell Seated Overhead Triceps Extension', 'triceps', 'barbell'),
+  ('barbell_seated_twist', 'Barbell Seated Twist', 'core', 'barbell'),
+  ('barbell_side_bent_v2', 'Barbell Side Bent V2', 'core', 'barbell'),
+  ('barbell_standing_ab_rollerout', 'Barbell Standing Ab Rollerout', 'core', 'barbell'),
+  ('barbell_standing_back_wrist_curl', 'Barbell Standing Back Wrist Curl', 'forearms', 'barbell'),
+  ('dumbbell_close_grip_press', 'Dumbbell Close-grip Press', 'triceps', 'dumbbell'),
+  ('dumbbell_tate_press', 'Dumbbell Tate Press', 'triceps', 'dumbbell'),
+  ('dumbbell_decline_one_arm_hammer_press', 'Dumbbell Decline One Arm Hammer Press', 'triceps', 'dumbbell'),
+  ('dumbbell_incline_hammer_press_on_exercise_ball', 'Dumbbell Incline Hammer Press on Exercise Ball', 'triceps', 'dumbbell'),
+  ('dumbbell_incline_one_arm_hammer_press', 'Dumbbell Incline One Arm Hammer Press', 'triceps', 'dumbbell'),
+  ('dumbbell_incline_one_arm_hammer_press_on_exercise_ball', 'Dumbbell Incline One Arm Hammer Press on Exercise Ball', 'triceps', 'dumbbell'),
+  ('dumbbell_one_arm_hammer_press_on_exercise_ball', 'Dumbbell One Arm Hammer Press on Exercise Ball', 'triceps', 'dumbbell'),
+  ('dumbbell_one_arm_french_press_on_exercise_ball', 'Dumbbell One Arm French Press on Exercise Ball', 'triceps', 'dumbbell'),
+  ('bodyweight_standing_close_grip_one_arm_row', 'Bodyweight Standing Close-grip One Arm Row', 'back', 'dumbbell'),
+  ('bodyweight_standing_one_arm_row', 'Bodyweight Standing One Arm Row', 'back', 'dumbbell'),
+  ('dumbbell_standing_alternate_hammer_curl_and_press', 'Dumbbell Standing Alternate Hammer Curl and Press', 'biceps', 'dumbbell'),
+  ('dumbbell_alternate_biceps_curl', 'Dumbbell Alternate Biceps Curl', 'biceps', 'dumbbell'),
+  ('dumbbell_alternate_side_press', 'Dumbbell Alternate Side Press', 'shoulders', 'dumbbell'),
+  ('dumbbell_arnold_press_v2', 'Dumbbell Arnold Press V2', 'shoulders', 'dumbbell'),
+  ('dumbbell_around_pullover', 'Dumbbell Around Pullover', 'chest', 'dumbbell'),
+  ('dumbbell_bench_seated_press', 'Dumbbell Bench Seated Press', 'shoulders', 'dumbbell'),
+  ('dumbbell_bench_squat', 'Dumbbell Bench Squat', 'glutes', 'dumbbell'),
+  ('dumbbell_biceps_curl', 'Dumbbell Biceps Curl', 'biceps', 'dumbbell'),
+  ('dumbbell_cuban_press', 'Dumbbell Cuban Press', 'shoulders', 'dumbbell'),
+  ('cable_alternate_triceps_extension', 'Cable Alternate Triceps Extension', 'triceps', 'cable'),
+  ('cable_concentration_extension_on_knee', 'Cable Concentration Extension (on Knee)', 'triceps', 'cable'),
+  ('cable_cross_over_reverse_fly', 'Cable Cross-over Reverse Fly', 'shoulders', 'cable'),
+  ('cable_decline_fly', 'Cable Decline Fly', 'chest', 'cable'),
+  ('cable_forward_raise', 'Cable Forward Raise', 'shoulders', 'cable'),
+  ('cable_front_shoulder_raise', 'Cable Front Shoulder Raise', 'shoulders', 'cable'),
+  ('cable_incline_fly_on_stability_ball', 'Cable Incline Fly (on Stability Ball)', 'chest', 'cable'),
+  ('cable_incline_fly', 'Cable Incline Fly', 'chest', 'cable'),
+  ('cable_incline_triceps_extension', 'Cable Incline Triceps Extension', 'triceps', 'cable'),
+  ('cable_judo_flip', 'Cable Judo Flip', 'core', 'cable'),
+  ('cable_kneeling_crunch', 'Cable Kneeling Crunch', 'core', 'cable'),
+  ('cable_kneeling_triceps_extension', 'Cable Kneeling Triceps Extension', 'triceps', 'cable'),
+  ('cable_low_fly', 'Cable Low Fly', 'chest', 'cable'),
+  ('cable_middle_fly', 'Cable Middle Fly', 'chest', 'cable'),
+  ('cable_pushdown_with_rope_attachment', 'Cable Pushdown (with Rope Attachment)', 'triceps', 'cable'),
+  ('cable_pushdown', 'Cable Pushdown', 'triceps', 'cable'),
+  ('cable_rear_drive', 'Cable Rear Drive', 'triceps', 'cable'),
+  ('cable_reverse_grip_pushdown', 'Cable Reverse-grip Pushdown', 'triceps', 'cable'),
+  ('cable_russian_twists_on_stability_ball', 'Cable Russian Twists (on Stability Ball)', 'core', 'cable'),
+  ('cable_seated_crunch', 'Cable Seated Crunch', 'core', 'cable'),
+  ('dumbbell_decline_fly', 'Dumbbell Decline Fly', 'chest', 'dumbbell');
