@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EQUIPMENT_LABELS, EQUIPMENT_ORDER } from '@/constants/equipment';
@@ -108,6 +109,31 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
               return (
                 <View style={[styles.row, isTaken && styles.rowDisabled]}>
                   <Pressable
+                    accessibilityRole="button"
+                    disabled={isTaken}
+                    onPress={() => {
+                      onSelect(item);
+                      close();
+                    }}
+                    style={styles.rowMain}
+                  >
+                    {item.gif_url ? (
+                      // autoplay={false} shows the still first frame instead of
+                      // animating — a Hevy-style static thumbnail from the exact
+                      // same asset exercise-detail.tsx plays as a GIF elsewhere,
+                      // no separate image needed.
+                      <Image source={{ uri: item.gif_url }} style={styles.thumb} contentFit="cover" autoplay={false} />
+                    ) : (
+                      <View style={styles.thumbPlaceholder} />
+                    )}
+                    <View style={styles.rowLabel}>
+                      <Text style={[styles.label, isTaken && styles.labelDisabled]} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.muscleLabel}>{MUSCLE_GROUP_LABELS[item.muscle_group]}</Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
                     onPress={() => {
                       close();
                       router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: item.id } });
@@ -117,17 +143,6 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
                     accessibilityLabel={`Ver detalle de ${item.name}`}
                   >
                     <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={isTaken}
-                    onPress={() => {
-                      onSelect(item);
-                      close();
-                    }}
-                    style={styles.rowLabel}
-                  >
-                    <Text style={[styles.label, isTaken && styles.labelDisabled]}>{item.name}</Text>
                   </Pressable>
                   {isTaken ? <Ionicons name="checkmark-circle" size={18} color={colors.textMuted} /> : null}
                 </View>
@@ -204,8 +219,12 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
   },
   rowDisabled: { opacity: 0.4 },
-  rowLabel: { flex: 1 },
-  label: { color: colors.text, fontSize: 15 },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  thumb: { width: 56, height: 56, borderRadius: radii.md, backgroundColor: '#FFFFFF' },
+  thumbPlaceholder: { width: 56, height: 56, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
+  rowLabel: { flex: 1, gap: 2 },
+  label: { color: colors.text, fontSize: 15, fontWeight: '600' },
   labelDisabled: { color: colors.textMuted },
+  muscleLabel: { color: colors.textMuted, fontSize: 13 },
   empty: { color: colors.textMuted, textAlign: 'center', padding: spacing.lg },
 });
