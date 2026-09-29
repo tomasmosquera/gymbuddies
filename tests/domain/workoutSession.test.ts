@@ -92,7 +92,7 @@ describe('initialPendingRows', () => {
 
   it('displays the suggested weight in the requested unit', () => {
     const rows = initialPendingRows([target(8, 10, 100)], 0, 'lbs');
-    expect(rows[0].suggestedWeight).toBe('220');
+    expect(rows[0].suggestedWeight).toBe('220.5');
   });
 
   it('leaves the suggested weight blank for a bodyweight target', () => {
@@ -114,7 +114,7 @@ describe('initialPendingRows', () => {
 
   it('displays previousWeight in the requested unit too', () => {
     const rows = initialPendingRows([target(8, 10, 100, false, 100, 8)], 0, 'lbs');
-    expect(rows[0].previousWeight).toBe('220');
+    expect(rows[0].previousWeight).toBe('220.5');
   });
 
   it('leaves previousWeight/previousReps blank with no history at all', () => {

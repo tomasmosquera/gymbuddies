@@ -111,7 +111,7 @@ describe('routineExerciseToFormRow', () => {
       'lbs'
     );
     expect(row.sets).toEqual([
-      { targetRepsMin: '8', targetRepsMax: '10', targetWeight: '132', isFailureTarget: false }, // 60kg -> 132lbs
+      { targetRepsMin: '8', targetRepsMax: '10', targetWeight: '132.3', isFailureTarget: false }, // 60kg -> 132.3lbs
       { targetRepsMin: '6', targetRepsMax: '6', targetWeight: '', isFailureTarget: true },
     ]);
   });

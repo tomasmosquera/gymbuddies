@@ -15,8 +15,9 @@ describe('kgToUnit', () => {
     expect(kgToUnit(60.451, 'kg')).toBe(60.5);
   });
 
-  it('rounds to a whole number in lbs', () => {
-    expect(kgToUnit(100, 'lbs')).toBe(220);
+  it('keeps one decimal in lbs too — small plates move in half-pound increments', () => {
+    expect(kgToUnit(100, 'lbs')).toBe(220.5);
+    expect(kgToUnit(11.57, 'lbs')).toBeCloseTo(25.5, 1);
   });
 });
 

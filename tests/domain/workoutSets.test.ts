@@ -44,7 +44,7 @@ describe('totalVolumeKg', () => {
 describe('formatSetLine', () => {
   it('shows weight × reps in the given unit', () => {
     expect(formatSetLine(set(8, 100), 'kg')).toBe('100 kg × 8');
-    expect(formatSetLine(set(8, 100), 'lbs')).toBe('220 lbs × 8');
+    expect(formatSetLine(set(8, 100), 'lbs')).toBe('220.5 lbs × 8');
   });
 
   it('shows just reps for a bodyweight set', () => {
