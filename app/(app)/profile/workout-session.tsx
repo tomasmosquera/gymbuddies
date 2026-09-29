@@ -31,9 +31,7 @@ function formatPreviousSet(target: WorkoutSessionSetTarget | undefined, unit: We
 
 /** "8-10" (or just "8" when the range is a single number) — shown once in the REPS header, from the first planned set, as a reminder of the goal range. Different sets can plan different ranges (a pyramid scheme); this is only a representative hint, not per-row. */
 function repRangeLabel(target: WorkoutSessionSetTarget): string {
-  return target.target_reps_min === target.target_reps_max
-    ? String(target.target_reps_max)
-    : `${target.target_reps_min}-${target.target_reps_max}`;
+  return `${target.target_reps_min}-${target.target_reps_max}`;
 }
 
 /** One exercise card: progressive-overload reference, completed sets (from the DB), and pending/editable rows (local until confirmed). */

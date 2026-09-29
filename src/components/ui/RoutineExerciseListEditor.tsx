@@ -268,7 +268,11 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     gap: spacing.sm,
   },
-  exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  // 'center', not 'flex-start' — the reorder column is two stacked icons
+  // (taller than the single-line unit pill/delete "x"), so aligning
+  // everyone to the TOP left them visually off-center from each other even
+  // though their top edges lined up.
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   exerciseNameButton: { flex: 1 },
   exerciseName: { color: colors.primary, fontWeight: '700', fontSize: 16, textDecorationLine: 'underline' },
   unitPill: {
