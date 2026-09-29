@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EQUIPMENT_LABELS, EQUIPMENT_ORDER } from '@/constants/equipment';
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from '@/constants/muscleGroups';
+import { matchesExerciseQuery } from '@/lib/domain/exerciseSearch';
 import { useExerciseCatalog } from '@/hooks/useExerciseCatalog';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Equipment, Exercise, MuscleGroup } from '@/lib/supabase/types';
@@ -38,10 +39,9 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
   const insets = useSafeAreaInsets();
 
   const sections = useMemo(() => {
-    const q = query.trim().toLowerCase();
     const filtered = exercises.filter(
       (e) =>
-        (!q || e.name.toLowerCase().includes(q)) &&
+        matchesExerciseQuery(e.name, query) &&
         (muscleFilter === 'all' || e.muscle_group === muscleFilter) &&
         (equipmentFilter === 'all' || e.equipment === equipmentFilter)
     );
