@@ -9,7 +9,7 @@ const formRow = (overrides: Partial<RoutineExerciseFormRow> = {}): RoutineExerci
   restMinutes: '',
   restSeconds: '',
   notes: '',
-  sets: [{ targetReps: '8', targetWeight: '60', isFailureTarget: false }],
+  sets: [{ targetRepsMin: '8', targetRepsMax: '10', targetWeight: '60', isFailureTarget: false }],
   ...overrides,
 });
 
@@ -29,16 +29,16 @@ describe('formRowsToRoutineInput', () => {
     expect(row.restSeconds).toBe(45);
   });
 
-  it('parses each set, leaving weight undefined when blank (bodyweight)', () => {
+  it('parses each set\'s rep range, leaving weight undefined when blank (bodyweight)', () => {
     const [row] = formRowsToRoutineInput([
-      formRow({ sets: [{ targetReps: '10', targetWeight: '', isFailureTarget: false }] }),
+      formRow({ sets: [{ targetRepsMin: '8', targetRepsMax: '10', targetWeight: '', isFailureTarget: false }] }),
     ]);
-    expect(row.sets).toEqual([{ targetReps: 10, targetWeight: undefined, isFailureTarget: false }]);
+    expect(row.sets).toEqual([{ targetRepsMin: 8, targetRepsMax: 10, targetWeight: undefined, isFailureTarget: false }]);
   });
 
   it('carries the failure-target flag through', () => {
     const [row] = formRowsToRoutineInput([
-      formRow({ sets: [{ targetReps: '6', targetWeight: '80', isFailureTarget: true }] }),
+      formRow({ sets: [{ targetRepsMin: '6', targetRepsMax: '6', targetWeight: '80', isFailureTarget: true }] }),
     ]);
     expect(row.sets[0].isFailureTarget).toBe(true);
   });
@@ -58,7 +58,7 @@ describe('routineInputToArgs', () => {
         restSeconds: 120,
         notes: 'to failure on the last set',
         unit: 'lbs',
-        sets: [{ targetReps: 8, targetWeight: 60, isFailureTarget: false }],
+        sets: [{ targetRepsMin: 8, targetRepsMax: 10, targetWeight: 60, isFailureTarget: false }],
       },
     ]);
     expect(args).toEqual([
@@ -67,14 +67,14 @@ describe('routineInputToArgs', () => {
         rest_seconds: 120,
         notes: 'to failure on the last set',
         unit: 'lbs',
-        sets: [{ target_reps: 8, target_weight: 60, is_failure_target: false }],
+        sets: [{ target_reps_min: 8, target_reps_max: 10, target_weight: 60, is_failure_target: false }],
       },
     ]);
   });
 
   it('turns an empty/missing notes string into null, and a missing rest into null', () => {
     const args = routineInputToArgs([
-      { exerciseId: 'ex-1', notes: '', unit: 'kg', sets: [{ targetReps: 8, isFailureTarget: false }] },
+      { exerciseId: 'ex-1', notes: '', unit: 'kg', sets: [{ targetRepsMin: 8, targetRepsMax: 8, isFailureTarget: false }] },
     ]);
     expect(args[0].notes).toBeNull();
     expect(args[0].rest_seconds).toBeNull();
@@ -83,8 +83,8 @@ describe('routineInputToArgs', () => {
 
 describe('routineExerciseToFormRow', () => {
   const sets: RoutineExerciseSet[] = [
-    { id: 's1', routine_exercise_id: 're1', set_number: 1, target_reps: 8, target_weight_kg: 60, is_failure_target: false },
-    { id: 's2', routine_exercise_id: 're1', set_number: 2, target_reps: 6, target_weight_kg: null, is_failure_target: true },
+    { id: 's1', routine_exercise_id: 're1', set_number: 1, target_reps_min: 8, target_reps_max: 10, target_weight_kg: 60, is_failure_target: false },
+    { id: 's2', routine_exercise_id: 're1', set_number: 2, target_reps_min: 6, target_reps_max: 6, target_weight_kg: null, is_failure_target: true },
   ];
 
   it('splits rest_seconds back into minutes + seconds', () => {
@@ -105,24 +105,27 @@ describe('routineExerciseToFormRow', () => {
     expect(row.restSeconds).toBe('');
   });
 
-  it('converts each set\'s weight into the display unit and keeps the failure flag', () => {
+  it('converts each set\'s weight into the display unit and keeps the rep range + failure flag', () => {
     const row = routineExerciseToFormRow(
       { exercise_id: 'ex-1', exercise_name: 'Bench Press (Dumbbell)', rest_seconds: null, notes: null, sets },
       'lbs'
     );
     expect(row.sets).toEqual([
-      { targetReps: '8', targetWeight: '132', isFailureTarget: false }, // 60kg -> 132lbs
-      { targetReps: '6', targetWeight: '', isFailureTarget: true },
+      { targetRepsMin: '8', targetRepsMax: '10', targetWeight: '132', isFailureTarget: false }, // 60kg -> 132lbs
+      { targetRepsMin: '6', targetRepsMax: '6', targetWeight: '', isFailureTarget: true },
     ]);
   });
 
-  it('round-trips through formRowsToRoutineInput back to the same reps/failure data', () => {
+  it('round-trips through formRowsToRoutineInput back to the same rep range/failure data', () => {
     const row = routineExerciseToFormRow(
       { exercise_id: 'ex-1', exercise_name: 'Bench Press (Dumbbell)', rest_seconds: 90, notes: 'note', sets },
       'kg'
     );
     const [input] = formRowsToRoutineInput([row]);
     expect(input.restSeconds).toBe(90);
-    expect(input.sets.map((s) => [s.targetReps, s.isFailureTarget])).toEqual([[8, false], [6, true]]);
+    expect(input.sets.map((s) => [s.targetRepsMin, s.targetRepsMax, s.isFailureTarget])).toEqual([
+      [8, 10, false],
+      [6, 6, true],
+    ]);
   });
 });

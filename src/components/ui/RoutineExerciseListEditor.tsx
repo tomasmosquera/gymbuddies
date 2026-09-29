@@ -8,9 +8,10 @@ import { colors, radii, spacing } from '@/constants/theme';
 import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise } from '@/lib/supabase/types';
 
-/** One row of the planned SET / weight / REPS table — raw strings while editing, same reason MoneyField/PrizeSplitEditor keep numeric fields as text (never flash NaN). */
+/** One row of the planned SET / weight / REPS table — raw strings while editing, same reason MoneyField/PrizeSplitEditor keep numeric fields as text (never flash NaN). Reps are a RANGE now (e.g. "8-10") — logging a set still records one specific number; the range is only ever the plan. */
 export interface RoutineExerciseSetFormRow {
-  targetReps: string;
+  targetRepsMin: string;
+  targetRepsMax: string;
   targetWeight: string;
   isFailureTarget: boolean;
 }
@@ -35,7 +36,7 @@ interface RoutineExerciseListEditorProps {
 }
 
 function defaultSet(): RoutineExerciseSetFormRow {
-  return { targetReps: '10', targetWeight: '', isFailureTarget: false };
+  return { targetRepsMin: '8', targetRepsMax: '10', targetWeight: '', isFailureTarget: false };
 }
 
 export function exerciseToFormRow(exercise: Exercise, defaultUnit: WeightUnit): RoutineExerciseFormRow {
@@ -192,7 +193,7 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
           <View style={styles.setsTableHeader}>
             <Text style={[styles.tableHeaderCell, styles.setColumn]}>SERIE</Text>
             <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{exercise.unit.toUpperCase()}</Text>
-            <Text style={[styles.tableHeaderCell, styles.repsColumn]}>REPS</Text>
+            <Text style={[styles.tableHeaderCell, styles.repsRangeColumn]}>REPS (RANGO)</Text>
             <View style={styles.removeColumn} />
           </View>
           {exercise.sets.map((set, setIndex) => (
@@ -214,14 +215,25 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
                 placeholder="—"
                 placeholderTextColor={colors.textMuted}
               />
-              <TextInput
-                style={[styles.setInput, styles.repsColumn]}
-                value={set.targetReps}
-                onChangeText={(t) => updateSet(exerciseIndex, setIndex, { targetReps: t.replace(/[^0-9]/g, '') })}
-                keyboardType="numeric"
-                placeholder="10"
-                placeholderTextColor={colors.textMuted}
-              />
+              <View style={styles.repsRangeColumn}>
+                <TextInput
+                  style={styles.setInput}
+                  value={set.targetRepsMin}
+                  onChangeText={(t) => updateSet(exerciseIndex, setIndex, { targetRepsMin: t.replace(/[^0-9]/g, '') })}
+                  keyboardType="numeric"
+                  placeholder="8"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <Text style={styles.repsRangeDash}>–</Text>
+                <TextInput
+                  style={styles.setInput}
+                  value={set.targetRepsMax}
+                  onChangeText={(t) => updateSet(exerciseIndex, setIndex, { targetRepsMax: t.replace(/[^0-9]/g, '') })}
+                  keyboardType="numeric"
+                  placeholder="10"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
               <Pressable
                 onPress={() => removeSet(exerciseIndex, setIndex)}
                 hitSlop={8}
@@ -299,7 +311,8 @@ const styles = StyleSheet.create({
   setRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   setColumn: { width: 34 },
   weightColumn: { flex: 1 },
-  repsColumn: { flex: 1 },
+  repsRangeColumn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  repsRangeDash: { color: colors.textMuted, fontSize: 13 },
   removeColumn: { width: 24, alignItems: 'center' },
   setBadge: {
     height: 28,
@@ -312,6 +325,7 @@ const styles = StyleSheet.create({
   setBadgeText: { color: colors.text, fontWeight: '700', fontSize: 13 },
   setBadgeTextFailure: { color: colors.danger },
   setInput: {
+    flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,

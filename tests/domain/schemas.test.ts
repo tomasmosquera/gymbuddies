@@ -247,7 +247,7 @@ describe('excuseRequestSchema', () => {
 });
 
 describe('routineSchema', () => {
-  const oneSet = { targetReps: 8 };
+  const oneSet = { targetRepsMin: 8, targetRepsMax: 10 };
   const exercise = { exerciseId: '11111111-1111-4111-8111-111111111111', sets: [oneSet] };
 
   it('defaults an exercise\'s unit to kg, but accepts lbs per exercise', () => {
@@ -266,7 +266,16 @@ describe('routineSchema', () => {
     const result = routineSchema.safeParse({
       name: 'Día de pierna',
       groupId: '22222222-2222-4222-8222-222222222222',
-      exercises: [{ ...exercise, restSeconds: 120, sets: [{ targetReps: 8, targetWeight: 60 }, { targetReps: 6, isFailureTarget: true }] }],
+      exercises: [
+        {
+          ...exercise,
+          restSeconds: 120,
+          sets: [
+            { targetRepsMin: 8, targetRepsMax: 10, targetWeight: 60 },
+            { targetRepsMin: 6, targetRepsMax: 6, isFailureTarget: true },
+          ],
+        },
+      ],
     });
     expect(result.success).toBe(true);
   });
@@ -299,11 +308,22 @@ describe('routineSchema', () => {
   });
 
   it('rejects reps out of range', () => {
-    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [{ targetReps: 0 }] }] }).success).toBe(
-      false
-    );
-    expect(routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [{ targetReps: 101 }] }] }).success).toBe(
-      false
-    );
+    expect(
+      routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [{ targetRepsMin: 0, targetRepsMax: 8 }] }] })
+        .success
+    ).toBe(false);
+    expect(
+      routineSchema.safeParse({ name: 'Test', groupId: null, exercises: [{ ...exercise, sets: [{ targetRepsMin: 8, targetRepsMax: 101 }] }] })
+        .success
+    ).toBe(false);
+  });
+
+  it('rejects a max below the min', () => {
+    const result = routineSchema.safeParse({
+      name: 'Test',
+      groupId: null,
+      exercises: [{ ...exercise, sets: [{ targetRepsMin: 10, targetRepsMax: 8 }] }],
+    });
+    expect(result.success).toBe(false);
   });
 });

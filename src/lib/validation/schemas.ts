@@ -125,11 +125,17 @@ export const excuseRequestSchema = z
     path: ['proofImageUris'],
   });
 
-export const routineExerciseSetSchema = z.object({
-  targetReps: z.number().int().min(1).max(100),
-  targetWeight: z.number().min(0).optional(),
-  isFailureTarget: z.boolean().default(false),
-});
+export const routineExerciseSetSchema = z
+  .object({
+    targetRepsMin: z.number().int().min(1).max(100),
+    targetRepsMax: z.number().int().min(1).max(100),
+    targetWeight: z.number().min(0).optional(),
+    isFailureTarget: z.boolean().default(false),
+  })
+  .refine((v) => v.targetRepsMax >= v.targetRepsMin, {
+    message: 'El máximo de repeticiones debe ser mayor o igual al mínimo',
+    path: ['targetRepsMax'],
+  });
 
 export const routineExerciseSchema = z.object({
   exerciseId: z.string().uuid(),

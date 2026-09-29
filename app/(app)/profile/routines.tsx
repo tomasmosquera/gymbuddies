@@ -1,13 +1,15 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyRoutines, type RoutineWithExercises } from '@/hooks/useMyRoutines';
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
+import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 /** Same shape as Hevy's own routine card: name + "•••" (edit/copiar/borrar) up top, exercise summary, one full-width "Empezar". No card-body tap — editing only lives behind the "•••" now. */
@@ -79,12 +81,14 @@ function RoutineCard({
 
 /** Reachable from Perfil → Rutinas, alongside Historial de entrenos and Ejercicios. */
 export default function RoutinesScreen() {
+  const { profile, refreshProfile } = useAuth();
   const { group } = useActiveGroup();
   const { routines, isLoading, refresh, deleteRoutine, copyRoutine } = useMyRoutines(group?.id ?? null);
   const { session: activeSession, isLoading: isSessionLoading, startFromRoutine, startFreeform, refresh: refreshSession } = useWorkoutSession();
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState<string | null>(null);
   const [isCopying, setIsCopying] = useState<string | null>(null);
+  const [isSavingOverload, setIsSavingOverload] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -92,6 +96,19 @@ export default function RoutinesScreen() {
       refreshSession();
     }, [refresh, refreshSession])
   );
+
+  const handleToggleProgressiveOverload = async (value: boolean) => {
+    setIsSavingOverload(true);
+    try {
+      const { error } = await supabase.rpc('set_progressive_overload_enabled', { p_enabled: value });
+      if (error) throw error;
+      await refreshProfile();
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingOverload(false);
+    }
+  };
 
   const confirmDelete = (routine: RoutineWithExercises) => {
     Alert.alert(
@@ -182,6 +199,25 @@ export default function RoutinesScreen() {
         están conectadas al check-in; por ahora se empiezan desde aquí.
       </Text>
 
+      <Card style={styles.overloadCard}>
+        <View style={styles.overloadRow}>
+          <View style={styles.flex}>
+            <Text style={styles.overloadTitle}>Progressive Overload</Text>
+            <Text style={styles.overloadHint}>
+              Si en todas las series de un ejercicio llegas al tope del rango de repeticiones con el mismo peso, la
+              próxima vez que hagas esa rutina te sugerimos subir el peso automáticamente.
+            </Text>
+          </View>
+          <Switch
+            value={profile?.progressive_overload_enabled ?? false}
+            onValueChange={handleToggleProgressiveOverload}
+            disabled={isSavingOverload || !profile}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.text}
+          />
+        </View>
+      </Card>
+
       {activeSession ? (
         <Pressable onPress={() => router.push('/profile/workout-session')} accessibilityRole="button">
           <Card style={styles.activeBanner}>
@@ -237,6 +273,10 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   hint: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  overloadCard: { gap: spacing.sm },
+  overloadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  overloadTitle: { color: colors.text, fontWeight: '700', fontSize: 15 },
+  overloadHint: { color: colors.textMuted, fontSize: 12, lineHeight: 16, marginTop: 2 },
   activeBanner: {
     flexDirection: 'row',
     alignItems: 'center',

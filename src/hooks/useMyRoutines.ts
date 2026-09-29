@@ -114,7 +114,8 @@ export function useMyRoutines(groupId: string | null) {
         notes: e.notes,
         unit: 'kg',
         sets: e.sets.map((s) => ({
-          target_reps: s.target_reps,
+          target_reps_min: s.target_reps_min,
+          target_reps_max: s.target_reps_max,
           target_weight: s.target_weight_kg,
           is_failure_target: s.is_failure_target,
         })),

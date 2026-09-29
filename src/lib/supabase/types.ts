@@ -50,6 +50,8 @@ export type Profile = {
   group_creation_credits: number;
   /** How this member types/reads weights in the routines/workout-log feature — see set_weight_unit. Storage is always canonical kg (weight_kg / target_weight_kg columns); a group comparison always shows kg regardless of the viewer's own preference, same idea as koth_claims' submitted_unit but as a standing preference rather than a per-claim choice. */
   weight_unit: 'kg' | 'lbs';
+  /** Global, off by default — see set_progressive_overload_enabled. When on, start_workout_session adds a fixed increment (2.5 kg / 5 lbs, by weight_unit above) on top of the carried-forward weight for any routine exercise whose most recent session hit the top of its rep range on every set at one shared weight (workout_session_exercises.progressive_overload_hit). */
+  progressive_overload_enabled: boolean;
   created_at: string;
 };
 
@@ -545,12 +547,13 @@ export type RoutineExercise = {
   notes: string | null;
 };
 
-/** One individually-editable planned set (the SET / weight / REPS / F table) — its own target reps/weight, and whether it's meant to be taken to failure. */
+/** One individually-editable planned set (the SET / weight / REPS / F table) — its own target reps RANGE/weight, and whether it's meant to be taken to failure. Logging a set still records one specific rep count (workout_sets.reps) — the range is only ever the plan, never what gets logged. */
 export type RoutineExerciseSet = {
   id: string;
   routine_exercise_id: string;
   set_number: number;
-  target_reps: number;
+  target_reps_min: number;
+  target_reps_max: number;
   target_weight_kg: number | null;
   is_failure_target: boolean;
 };
@@ -573,24 +576,30 @@ export type WorkoutSession = {
 
 /**
  * One planned set inside WorkoutSessionExercise.target_sets_snapshot —
- * frozen at the moment the session started. target_reps/is_failure_target
- * still come straight from routine_exercise_sets; target_weight_kg is now
- * the SUGGESTED weight — the routine's own static plan only when this same
- * routine has never been logged with a real weight for this exercise
- * before, otherwise the weight actually lifted the last time this exact
- * routine was done (recursing further back if that time's own set at this
- * position, or the whole exercise that day, has no weight — see
- * start_workout_session). previous_weight_kg/previous_reps are that same
- * lookup's raw answer, always the true historical value (never falls back
- * to the routine's plan) — what the UI's read-only "Anterior" column shows,
- * both null with no such history at all.
+ * frozen at the moment the session started. target_reps_min/target_reps_max/
+ * is_failure_target still come straight from routine_exercise_sets;
+ * target_weight_kg is now the SUGGESTED weight — the routine's own static
+ * plan only when this same routine has never been logged with a real weight
+ * for this exercise before, otherwise the weight actually lifted the last
+ * time this exact routine was done (recursing further back if that time's
+ * own set at this position, or the whole exercise that day, has no weight
+ * — see start_workout_session), plus a fixed Progressive Overload increment
+ * on top when that previous session hit the ceiling of its own rep range on
+ * every set and the member has that toggle on (is_progressive_overload_suggestion
+ * marks exactly when this happened — the UI highlights it). previous_weight_kg/
+ * previous_reps are that same lookup's raw answer, always the true
+ * historical value (never the routine's plan, never the PO increment) —
+ * what the UI's read-only "Anterior" column shows, both null with no such
+ * history at all.
  */
 export type WorkoutSessionSetTarget = {
-  target_reps: number;
+  target_reps_min: number;
+  target_reps_max: number;
   target_weight_kg: number | null;
   is_failure_target: boolean;
   previous_weight_kg: number | null;
   previous_reps: number | null;
+  is_progressive_overload_suggestion: boolean;
 };
 
 /** One exercise within a specific session — copied from routine_exercises/routine_exercise_sets at start time (or added freeform, with an empty snapshot), independent of the routine afterwards. */
@@ -605,7 +614,7 @@ export type WorkoutSessionExercise = {
   created_at: string;
 };
 
-/** One completed set — a fact ("did 8 reps at 60kg"), logged live and only editable while its session is still in_progress. */
+/** One completed set — a fact ("did 8 reps at 60kg"), editable any time via update_set/delete_set (owner only — see 0137). */
 export type WorkoutSet = {
   id: string;
   session_exercise_id: string;
@@ -618,7 +627,8 @@ export type WorkoutSet = {
 
 /** One planned set inside a RoutineExerciseArg — target_weight is in whichever unit that same create_routine/update_routine call's p_unit declares. */
 export type RoutineExerciseSetArg = {
-  target_reps: number;
+  target_reps_min: number;
+  target_reps_max: number;
   target_weight?: number | null;
   is_failure_target?: boolean;
 };
@@ -947,6 +957,7 @@ export type Database = {
       dismiss_apple_health_prompt: { Args: Record<string, never>; Returns: void };
       set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
       set_auto_checkin_other_groups: { Args: { p_enabled: boolean }; Returns: void };
+      set_progressive_overload_enabled: { Args: { p_enabled: boolean }; Returns: void };
       set_checkout_reminder_minutes: { Args: { p_minutes: number }; Returns: void };
       set_checkout_geofence_radius_meters: { Args: { p_meters: number }; Returns: void };
       admin_find_user_by_email: {

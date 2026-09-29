@@ -11,7 +11,13 @@ import { useRestTimer } from '@/hooks/useRestTimer';
 import { useWorkoutSession, type WorkoutSessionExerciseWithDetails } from '@/hooks/useWorkoutSession';
 import { usePreviousExercisePerformance } from '@/hooks/usePreviousExercisePerformance';
 import { formatSetLine } from '@/lib/domain/workoutSets';
-import { formatDuration, initialPendingRows, nextPendingRow, type PendingSetRow } from '@/lib/domain/workoutSession';
+import {
+  formatDuration,
+  initialPendingRows,
+  nextPendingRow,
+  reachedProgressiveOverloadCeiling,
+  type PendingSetRow,
+} from '@/lib/domain/workoutSession';
 import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { replaceThenCrossTabPush } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
@@ -21,6 +27,13 @@ import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supaba
 function formatPreviousSet(target: WorkoutSessionSetTarget | undefined, unit: WeightUnit): string {
   if (!target || target.previous_weight_kg === null || target.previous_reps === null) return '—';
   return formatSetLine({ reps: target.previous_reps, weightKg: target.previous_weight_kg, isWarmup: false }, unit);
+}
+
+/** "8-10" (or just "8" when the range is a single number) — shown once in the REPS header, from the first planned set, as a reminder of the goal range. Different sets can plan different ranges (a pyramid scheme); this is only a representative hint, not per-row. */
+function repRangeLabel(target: WorkoutSessionSetTarget): string {
+  return target.target_reps_min === target.target_reps_max
+    ? String(target.target_reps_max)
+    : `${target.target_reps_min}-${target.target_reps_max}`;
 }
 
 /** One exercise card: progressive-overload reference, completed sets (from the DB), and pending/editable rows (local until confirmed). */
@@ -107,6 +120,15 @@ function ExerciseCard({
     removePending(index);
   };
 
+  // Recomputed on every render (cheap, pure) — the same check
+  // finish_workout_session itself runs, just live: true right after the set
+  // that completes the pattern is confirmed, so the celebration lands at
+  // the exact moment it's earned instead of only showing up next session.
+  const hitCeiling = reachedProgressiveOverloadCeiling(
+    sessionExercise.sets.map((s) => ({ reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup })),
+    sessionExercise.target_sets_snapshot.map((t) => ({ targetRepsMax: t.target_reps_max, isFailureTarget: t.is_failure_target }))
+  );
+
   return (
     <Card style={styles.exerciseCard}>
       <View style={styles.exerciseHeader}>
@@ -130,11 +152,20 @@ function ExerciseCard({
         </Text>
       ) : null}
 
+      {hitCeiling ? (
+        <View style={styles.overloadBanner}>
+          <Ionicons name="trending-up" size={16} color={colors.success} />
+          <Text style={styles.overloadBannerText}>¡Llegaste al tope! La próxima vez subes de peso en este ejercicio.</Text>
+        </View>
+      ) : null}
+
       <View style={styles.setsTableHeader}>
         <Text style={[styles.tableHeaderCell, styles.setColumn]}>SERIE</Text>
         <Text style={[styles.tableHeaderCell, styles.previousColumn]}>ANTERIOR</Text>
         <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{unit.toUpperCase()}</Text>
-        <Text style={[styles.tableHeaderCell, styles.repsColumn]}>REPS</Text>
+        <Text style={[styles.tableHeaderCell, styles.repsColumn]}>
+          REPS{sessionExercise.target_sets_snapshot[0] ? ` (${repRangeLabel(sessionExercise.target_sets_snapshot[0])})` : ''}
+        </Text>
         <View style={styles.actionColumn} />
       </View>
 
@@ -209,7 +240,7 @@ function ExerciseCard({
             {row.previousWeight && row.previousReps ? `${row.previousWeight} ${unit} × ${row.previousReps}` : '—'}
           </Text>
           <TextInput
-            style={[styles.setInput, styles.weightColumn]}
+            style={[styles.setInput, styles.weightColumn, row.isProgressiveOverloadSuggestion && styles.setInputOverload]}
             value={row.targetWeight}
             onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
             keyboardType="decimal-pad"
@@ -464,6 +495,15 @@ const styles = StyleSheet.create({
   },
   unitPillText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   previousLine: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic' },
+  overloadBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(61, 220, 151, 0.12)',
+    borderRadius: radii.sm,
+    padding: spacing.xs,
+  },
+  overloadBannerText: { flex: 1, color: colors.success, fontSize: 12, fontWeight: '600' },
   setsTableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
   tableHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -498,4 +538,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
+  // Marks a weight suggested by Progressive Overload (the routine's history
+  // hit the top of its rep range last time, so this is last time's weight
+  // plus the fixed increment) — same emerald as overloadBanner above, so the
+  // two visually read as the same feature.
+  setInputOverload: { borderColor: colors.success, borderWidth: 2, color: colors.success },
 });

@@ -17,7 +17,8 @@ export function routineExerciseToFormRow(
     restSeconds: restSeconds > 0 ? String(restSeconds % 60) : '',
     notes: input.notes ?? '',
     sets: input.sets.map((s) => ({
-      targetReps: String(s.target_reps),
+      targetRepsMin: String(s.target_reps_min),
+      targetRepsMax: String(s.target_reps_max),
       targetWeight: s.target_weight_kg !== null ? String(kgToUnit(s.target_weight_kg, unit)) : '',
       isFailureTarget: s.is_failure_target,
     })),
@@ -30,7 +31,7 @@ export function formRowsToRoutineInput(rows: RoutineExerciseFormRow[]): {
   restSeconds: number | undefined;
   notes: string;
   unit: WeightUnit;
-  sets: { targetReps: number; targetWeight: number | undefined; isFailureTarget: boolean }[];
+  sets: { targetRepsMin: number; targetRepsMax: number; targetWeight: number | undefined; isFailureTarget: boolean }[];
 }[] {
   return rows.map((row) => {
     const totalRestSeconds = (Number(row.restMinutes) || 0) * 60 + (Number(row.restSeconds) || 0);
@@ -40,7 +41,8 @@ export function formRowsToRoutineInput(rows: RoutineExerciseFormRow[]): {
       notes: row.notes,
       unit: row.unit,
       sets: row.sets.map((s) => ({
-        targetReps: Number(s.targetReps) || 0,
+        targetRepsMin: Number(s.targetRepsMin) || 0,
+        targetRepsMax: Number(s.targetRepsMax) || 0,
         targetWeight: s.targetWeight ? Number(s.targetWeight) : undefined,
         isFailureTarget: s.isFailureTarget,
       })),
@@ -55,6 +57,11 @@ export function routineInputToArgs(exercises: RoutineExerciseInput[]): RoutineEx
     rest_seconds: e.restSeconds ?? null,
     notes: e.notes || null,
     unit: e.unit,
-    sets: e.sets.map((s) => ({ target_reps: s.targetReps, target_weight: s.targetWeight, is_failure_target: s.isFailureTarget })),
+    sets: e.sets.map((s) => ({
+      target_reps_min: s.targetRepsMin,
+      target_reps_max: s.targetRepsMax,
+      target_weight: s.targetWeight,
+      is_failure_target: s.isFailureTarget,
+    })),
   }));
 }
