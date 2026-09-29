@@ -144,7 +144,12 @@ function ExerciseCard({
         </Pressable>
       </View>
 
-      {previousSets && previousSets.length > 0 ? (
+      {/* Only for an exercise added mid-session (not part of the routine's own
+          plan) — those never get an ANTERIOR column (target_sets_snapshot is
+          empty), so this is their only historical reference. A planned
+          exercise already shows the exact same info per set in ANTERIOR
+          below; repeating it here would just be the same numbers twice. */}
+      {sessionExercise.target_sets_snapshot.length === 0 && previousSets && previousSets.length > 0 ? (
         <Text style={styles.previousLine} numberOfLines={1}>
           Última vez: {previousSets.map((s) => formatSetLine({ reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup }, unit)).join(', ')}
         </Text>
