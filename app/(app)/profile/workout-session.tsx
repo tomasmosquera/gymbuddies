@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,7 +47,7 @@ function ExerciseCard({
 }: {
   sessionExercise: WorkoutSessionExerciseWithDetails;
   sessionId: string;
-  onLogSet: (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit, restSeconds: number | null) => void;
+  onLogSet: (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit, restSeconds: number | null) => Promise<void>;
   onUpdateSet: (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => void;
   onDeleteSet: (setId: string) => void;
   defaultUnit: WeightUnit;
@@ -56,6 +56,20 @@ function ExerciseCard({
   const [pending, setPending] = useState<PendingSetRow[]>(() =>
     initialPendingRows(sessionExercise.target_sets_snapshot, sessionExercise.sets.length, defaultUnit)
   );
+  // Shown as completed the instant the member taps the checkmark, before the
+  // log_set RPC even resolves — the fix for the set briefly disappearing
+  // then popping back in "already checked" (that gap was two round trips:
+  // the RPC, then a full session refresh; see useWorkoutSession's logSet for
+  // the other half of this fix, which cut it to one). A fake id (never sent
+  // to the server) marks a row as optimistic so it can't be tapped into
+  // edit/delete before it's real; the effect below drops it once
+  // sessionExercise.sets actually contains that logged set — matched by
+  // set_number since the optimistic row never has the server's real id.
+  const [optimisticSets, setOptimisticSets] = useState<WorkoutSet[]>([]);
+  useEffect(() => {
+    setOptimisticSets((opt) => opt.filter((o) => !sessionExercise.sets.some((s) => s.set_number === o.set_number)));
+  }, [sessionExercise.sets]);
+  const allSets = sessionExercise.sets.length || optimisticSets.length ? [...sessionExercise.sets, ...optimisticSets] : sessionExercise.sets;
   // A completed (logged) set tapped back open for editing — separate from
   // `pending` (never-yet-logged rows) since this one already exists in the
   // DB and needs update_set, not log_set, when confirmed again.
@@ -123,23 +137,48 @@ function ExerciseCard({
   const addPending = () => setPending((rows) => [...rows, nextPendingRow(rows[rows.length - 1])]);
   const removePending = (index: number) => setPending((rows) => rows.filter((_, i) => i !== index));
 
-  const confirm = (index: number) => {
+  const confirm = async (index: number) => {
     const row = pending[index];
     const reps = effectivePendingReps(row);
     if (reps <= 0) {
       Alert.alert('Falta las repeticiones', 'Escribe cuántas repeticiones hiciste.');
       return;
     }
-    onLogSet(sessionExercise.id, reps, effectivePendingWeight(row), unit, sessionExercise.rest_seconds);
+    const weight = effectivePendingWeight(row);
+    const optimisticSet: WorkoutSet = {
+      id: `optimistic-${Date.now()}-${Math.random()}`,
+      session_exercise_id: sessionExercise.id,
+      set_number: allSets.length + 1,
+      reps,
+      weight_kg: weight !== undefined ? unitToKg(weight, unit) : null,
+      is_warmup: false,
+      completed_at: new Date().toISOString(),
+    };
+    setOptimisticSets((prev) => [...prev, optimisticSet]);
     removePending(index);
+    try {
+      await onLogSet(sessionExercise.id, reps, weight, unit, sessionExercise.rest_seconds);
+    } catch {
+      // The RPC already alerted the member (handleLogSet, below) — this just
+      // undoes the optimistic guess so it doesn't sit there forever "saved"
+      // when it never actually was, and gives back what they'd typed.
+      setOptimisticSets((prev) => prev.filter((s) => s.id !== optimisticSet.id));
+      setPending((rows) => {
+        const copy = [...rows];
+        copy.splice(index, 0, row);
+        return copy;
+      });
+    }
   };
 
   // Recomputed on every render (cheap, pure) — the same check
   // finish_workout_session itself runs, just live: true right after the set
   // that completes the pattern is confirmed, so the celebration lands at
   // the exact moment it's earned instead of only showing up next session.
+  // Uses allSets (real + optimistic) so it lands the instant the deciding
+  // set is tapped, not only once the server confirms it.
   const hitCeiling = reachedProgressiveOverloadCeiling(
-    sessionExercise.sets.map((s) => ({ reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup })),
+    allSets.map((s) => ({ reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup })),
     sessionExercise.target_sets_snapshot.map((t) => ({ targetRepsMax: t.target_reps_max, isFailureTarget: t.is_failure_target }))
   );
 
@@ -188,12 +227,13 @@ function ExerciseCard({
         <View style={styles.actionColumn} />
       </View>
 
-      {sessionExercise.sets.map((set, i) => {
+      {allSets.map((set, i) => {
         // A completed set's own ANTERIOR still reads from the snapshot at
         // this same position — it's "what you lifted last time", not "what
         // you're lifting today", so it doesn't change just because this set
         // itself is now logged.
         const previousText = formatPreviousSet(sessionExercise.target_sets_snapshot[i], unit);
+        const isOptimistic = set.id.startsWith('optimistic-');
         if (editingSetId === set.id) {
           return (
             <View key={set.id} style={styles.setRow}>
@@ -241,9 +281,19 @@ function ExerciseCard({
             </Text>
             <Text style={[styles.completedValue, styles.weightColumn]}>{set.weight_kg !== null ? kgToUnit(set.weight_kg, unit) : '—'}</Text>
             <Text style={[styles.completedValue, styles.repsColumn]}>{set.reps}</Text>
-            <Pressable onPress={() => startEditingSet(set)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
-              <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-            </Pressable>
+            {isOptimistic ? (
+              // Still saving — not editable/deletable yet since there's no
+              // real set id to send update_set/delete_set with. Reconciles
+              // with the real row (see the effect above) within one round
+              // trip, same icon either way so nothing visually "downgrades".
+              <View style={styles.actionColumn}>
+                <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+              </View>
+            ) : (
+              <Pressable onPress={() => startEditingSet(set)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
+                <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+              </Pressable>
+            )}
           </View>
         );
       })}
@@ -252,7 +302,7 @@ function ExerciseCard({
         <View key={index} style={styles.setRow}>
           <View style={[styles.setColumn, styles.setBadge, row.isFailureTarget && styles.setBadgeFailure]}>
             <Text style={[styles.setBadgeText, row.isFailureTarget && styles.setBadgeTextFailure]}>
-              {row.isFailureTarget ? 'F' : sessionExercise.sets.length + index + 1}
+              {row.isFailureTarget ? 'F' : allSets.length + index + 1}
             </Text>
           </View>
           <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
@@ -337,6 +387,10 @@ export default function WorkoutSessionScreen() {
       if (restSeconds) restTimer.start(restSeconds);
     } catch (err) {
       Alert.alert('No se pudo registrar la serie', err instanceof Error ? err.message : 'Intenta de nuevo');
+      // Rethrown so ExerciseCard's confirm() (its caller) knows to undo its
+      // optimistic row — this alert already told the member, so that catch
+      // block doesn't show a second one.
+      throw err;
     }
   };
 

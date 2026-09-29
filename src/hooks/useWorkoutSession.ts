@@ -81,28 +81,43 @@ export function useWorkoutSession() {
     [refresh]
   );
 
-  const logSet = useCallback(
-    async (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
-      const { error } = await supabase.rpc('log_set', {
-        p_session_exercise_id: sessionExerciseId,
-        p_reps: reps,
-        p_weight: weight ?? null,
-        p_unit: unit,
-      });
-      if (error) throw new Error(error.message);
-      await refresh();
-    },
-    [refresh]
-  );
+  // Both log_set and update_set already return the persisted row — splicing
+  // it straight into local state means the newly-completed set appears the
+  // moment this one RPC resolves, instead of waiting on a second round trip
+  // (a full session refresh()) just to re-learn something the first
+  // response already told us. See workout-session.tsx's ExerciseCard for
+  // the other half of this fix (an optimistic row shown before even this
+  // RPC resolves) — this part is what that optimistic row reconciles
+  // against once the real one arrives.
+  const logSet = useCallback(async (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
+    const { data, error } = await supabase.rpc('log_set', {
+      p_session_exercise_id: sessionExerciseId,
+      p_reps: reps,
+      p_weight: weight ?? null,
+      p_unit: unit,
+    });
+    if (error) throw new Error(error.message);
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            exercises: prev.exercises.map((se) =>
+              se.id === sessionExerciseId ? { ...se, sets: [...se.sets, data].sort((a, b) => a.set_number - b.set_number) } : se
+            ),
+          }
+        : prev
+    );
+  }, []);
 
-  const updateLoggedSet = useCallback(
-    async (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
-      const { error } = await supabase.rpc('update_set', { p_set_id: setId, p_reps: reps, p_weight: weight ?? null, p_unit: unit });
-      if (error) throw new Error(error.message);
-      await refresh();
-    },
-    [refresh]
-  );
+  const updateLoggedSet = useCallback(async (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
+    const { data, error } = await supabase.rpc('update_set', { p_set_id: setId, p_reps: reps, p_weight: weight ?? null, p_unit: unit });
+    if (error) throw new Error(error.message);
+    setSession((prev) =>
+      prev
+        ? { ...prev, exercises: prev.exercises.map((se) => ({ ...se, sets: se.sets.map((s) => (s.id === setId ? data : s)) })) }
+        : prev
+    );
+  }, []);
 
   const deleteLoggedSet = useCallback(
     async (setId: string) => {
