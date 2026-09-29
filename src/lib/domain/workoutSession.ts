@@ -1,11 +1,22 @@
 import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { WorkoutSessionSetTarget } from '@/lib/supabase/types';
 
-/** A set not yet logged — local draft state, pre-filled from the routine's plan when one exists, in `unit`. */
+/**
+ * A set not yet logged — local draft state, pre-filled from the routine's
+ * plan when one exists, in `unit`. targetWeight is the SUGGESTED weight
+ * (from this routine's own history when available — see
+ * WorkoutSessionSetTarget's doc comment — else the routine's static plan);
+ * previousWeight/previousReps are that same lookup's raw, unfallback-ed
+ * answer, for the read-only "Anterior" column ('' when there's no such
+ * history at all, same empty-string convention as every other text field
+ * here).
+ */
 export interface PendingSetRow {
   targetReps: string;
   targetWeight: string;
   isFailureTarget: boolean;
+  previousWeight: string;
+  previousReps: string;
 }
 
 function draftFromTarget(target: WorkoutSessionSetTarget | undefined, unit: WeightUnit): PendingSetRow {
@@ -13,6 +24,8 @@ function draftFromTarget(target: WorkoutSessionSetTarget | undefined, unit: Weig
     targetReps: target ? String(target.target_reps) : '',
     targetWeight: target?.target_weight_kg != null ? String(kgToUnit(target.target_weight_kg, unit)) : '',
     isFailureTarget: target?.is_failure_target ?? false,
+    previousWeight: target?.previous_weight_kg != null ? String(kgToUnit(target.previous_weight_kg, unit)) : '',
+    previousReps: target?.previous_reps != null ? String(target.previous_reps) : '',
   };
 }
 
@@ -30,7 +43,9 @@ export function initialPendingRows(snapshot: WorkoutSessionSetTarget[], loggedCo
 
 /** A fresh row for "+ Agregar serie" — copies the previous row's numbers forward (Hevy's own behavior), starting blank with no previous row to copy. */
 export function nextPendingRow(previous: PendingSetRow | undefined): PendingSetRow {
-  return previous ? { ...previous, isFailureTarget: false } : { targetReps: '', targetWeight: '', isFailureTarget: false };
+  return previous
+    ? { ...previous, isFailureTarget: false }
+    : { targetReps: '', targetWeight: '', isFailureTarget: false, previousWeight: '', previousReps: '' };
 }
 
 /** "1:45" / "0:30" — minutes:seconds, for the rest-timer countdown and the routine editor's rest field. */

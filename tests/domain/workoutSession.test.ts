@@ -1,25 +1,33 @@
 import { computeMuscleSplit, formatDuration, initialPendingRows, nextPendingRow } from '@/lib/domain/workoutSession';
 import type { WorkoutSessionSetTarget } from '@/lib/supabase/types';
 
-const target = (reps: number, kg: number | null, isFailureTarget = false): WorkoutSessionSetTarget => ({
+const target = (
+  reps: number,
+  kg: number | null,
+  isFailureTarget = false,
+  previousKg: number | null = null,
+  previousReps: number | null = null
+): WorkoutSessionSetTarget => ({
   target_reps: reps,
   target_weight_kg: kg,
   is_failure_target: isFailureTarget,
+  previous_weight_kg: previousKg,
+  previous_reps: previousReps,
 });
 
 describe('initialPendingRows', () => {
   it('shows every planned set as pending when none have been logged yet', () => {
     const rows = initialPendingRows([target(8, 60), target(8, 60), target(6, 60, true)], 0, 'kg');
     expect(rows).toEqual([
-      { targetReps: '8', targetWeight: '60', isFailureTarget: false },
-      { targetReps: '8', targetWeight: '60', isFailureTarget: false },
-      { targetReps: '6', targetWeight: '60', isFailureTarget: true },
+      { targetReps: '8', targetWeight: '60', isFailureTarget: false, previousWeight: '', previousReps: '' },
+      { targetReps: '8', targetWeight: '60', isFailureTarget: false, previousWeight: '', previousReps: '' },
+      { targetReps: '6', targetWeight: '60', isFailureTarget: true, previousWeight: '', previousReps: '' },
     ]);
   });
 
   it('drops the sets already logged (matched positionally)', () => {
     const rows = initialPendingRows([target(8, 60), target(8, 60), target(6, 60, true)], 2, 'kg');
-    expect(rows).toEqual([{ targetReps: '6', targetWeight: '60', isFailureTarget: true }]);
+    expect(rows).toEqual([{ targetReps: '6', targetWeight: '60', isFailureTarget: true, previousWeight: '', previousReps: '' }]);
   });
 
   it('is empty once every planned set is logged, and for a freeform exercise with no plan', () => {
@@ -36,16 +44,51 @@ describe('initialPendingRows', () => {
     const rows = initialPendingRows([target(12, null)], 0, 'kg');
     expect(rows[0].targetWeight).toBe('');
   });
+
+  it('passes target_weight_kg through as-is (the server already resolved it from history) while reps stay the routine goal', () => {
+    // The server already put the resolved suggestion (27, from history) in
+    // target_weight_kg — this only checks the client doesn't re-derive or
+    // second-guess it, and that target_reps (10, the routine's own goal)
+    // stays independent of previous_reps (8, what was actually done).
+    const rows = initialPendingRows([target(10, 27, false, 27, 8)], 0, 'kg');
+    expect(rows[0].targetWeight).toBe('27');
+    expect(rows[0].targetReps).toBe('10');
+    expect(rows[0].previousWeight).toBe('27');
+    expect(rows[0].previousReps).toBe('8');
+  });
+
+  it('displays previousWeight in the requested unit too', () => {
+    const rows = initialPendingRows([target(8, 100, false, 100, 8)], 0, 'lbs');
+    expect(rows[0].previousWeight).toBe('220');
+  });
+
+  it('leaves previousWeight/previousReps blank with no history at all', () => {
+    const rows = initialPendingRows([target(8, 60)], 0, 'kg');
+    expect(rows[0].previousWeight).toBe('');
+    expect(rows[0].previousReps).toBe('');
+  });
 });
 
 describe('nextPendingRow', () => {
   it('copies the previous row forward, clearing the failure flag', () => {
-    const row = nextPendingRow({ targetReps: '8', targetWeight: '60', isFailureTarget: true });
-    expect(row).toEqual({ targetReps: '8', targetWeight: '60', isFailureTarget: false });
+    const row = nextPendingRow({
+      targetReps: '8',
+      targetWeight: '60',
+      isFailureTarget: true,
+      previousWeight: '55',
+      previousReps: '8',
+    });
+    expect(row).toEqual({ targetReps: '8', targetWeight: '60', isFailureTarget: false, previousWeight: '55', previousReps: '8' });
   });
 
   it('starts blank when there is no previous row', () => {
-    expect(nextPendingRow(undefined)).toEqual({ targetReps: '', targetWeight: '', isFailureTarget: false });
+    expect(nextPendingRow(undefined)).toEqual({
+      targetReps: '',
+      targetWeight: '',
+      isFailureTarget: false,
+      previousWeight: '',
+      previousReps: '',
+    });
   });
 });
 

@@ -571,11 +571,26 @@ export type WorkoutSession = {
   created_at: string;
 };
 
-/** One planned set inside WorkoutSessionExercise.target_sets_snapshot — frozen from routine_exercise_sets at the moment the session started. */
+/**
+ * One planned set inside WorkoutSessionExercise.target_sets_snapshot —
+ * frozen at the moment the session started. target_reps/is_failure_target
+ * still come straight from routine_exercise_sets; target_weight_kg is now
+ * the SUGGESTED weight — the routine's own static plan only when this same
+ * routine has never been logged with a real weight for this exercise
+ * before, otherwise the weight actually lifted the last time this exact
+ * routine was done (recursing further back if that time's own set at this
+ * position, or the whole exercise that day, has no weight — see
+ * start_workout_session). previous_weight_kg/previous_reps are that same
+ * lookup's raw answer, always the true historical value (never falls back
+ * to the routine's plan) — what the UI's read-only "Anterior" column shows,
+ * both null with no such history at all.
+ */
 export type WorkoutSessionSetTarget = {
   target_reps: number;
   target_weight_kg: number | null;
   is_failure_target: boolean;
+  previous_weight_kg: number | null;
+  previous_reps: number | null;
 };
 
 /** One exercise within a specific session — copied from routine_exercises/routine_exercise_sets at start time (or added freeform, with an empty snapshot), independent of the routine afterwards. */

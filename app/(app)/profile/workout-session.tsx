@@ -15,7 +15,13 @@ import { formatDuration, initialPendingRows, nextPendingRow, type PendingSetRow 
 import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { replaceThenCrossTabPush } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-import type { Exercise, WorkoutSet } from '@/lib/supabase/types';
+import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
+
+/** "60 kg × 8" for the read-only ANTERIOR column — the exact weight/reps actually lifted last time this routine was done at this set position (see WorkoutSessionSetTarget's doc comment), never the routine's own plan. A dash with no such history at all (first time doing this routine, or this position/exercise has never been logged with a weight in it). */
+function formatPreviousSet(target: WorkoutSessionSetTarget | undefined, unit: WeightUnit): string {
+  if (!target || target.previous_weight_kg === null || target.previous_reps === null) return '—';
+  return formatSetLine({ reps: target.previous_reps, weightKg: target.previous_weight_kg, isWarmup: false }, unit);
+}
 
 /** One exercise card: progressive-overload reference, completed sets (from the DB), and pending/editable rows (local until confirmed). */
 function ExerciseCard({
@@ -126,18 +132,27 @@ function ExerciseCard({
 
       <View style={styles.setsTableHeader}>
         <Text style={[styles.tableHeaderCell, styles.setColumn]}>SERIE</Text>
+        <Text style={[styles.tableHeaderCell, styles.previousColumn]}>ANTERIOR</Text>
         <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{unit.toUpperCase()}</Text>
         <Text style={[styles.tableHeaderCell, styles.repsColumn]}>REPS</Text>
         <View style={styles.actionColumn} />
       </View>
 
       {sessionExercise.sets.map((set, i) => {
+        // A completed set's own ANTERIOR still reads from the snapshot at
+        // this same position — it's "what you lifted last time", not "what
+        // you're lifting today", so it doesn't change just because this set
+        // itself is now logged.
+        const previousText = formatPreviousSet(sessionExercise.target_sets_snapshot[i], unit);
         if (editingSetId === set.id) {
           return (
             <View key={set.id} style={styles.setRow}>
               <View style={[styles.setColumn, styles.setBadge]}>
                 <Text style={styles.setBadgeText}>{i + 1}</Text>
               </View>
+              <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
+                {previousText}
+              </Text>
               <TextInput
                 style={[styles.setInput, styles.weightColumn]}
                 value={editWeight}
@@ -171,6 +186,9 @@ function ExerciseCard({
             <View style={[styles.setColumn, styles.setBadge, styles.setBadgeCompleted]}>
               <Text style={styles.setBadgeTextCompleted}>{i + 1}</Text>
             </View>
+            <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
+              {previousText}
+            </Text>
             <Text style={[styles.completedValue, styles.weightColumn]}>{set.weight_kg !== null ? kgToUnit(set.weight_kg, unit) : '—'}</Text>
             <Text style={[styles.completedValue, styles.repsColumn]}>{set.reps}</Text>
             <Pressable onPress={() => startEditingSet(set)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
@@ -187,6 +205,9 @@ function ExerciseCard({
               {row.isFailureTarget ? 'F' : sessionExercise.sets.length + index + 1}
             </Text>
           </View>
+          <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
+            {row.previousWeight && row.previousReps ? `${row.previousWeight} ${unit} × ${row.previousReps}` : '—'}
+          </Text>
           <TextInput
             style={[styles.setInput, styles.weightColumn]}
             value={row.targetWeight}
@@ -448,6 +469,8 @@ const styles = StyleSheet.create({
   setRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   setRowCompleted: { opacity: 0.85 },
   setColumn: { width: 34 },
+  previousColumn: { width: 72 },
+  previousValue: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
   weightColumn: { flex: 1 },
   repsColumn: { flex: 1 },
   actionColumn: { width: 28, alignItems: 'center' },
