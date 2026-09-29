@@ -166,8 +166,12 @@ export default function RoutinesScreen() {
     );
   }
 
-  const personalRoutines = routines.filter((r) => !r.group_id);
-  const groupRoutines = routines.filter((r) => r.group_id);
+  // useMyRoutines itself orders by created_at (newest first, for its other
+  // callers) — these two lists are what actually render here, so they get
+  // their own A-Z sort instead, independent of creation order.
+  const byName = (a: RoutineWithExercises, b: RoutineWithExercises) => a.name.localeCompare(b.name, 'es');
+  const personalRoutines = routines.filter((r) => !r.group_id).sort(byName);
+  const groupRoutines = routines.filter((r) => r.group_id).sort(byName);
 
   // A personal routine copies TO the active group (if there is one); a
   // group routine always copies back to Mis Rutinas. null hides the menu
