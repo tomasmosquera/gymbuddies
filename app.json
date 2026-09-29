@@ -96,7 +96,8 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Gym Buddies puede leer las calorías activas quemadas durante tu entreno desde Apple Health, si lo conectas."
+          "NSHealthShareUsageDescription": "Gym Buddies puede leer las calorías activas quemadas durante tu entreno desde Apple Health, si lo conectas.",
+          "NSHealthUpdateUsageDescription": "Gym Buddies guarda tus entrenos completados en Apple Health (incluyendo un estimado de calorías) para que cuenten en tus anillos de actividad."
         }
       ],
       "react-native-health-connect",

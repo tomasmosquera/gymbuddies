@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { getBodyWeightFromHealth, saveWorkoutToHealth } from '@/lib/health';
+import { DEFAULT_BODY_WEIGHT_KG, estimateWorkoutCalories } from '@/lib/domain/calorieEstimate';
 import type { WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '@/lib/supabase/types';
 
@@ -21,7 +23,7 @@ export interface WorkoutSessionWithDetails extends WorkoutSession {
  * and `profile/workout-session.tsx` (the live screen itself) read it.
  */
 export function useWorkoutSession() {
-  const { session: authSession } = useAuth();
+  const { session: authSession, profile } = useAuth();
   const [session, setSession] = useState<WorkoutSessionWithDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const userId = authSession?.user.id ?? null;
@@ -124,11 +126,38 @@ export function useWorkoutSession() {
   // simply no longer racing to finish before this promise resolves.
   const finish = useCallback(
     async (sessionId: string, notes?: string) => {
-      const { error } = await supabase.rpc('finish_workout_session', { p_session_id: sessionId, p_notes: notes ?? null });
+      // Body weight, in priority order: Health/Health Connect's own record
+      // (only if the member opted into that integration — reading/writing
+      // Health data without that consent would be a real privacy overstep),
+      // else whatever they entered manually in Configuración, else a
+      // generic default. See calorieEstimate.ts for why this exists at all:
+      // without an actively-tracked workout, Health's own passive estimate
+      // badly undercounts resistance training.
+      let estimatedCalories: number | null = null;
+      if (session?.id === sessionId) {
+        const durationSeconds = (Date.now() - new Date(session.started_at).getTime()) / 1000;
+        const bodyWeightKg = profile?.apple_health_enabled
+          ? ((await getBodyWeightFromHealth()) ?? profile?.body_weight_kg ?? DEFAULT_BODY_WEIGHT_KG)
+          : (profile?.body_weight_kg ?? DEFAULT_BODY_WEIGHT_KG);
+        estimatedCalories = estimateWorkoutCalories(durationSeconds, bodyWeightKg);
+      }
+
+      const { error } = await supabase.rpc('finish_workout_session', {
+        p_session_id: sessionId,
+        p_notes: notes ?? null,
+        p_estimated_calories: estimatedCalories,
+      });
       if (error) throw new Error(error.message);
       refresh();
+
+      // Best-effort and fire-and-forget, same reasoning as refresh() above —
+      // saveWorkoutToHealth never throws on its own, this is purely so a
+      // slow native call never delays returning from finish().
+      if (profile?.apple_health_enabled && session?.id === sessionId && estimatedCalories !== null) {
+        void saveWorkoutToHealth(new Date(session.started_at), new Date(), estimatedCalories);
+      }
     },
-    [refresh]
+    [refresh, session, profile]
   );
 
   const discard = useCallback(

@@ -52,6 +52,8 @@ export type Profile = {
   weight_unit: 'kg' | 'lbs';
   /** Global, off by default — see set_progressive_overload_enabled. When on, start_workout_session adds a fixed increment (2.5 kg / 5 lbs, by weight_unit above) on top of the carried-forward weight for any routine exercise whose most recent session hit the top of its rep range on every set at one shared weight (workout_session_exercises.progressive_overload_hit). */
   progressive_overload_enabled: boolean;
+  /** Optional, in kg — see set_body_weight_kg. Only used to personalize a finished workout's calorie estimate (estimateWorkoutCalories) when Health/Health Connect's own body-mass record isn't available; never shown/compared across members. Null until the member enters it (or Health has one to read live at estimate time, which doesn't need this field at all). */
+  body_weight_kg: number | null;
   created_at: string;
 };
 
@@ -571,6 +573,8 @@ export type WorkoutSession = {
   started_at: string;
   finished_at: string | null;
   notes: string | null;
+  /** App-computed MET-based estimate (estimateWorkoutCalories), set once at finish_workout_session — null for a session still in_progress, or one finished before this feature shipped. */
+  estimated_calories: number | null;
   created_at: string;
 };
 
@@ -922,7 +926,11 @@ export type Database = {
         Returns: WorkoutSet;
       };
       delete_set: { Args: { p_set_id: string }; Returns: void };
-      finish_workout_session: { Args: { p_session_id: string; p_notes?: string | null }; Returns: WorkoutSession };
+      finish_workout_session: {
+        Args: { p_session_id: string; p_notes?: string | null; p_estimated_calories?: number | null };
+        Returns: WorkoutSession;
+      };
+      set_body_weight_kg: { Args: { p_body_weight_kg: number | null }; Returns: void };
       delete_workout_session: { Args: { p_session_id: string }; Returns: void };
       admin_adjust_balance: {
         Args: { p_group_id: string; p_user_id: string; p_amount: number; p_note?: string | null };

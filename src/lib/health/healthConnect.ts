@@ -67,10 +67,14 @@ export async function getHealthConnectSdkStatus(): Promise<number | null> {
 }
 
 /**
- * Requests read-only access to Active/Total Calories Burned. Like HealthKit's
- * read-only model, Health Connect doesn't reliably report back per-permission
- * grant/deny here either — this resolves once the system prompt (or no-op,
- * if already decided) completes, not with the user's actual answer.
+ * Requests read access to Active/Total Calories Burned/Weight, plus WRITE
+ * access to ExerciseSession/TotalCaloriesBurned — the latter is what lets
+ * saveWorkoutToHealthConnect below actually save a completed exercise
+ * session (and with it, credit the day's exercise/activity totals), not
+ * just read passive data. Like HealthKit's model, Health Connect doesn't
+ * reliably report back per-permission grant/deny here either — this
+ * resolves once the system prompt (or no-op, if already decided) completes,
+ * not with the user's actual answer.
  */
 export async function requestHealthConnectAuthorization(): Promise<boolean> {
   const hc = loadHealthConnect();
@@ -80,6 +84,9 @@ export async function requestHealthConnectAuthorization(): Promise<boolean> {
     await hc.requestPermission([
       { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
       { accessType: 'read', recordType: 'TotalCaloriesBurned' },
+      { accessType: 'read', recordType: 'Weight' },
+      { accessType: 'write', recordType: 'ExerciseSession' },
+      { accessType: 'write', recordType: 'TotalCaloriesBurned' },
     ]);
     return true;
   } catch {
@@ -128,4 +135,62 @@ export async function getActiveEnergyBurnedKcalHealthConnect(start: Date, end: D
 
   const best = Math.max(activeKcal, totalKcal);
   return best > 0 ? best : null;
+}
+
+/** The most recent Weight record on file, in kg, or null if unavailable/denied/never recorded. Never throws. */
+export async function getBodyWeightKgHealthConnect(): Promise<number | null> {
+  const hc = loadHealthConnect();
+  if (!hc) return null;
+
+  await requestHealthConnectAuthorization();
+
+  try {
+    const result = await hc.readRecords('Weight', {
+      timeRangeFilter: { operator: 'before', endTime: new Date().toISOString() },
+      ascendingOrder: false,
+      pageSize: 1,
+    });
+    return result.records[0]?.weight.inKilograms ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Saves a completed exercise session to Health Connect — a STRENGTH_TRAINING
+ * session spanning [start, end], plus a matching TotalCaloriesBurned record
+ * for kcal (Health Connect models a session's energy as a separate record,
+ * not a field on the session itself, unlike HealthKit's HKWorkout). This is
+ * what lets a routine session count toward the day's exercise/activity
+ * totals even without a wearable actively tracking anything. Best-effort —
+ * never throws, and a false return (denied permission, no Health Connect,
+ * or an insert error) is silently swallowed by the caller; this is a
+ * nice-to-have record, not something any check-in/penalty logic depends on.
+ */
+export async function saveWorkoutToHealthConnect(start: Date, end: Date, kcal: number): Promise<boolean> {
+  const hc = loadHealthConnect();
+  if (!hc) return false;
+
+  await requestHealthConnectAuthorization();
+
+  try {
+    await hc.insertRecords([
+      {
+        recordType: 'ExerciseSession',
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        exerciseType: hc.ExerciseType.STRENGTH_TRAINING,
+        title: 'Gym Buddies',
+      },
+      {
+        recordType: 'TotalCaloriesBurned',
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        energy: { value: kcal, unit: 'kilocalories' },
+      },
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }

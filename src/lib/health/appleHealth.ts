@@ -3,6 +3,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 const ACTIVE_ENERGY_BURNED = 'HKQuantityTypeIdentifierActiveEnergyBurned' as const;
 const WORKOUT_TYPE = 'HKWorkoutTypeIdentifier' as const;
+const BODY_MASS = 'HKQuantityTypeIdentifierBodyMass' as const;
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
@@ -38,9 +39,12 @@ export async function isAppleHealthAvailable(): Promise<boolean> {
 }
 
 /**
- * Requests read-only access to Active Energy Burned. Apple's read-only
- * authorization model never reports back whether the user granted or denied
- * it (only write/share permissions are introspectable) — this promise
+ * Requests read access to Active Energy Burned/body mass, plus WRITE
+ * (share) access to Workout/Active Energy Burned — the latter is what lets
+ * saveWorkoutToAppleHealth below actually save a completed workout (and
+ * with it, credit the day's Exercise ring), not just read passive data.
+ * Apple's authorization model never reports back per-permission grant/deny
+ * for read types (only share/write ones are introspectable) — this promise
  * resolves once the system prompt (or no-op, if already decided) completes,
  * not with the user's actual answer.
  */
@@ -48,7 +52,10 @@ export async function requestAppleHealthAuthorization(): Promise<boolean> {
   const healthKit = loadHealthKit();
   if (!healthKit) return false;
   try {
-    return await healthKit.requestAuthorization({ toRead: [ACTIVE_ENERGY_BURNED, WORKOUT_TYPE] });
+    return await healthKit.requestAuthorization({
+      toRead: [ACTIVE_ENERGY_BURNED, WORKOUT_TYPE, BODY_MASS],
+      toShare: [ACTIVE_ENERGY_BURNED, WORKOUT_TYPE],
+    });
   } catch {
     return false;
   }
@@ -105,4 +112,47 @@ export async function getActiveEnergyBurnedKcal(start: Date, end: Date): Promise
 
   const best = Math.max(workoutKcal, sampleKcal);
   return best > 0 ? best : null;
+}
+
+/** The most recent Body Mass sample on file, in kg (HealthKit's own default unit for this type), or null if unavailable/denied/never recorded. Never throws. */
+export async function getBodyWeightKg(): Promise<number | null> {
+  const healthKit = loadHealthKit();
+  if (!healthKit) return null;
+
+  await requestAppleHealthAuthorization();
+
+  try {
+    const sample = await healthKit.getMostRecentQuantitySample(BODY_MASS, 'kg');
+    return sample?.quantity ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Saves a completed workout to Apple Health — a Traditional Strength
+ * Training entry spanning [start, end] with kcal as its total energy
+ * burned. This is what lets a routine session close the day's Exercise
+ * ring even without an Apple Watch actively tracking anything: Health
+ * credits a saved HKWorkout's duration the same way whether it was tracked
+ * live or logged after the fact (the same mechanism as manually adding a
+ * past workout in the Fitness app). Best-effort — never throws, and a
+ * false return (denied permission, no HealthKit, or a save error) is
+ * silently swallowed by the caller; this is a nice-to-have record, not
+ * something any check-in/penalty logic depends on.
+ */
+export async function saveWorkoutToAppleHealth(start: Date, end: Date, kcal: number): Promise<boolean> {
+  const healthKit = loadHealthKit();
+  if (!healthKit) return false;
+
+  await requestAppleHealthAuthorization();
+
+  try {
+    await healthKit.saveWorkoutSample(healthKit.WorkoutActivityType.traditionalStrengthTraining, [], start, end, {
+      energyBurned: kcal,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

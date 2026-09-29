@@ -213,6 +213,12 @@ export default function WorkoutDetailScreen() {
           <Text style={styles.statLabel}>Sets</Text>
           <Text style={styles.statValue}>{totalSets}</Text>
         </View>
+        {detail.estimatedCalories !== null ? (
+          <View style={styles.statBlock}>
+            <Text style={styles.statLabel}>Calorías</Text>
+            <Text style={styles.statValue}>{detail.estimatedCalories}</Text>
+          </View>
+        ) : null}
       </Card>
 
       {muscleSplit.length > 0 ? (

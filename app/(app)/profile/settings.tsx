@@ -1,14 +1,16 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { TextField } from '@/components/ui/TextField';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { requestHealthAuthorization } from '@/lib/health';
 import { getHealthConnectSdkStatus, HEALTH_CONNECT_SDK_STATUS } from '@/lib/health/healthConnect';
+import { kgToUnit, sanitizeWeightInput, unitToKg } from '@/lib/domain/workoutUnits';
 import { supabase } from '@/lib/supabase/client';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -30,6 +32,17 @@ export default function SettingsScreen() {
   const [isSavingAutoCheckin, setIsSavingAutoCheckin] = useState(false);
   const [isSavingWeightUnit, setIsSavingWeightUnit] = useState(false);
   const [healthConnectSdkStatus, setHealthConnectSdkStatus] = useState<number | null>(null);
+  const [bodyWeightText, setBodyWeightText] = useState('');
+  const [isSavingBodyWeight, setIsSavingBodyWeight] = useState(false);
+
+  // Synced from the profile whenever it (or the display unit) changes —
+  // local state in between so the field behaves like every other weight
+  // input in the app (raw text while editing, never flashing NaN).
+  useEffect(() => {
+    if (profile?.body_weight_kg != null) {
+      setBodyWeightText(String(kgToUnit(profile.body_weight_kg, profile.weight_unit)));
+    }
+  }, [profile?.body_weight_kg, profile?.weight_unit]);
 
   const refreshPermissionStatus = useCallback(async () => {
     const fg = await Location.getForegroundPermissionsAsync();
@@ -111,6 +124,20 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSaveBodyWeight = async () => {
+    setIsSavingBodyWeight(true);
+    try {
+      const kg = bodyWeightText ? unitToKg(Number(bodyWeightText), profile.weight_unit) : null;
+      const { error } = await supabase.rpc('set_body_weight_kg', { p_body_weight_kg: kg });
+      if (error) throw error;
+      await refreshProfile();
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingBodyWeight(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Card style={styles.section}>
@@ -130,6 +157,25 @@ export default function SettingsScreen() {
           onChange={handleSetWeightUnit}
         />
         {isSavingWeightUnit ? <ActivityIndicator color={colors.primary} /> : null}
+      </Card>
+
+      <Card style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Peso corporal</Text>
+        </View>
+        <Text style={styles.hint}>
+          Opcional — se usa para estimar mejor las calorías que quemas en tus entrenos. Si conectas Apple
+          Health/Health Connect abajo, se usa tu peso registrado ahí en su lugar cuando esté disponible; si no,
+          se usa este dato.
+        </Text>
+        <TextField
+          label={`Peso (${profile.weight_unit})`}
+          value={bodyWeightText}
+          onChangeText={(t) => setBodyWeightText(sanitizeWeightInput(t))}
+          keyboardType="decimal-pad"
+          placeholder="70"
+        />
+        <Button label="Guardar" variant="secondary" onPress={handleSaveBodyWeight} loading={isSavingBodyWeight} />
       </Card>
 
       <Card style={styles.section}>

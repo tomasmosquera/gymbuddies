@@ -25,6 +25,8 @@ export interface WorkoutSessionDetail {
   label: string;
   startedAt: string;
   finishedAt: string | null;
+  /** App-computed MET-based estimate (calorieEstimate.ts), set once at finish_workout_session — null for a session finished before this feature shipped. */
+  estimatedCalories: number | null;
   exercises: WorkoutDetailExercise[];
 }
 
@@ -33,6 +35,7 @@ interface SessionRow {
   routine_name_snapshot: string | null;
   started_at: string;
   finished_at: string | null;
+  estimated_calories: number | null;
   exercises: {
     id: string;
     exercise_id: string;
@@ -61,7 +64,7 @@ export function useWorkoutSessionDetail(sessionId: string) {
     const { data } = await supabase
       .from('workout_sessions')
       .select(
-        'id, routine_name_snapshot, started_at, finished_at, exercises:workout_session_exercises(id, exercise_id, sort_order, exercise:exercises(name, gif_url, muscle_group), sets:workout_sets(id, set_number, reps, weight_kg, is_warmup))'
+        'id, routine_name_snapshot, started_at, finished_at, estimated_calories, exercises:workout_session_exercises(id, exercise_id, sort_order, exercise:exercises(name, gif_url, muscle_group), sets:workout_sets(id, set_number, reps, weight_kg, is_warmup))'
       )
       .eq('id', sessionId)
       .maybeSingle();
@@ -76,6 +79,7 @@ export function useWorkoutSessionDetail(sessionId: string) {
       label: row.routine_name_snapshot ?? 'Entreno libre',
       startedAt: row.started_at,
       finishedAt: row.finished_at,
+      estimatedCalories: row.estimated_calories,
       // An exercise added to the session but never actually logged (0 sets —
       // e.g. added mid-workout, then abandoned) has nothing to show and was
       // never really "done" — excluded here so no consumer of this hook has
