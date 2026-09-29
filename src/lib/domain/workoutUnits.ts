@@ -30,6 +30,21 @@ export function unitToKg(value: number, unit: WeightUnit): number {
 }
 
 /**
+ * kgToUnit, formatted to ALWAYS show exactly one decimal place ("22.0", not
+ * just "22") — for read-only display text (the "Anterior" column, "Última
+ * vez", past-session history). kgToUnit's own rounding is already correct
+ * (nearest 0.1); this only fixes the STRING conversion afterward, where a
+ * whole-number result like 22.0 silently becomes "22" (JS drops a trailing
+ * .0), which read as an inconsistent number of decimals next to sibling
+ * rows that do show one. Editable inputs keep the plain kgToUnit number
+ * instead — forcing a trailing zero on a field still being typed into would
+ * be intrusive mid-keystroke.
+ */
+export function formatWeightUnit(kg: number, unit: WeightUnit): string {
+  return kgToUnit(kg, unit).toFixed(1);
+}
+
+/**
  * Strips a weight TextInput down to digits + one decimal separator, and
  * normalizes a comma to a period — es-* keyboards' `decimal-pad` often types
  * "," for the decimal point (Spanish locale convention), and a naive

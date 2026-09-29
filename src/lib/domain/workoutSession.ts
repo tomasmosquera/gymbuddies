@@ -1,4 +1,4 @@
-import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { formatWeightUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { WorkoutSessionSetTarget } from '@/lib/supabase/types';
 
 /**
@@ -43,9 +43,9 @@ function draftFromTarget(target: WorkoutSessionSetTarget | undefined, unit: Weig
     targetRepsMax: target ? String(target.target_reps_max) : '',
     suggestedReps: target ? String(target.target_reps_max) : '',
     targetWeight: '',
-    suggestedWeight: target?.target_weight_kg != null ? String(kgToUnit(target.target_weight_kg, unit)) : '',
+    suggestedWeight: target?.target_weight_kg != null ? formatWeightUnit(target.target_weight_kg, unit) : '',
     isFailureTarget: target?.is_failure_target ?? false,
-    previousWeight: target?.previous_weight_kg != null ? String(kgToUnit(target.previous_weight_kg, unit)) : '',
+    previousWeight: target?.previous_weight_kg != null ? formatWeightUnit(target.previous_weight_kg, unit) : '',
     previousReps: target?.previous_reps != null ? String(target.previous_reps) : '',
     isProgressiveOverloadSuggestion: target?.is_progressive_overload_suggestion ?? false,
   };

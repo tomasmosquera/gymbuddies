@@ -37,7 +37,7 @@ describe('initialPendingRows', () => {
         targetRepsMax: '10',
         suggestedReps: '10',
         targetWeight: '',
-        suggestedWeight: '60',
+        suggestedWeight: '60.0',
         isFailureTarget: false,
         previousWeight: '',
         previousReps: '',
@@ -49,7 +49,7 @@ describe('initialPendingRows', () => {
         targetRepsMax: '10',
         suggestedReps: '10',
         targetWeight: '',
-        suggestedWeight: '60',
+        suggestedWeight: '60.0',
         isFailureTarget: false,
         previousWeight: '',
         previousReps: '',
@@ -61,7 +61,7 @@ describe('initialPendingRows', () => {
         targetRepsMax: '6',
         suggestedReps: '6',
         targetWeight: '',
-        suggestedWeight: '60',
+        suggestedWeight: '60.0',
         isFailureTarget: true,
         previousWeight: '',
         previousReps: '',
@@ -106,9 +106,9 @@ describe('initialPendingRows', () => {
     // second-guess it, and that suggestedReps (10, the routine's own
     // ceiling) stays independent of previous_reps (8, what was actually done).
     const rows = initialPendingRows([target(8, 10, 27, false, 27, 8)], 0, 'kg');
-    expect(rows[0].suggestedWeight).toBe('27');
+    expect(rows[0].suggestedWeight).toBe('27.0');
     expect(rows[0].suggestedReps).toBe('10');
-    expect(rows[0].previousWeight).toBe('27');
+    expect(rows[0].previousWeight).toBe('27.0');
     expect(rows[0].previousReps).toBe('8');
   });
 

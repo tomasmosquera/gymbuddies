@@ -1,5 +1,5 @@
 import type { WeightUnit } from './workoutUnits';
-import { kgToUnit } from './workoutUnits';
+import { formatWeightUnit } from './workoutUnits';
 
 /** One logged set, trimmed to what the pure helpers below actually need. */
 export interface SetLike {
@@ -47,7 +47,7 @@ export function totalVolumeKg<T extends SetLike>(sets: T[]): number {
 /** "60 kg × 8" / "8 reps" (bodyweight) — one set, formatted for display in `unit`. */
 export function formatSetLine(set: SetLike, unit: WeightUnit): string {
   if (set.weightKg === null) return `${set.reps} rep${set.reps === 1 ? '' : 's'}`;
-  return `${kgToUnit(set.weightKg, unit)} ${unit} × ${set.reps}`;
+  return `${formatWeightUnit(set.weightKg, unit)} ${unit} × ${set.reps}`;
 }
 
 /** How today's best set compares to a previous one, for a progressive-overload nudge — null with nothing to compare against. */

@@ -20,7 +20,7 @@ import {
   reachedProgressiveOverloadCeiling,
   type PendingSetRow,
 } from '@/lib/domain/workoutSession';
-import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { formatWeightUnit, kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { replaceThenCrossTabPush } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
@@ -97,8 +97,23 @@ function ExerciseCard({
 
   const toggleUnit = () => {
     const nextUnit: WeightUnit = unit === 'kg' ? 'lbs' : 'kg';
-    const convert = (w: string) => (w ? String(kgToUnit(unitToKg(Number(w) || 0, unit), nextUnit)) : w);
-    setPending((rows) => rows.map((r) => ({ ...r, targetWeight: convert(r.targetWeight), suggestedWeight: convert(r.suggestedWeight) })));
+    // targetWeight is what the member actually typed — kept a raw editable
+    // number, no forced decimal. suggestedWeight/previousWeight are
+    // read-only display text (a placeholder, and the ANTERIOR column) —
+    // previousWeight used to just sit there unconverted when the unit
+    // toggled (only the "kg"/"lbs" label next to it changed), which read as
+    // the same number in a different unit; both now go through
+    // formatWeightUnit like every other read-only weight in the app.
+    const convertTyped = (w: string) => (w ? String(kgToUnit(unitToKg(Number(w) || 0, unit), nextUnit)) : w);
+    const convertDisplay = (w: string) => (w ? formatWeightUnit(unitToKg(Number(w) || 0, unit), nextUnit) : w);
+    setPending((rows) =>
+      rows.map((r) => ({
+        ...r,
+        targetWeight: convertTyped(r.targetWeight),
+        suggestedWeight: convertDisplay(r.suggestedWeight),
+        previousWeight: convertDisplay(r.previousWeight),
+      }))
+    );
     setUnit(nextUnit);
   };
 
