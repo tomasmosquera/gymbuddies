@@ -424,8 +424,10 @@ export default function WorkoutSessionScreen() {
 
       {restTimer.isActive ? (
         <View style={styles.restBar}>
-          <Ionicons name="timer" size={18} color={colors.primaryText} />
-          <Text style={styles.restBarText}>Descansando: {formatDuration(restTimer.remainingSeconds!)}</Text>
+          <Ionicons name="timer" size={32} color={colors.primaryText} />
+          <Text style={styles.restBarText}>
+            Descansando: <Text style={styles.restBarTime}>{formatDuration(restTimer.remainingSeconds!)}</Text>
+          </Text>
           <Pressable onPress={restTimer.skip} accessibilityRole="button">
             <Text style={styles.restBarSkip}>Saltar</Text>
           </Pressable>
@@ -475,16 +477,24 @@ const styles = StyleSheet.create({
   headerActionText: { color: colors.primary, fontWeight: '700', fontSize: 15 },
   headerActionTextSecondary: { color: colors.textMuted, fontWeight: '600', fontSize: 15 },
   title: { ...typography.heading, fontSize: 16, color: colors.text, flex: 1, textAlign: 'center' },
+  // 3x the original footprint (mostly driven by paddingVertical going from
+  // spacing.sm to spacing.lg, plus the now much larger text/icon) and the
+  // countdown itself bigger than its own "Descansando:" label — both by
+  // explicit request, so the remaining time reads easily from across the
+  // room instead of needing to be held up close.
   restBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    flexWrap: 'wrap',
+    gap: spacing.md,
     backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  restBarText: { color: colors.primaryText, fontWeight: '700' },
-  restBarSkip: { color: colors.primaryText, fontWeight: '700', textDecorationLine: 'underline' },
+  restBarText: { color: colors.primaryText, fontWeight: '700', fontSize: 28 },
+  restBarTime: { color: colors.primaryText, fontWeight: '800', fontSize: 40 },
+  restBarSkip: { color: colors.primaryText, fontWeight: '700', textDecorationLine: 'underline', fontSize: 18 },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md },
   exerciseCard: { gap: spacing.sm },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
