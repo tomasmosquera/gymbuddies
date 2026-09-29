@@ -42,7 +42,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # eas-cli's own dependencies (@oclif/plugin-autocomplete) require
+          # Node >=22 — installing it under Node 20 fails outright
+          # ("incompatible module"). 22 matches what already works locally.
+          node-version: 22
 
       - run: npm ci
 
