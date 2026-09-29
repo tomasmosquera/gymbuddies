@@ -12,6 +12,8 @@ import { useWorkoutSession, type WorkoutSessionExerciseWithDetails } from '@/hoo
 import { usePreviousExercisePerformance } from '@/hooks/usePreviousExercisePerformance';
 import { formatSetLine } from '@/lib/domain/workoutSets';
 import {
+  effectivePendingReps,
+  effectivePendingWeight,
   formatDuration,
   initialPendingRows,
   nextPendingRow,
@@ -95,9 +97,8 @@ function ExerciseCard({
 
   const toggleUnit = () => {
     const nextUnit: WeightUnit = unit === 'kg' ? 'lbs' : 'kg';
-    setPending((rows) =>
-      rows.map((r) => (r.targetWeight ? { ...r, targetWeight: String(kgToUnit(unitToKg(Number(r.targetWeight) || 0, unit), nextUnit)) } : r))
-    );
+    const convert = (w: string) => (w ? String(kgToUnit(unitToKg(Number(w) || 0, unit), nextUnit)) : w);
+    setPending((rows) => rows.map((r) => ({ ...r, targetWeight: convert(r.targetWeight), suggestedWeight: convert(r.suggestedWeight) })));
     setUnit(nextUnit);
   };
 
@@ -109,12 +110,12 @@ function ExerciseCard({
 
   const confirm = (index: number) => {
     const row = pending[index];
-    const reps = Number(row.targetReps) || 0;
+    const reps = effectivePendingReps(row);
     if (reps <= 0) {
       Alert.alert('Falta las repeticiones', 'Escribe cuántas repeticiones hiciste.');
       return;
     }
-    onLogSet(sessionExercise.id, reps, row.targetWeight ? Number(row.targetWeight) : undefined, unit, sessionExercise.rest_seconds);
+    onLogSet(sessionExercise.id, reps, effectivePendingWeight(row), unit, sessionExercise.rest_seconds);
     removePending(index);
   };
 
@@ -247,15 +248,15 @@ function ExerciseCard({
             value={row.targetWeight}
             onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
             keyboardType="decimal-pad"
-            placeholder="—"
-            placeholderTextColor={colors.textMuted}
+            placeholder={row.suggestedWeight || '—'}
+            placeholderTextColor={row.isProgressiveOverloadSuggestion ? colors.success : colors.textMuted}
           />
           <TextInput
             style={[styles.setInput, styles.repsColumn]}
             value={row.targetReps}
             onChangeText={(t) => updatePending(index, { targetReps: t.replace(/[^0-9]/g, '') })}
             keyboardType="numeric"
-            placeholder="0"
+            placeholder={row.suggestedReps || '0'}
             placeholderTextColor={colors.textMuted}
           />
           <Pressable onPress={() => confirm(index)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
@@ -544,6 +545,9 @@ const styles = StyleSheet.create({
   // Marks a weight suggested by Progressive Overload (the routine's history
   // hit the top of its rep range last time, so this is last time's weight
   // plus the fixed increment) — same emerald as overloadBanner above, so the
-  // two visually read as the same feature.
-  setInputOverload: { borderColor: colors.success, borderWidth: 2, color: colors.success },
+  // two visually read as the same feature. Border only — the placeholder
+  // text itself is colored separately (placeholderTextColor, inline) since
+  // `color` here would tint whatever the member actually types too, which
+  // should look like a normal typed number, not still "the PO suggestion".
+  setInputOverload: { borderColor: colors.success, borderWidth: 2 },
 });

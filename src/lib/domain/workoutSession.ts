@@ -2,24 +2,34 @@ import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { WorkoutSessionSetTarget } from '@/lib/supabase/types';
 
 /**
- * A set not yet logged — local draft state, pre-filled from the routine's
- * plan when one exists, in `unit`. targetReps pre-fills to the routine's
- * own range CEILING (targetRepsMin/targetRepsMax are the full range, for
- * display) — reps stay the routine's own goal always, by explicit product
- * decision, never history's, unlike targetWeight below. targetWeight is the
- * SUGGESTED weight (from this routine's own history when available — see
- * WorkoutSessionSetTarget's doc comment — else the routine's static plan,
- * plus a Progressive Overload increment when isProgressiveOverloadSuggestion
- * is true, which the UI highlights); previousWeight/previousReps are that
- * same lookup's raw, unfallback-ed, un-incremented answer, for the
- * read-only "Anterior" column ('' when there's no such history at all, same
- * empty-string convention as every other text field here).
+ * A set not yet logged — local draft state, in `unit`. targetReps/targetWeight
+ * are ONLY what the member has actually typed (both start '') — the routine's
+ * plan/history/Progressive-Overload suggestion never sits in these as real
+ * text; it's suggestedReps/suggestedWeight instead, shown as a PLACEHOLDER
+ * (so tapping the field to type a different number doesn't require deleting
+ * anything first). effectivePendingReps/effectivePendingWeight below resolve
+ * "what actually gets logged" — the typed value if there is one, else the
+ * suggestion, exactly as if the member had typed it themselves.
+ *
+ * suggestedReps is always the routine's own range CEILING (targetRepsMin/
+ * targetRepsMax are the full range, for the header display) — reps stay the
+ * routine's own goal always, by explicit product decision, never history's,
+ * unlike suggestedWeight. suggestedWeight is the SUGGESTED weight (from this
+ * routine's own history when available — see WorkoutSessionSetTarget's doc
+ * comment — else the routine's static plan, plus a Progressive Overload
+ * increment when isProgressiveOverloadSuggestion is true, which the UI
+ * highlights); previousWeight/previousReps are that same lookup's raw,
+ * unfallback-ed, un-incremented answer, for the read-only "Anterior" column
+ * ('' when there's no such history at all, same empty-string convention as
+ * every other text field here).
  */
 export interface PendingSetRow {
   targetReps: string;
   targetRepsMin: string;
   targetRepsMax: string;
+  suggestedReps: string;
   targetWeight: string;
+  suggestedWeight: string;
   isFailureTarget: boolean;
   previousWeight: string;
   previousReps: string;
@@ -28,10 +38,12 @@ export interface PendingSetRow {
 
 function draftFromTarget(target: WorkoutSessionSetTarget | undefined, unit: WeightUnit): PendingSetRow {
   return {
-    targetReps: target ? String(target.target_reps_max) : '',
+    targetReps: '',
     targetRepsMin: target ? String(target.target_reps_min) : '',
     targetRepsMax: target ? String(target.target_reps_max) : '',
-    targetWeight: target?.target_weight_kg != null ? String(kgToUnit(target.target_weight_kg, unit)) : '',
+    suggestedReps: target ? String(target.target_reps_max) : '',
+    targetWeight: '',
+    suggestedWeight: target?.target_weight_kg != null ? String(kgToUnit(target.target_weight_kg, unit)) : '',
     isFailureTarget: target?.is_failure_target ?? false,
     previousWeight: target?.previous_weight_kg != null ? String(kgToUnit(target.previous_weight_kg, unit)) : '',
     previousReps: target?.previous_reps != null ? String(target.previous_reps) : '',
@@ -51,20 +63,41 @@ export function initialPendingRows(snapshot: WorkoutSessionSetTarget[], loggedCo
   return snapshot.slice(loggedCount).map((t) => draftFromTarget(t, unit));
 }
 
-/** A fresh row for "+ Agregar serie" — copies the previous row's numbers forward (Hevy's own behavior), starting blank with no previous row to copy. */
+/** What actually gets logged if this row is confirmed right now — whatever the member typed, falling back to the suggested placeholder they never touched. 0 with neither (an empty freeform row). */
+export function effectivePendingReps(row: PendingSetRow): number {
+  return Number(row.targetReps || row.suggestedReps) || 0;
+}
+
+/** Same idea as effectivePendingReps, for weight — undefined (bodyweight) with neither typed nor suggested. */
+export function effectivePendingWeight(row: PendingSetRow): number | undefined {
+  const raw = row.targetWeight || row.suggestedWeight;
+  return raw ? Number(raw) : undefined;
+}
+
+/** A fresh row for "+ Agregar serie" — the previous row's EFFECTIVE numbers (typed, or its own suggestion if they never touched it) become this new row's suggestion, so it still reads as "same as above" (Hevy's own behavior) even though nothing is real text yet. Starting blank with no previous row to copy. */
 export function nextPendingRow(previous: PendingSetRow | undefined): PendingSetRow {
-  return previous
-    ? { ...previous, isFailureTarget: false }
-    : {
-        targetReps: '',
-        targetRepsMin: '',
-        targetRepsMax: '',
-        targetWeight: '',
-        isFailureTarget: false,
-        previousWeight: '',
-        previousReps: '',
-        isProgressiveOverloadSuggestion: false,
-      };
+  if (!previous) {
+    return {
+      targetReps: '',
+      targetRepsMin: '',
+      targetRepsMax: '',
+      suggestedReps: '',
+      targetWeight: '',
+      suggestedWeight: '',
+      isFailureTarget: false,
+      previousWeight: '',
+      previousReps: '',
+      isProgressiveOverloadSuggestion: false,
+    };
+  }
+  return {
+    ...previous,
+    targetReps: '',
+    suggestedReps: previous.targetReps || previous.suggestedReps,
+    targetWeight: '',
+    suggestedWeight: previous.targetWeight || previous.suggestedWeight,
+    isFailureTarget: false,
+  };
 }
 
 export interface ProgressiveOverloadLoggedSet {

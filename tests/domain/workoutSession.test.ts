@@ -1,5 +1,7 @@
 import {
   computeMuscleSplit,
+  effectivePendingReps,
+  effectivePendingWeight,
   formatDuration,
   initialPendingRows,
   nextPendingRow,
@@ -26,34 +28,40 @@ const target = (
 });
 
 describe('initialPendingRows', () => {
-  it('shows every planned set as pending when none have been logged yet', () => {
+  it('shows every planned set as pending when none have been logged yet, with nothing typed', () => {
     const rows = initialPendingRows([target(8, 10, 60), target(8, 10, 60), target(4, 6, 60, true)], 0, 'kg');
     expect(rows).toEqual([
       {
-        targetReps: '10',
+        targetReps: '',
         targetRepsMin: '8',
         targetRepsMax: '10',
-        targetWeight: '60',
+        suggestedReps: '10',
+        targetWeight: '',
+        suggestedWeight: '60',
         isFailureTarget: false,
         previousWeight: '',
         previousReps: '',
         isProgressiveOverloadSuggestion: false,
       },
       {
-        targetReps: '10',
+        targetReps: '',
         targetRepsMin: '8',
         targetRepsMax: '10',
-        targetWeight: '60',
+        suggestedReps: '10',
+        targetWeight: '',
+        suggestedWeight: '60',
         isFailureTarget: false,
         previousWeight: '',
         previousReps: '',
         isProgressiveOverloadSuggestion: false,
       },
       {
-        targetReps: '6',
+        targetReps: '',
         targetRepsMin: '4',
         targetRepsMax: '6',
-        targetWeight: '60',
+        suggestedReps: '6',
+        targetWeight: '',
+        suggestedWeight: '60',
         isFailureTarget: true,
         previousWeight: '',
         previousReps: '',
@@ -65,7 +73,7 @@ describe('initialPendingRows', () => {
   it('drops the sets already logged (matched positionally)', () => {
     const rows = initialPendingRows([target(8, 10, 60), target(8, 10, 60), target(4, 6, 60, true)], 2, 'kg');
     expect(rows).toHaveLength(1);
-    expect(rows[0].targetReps).toBe('6');
+    expect(rows[0].suggestedReps).toBe('6');
     expect(rows[0].isFailureTarget).toBe(true);
   });
 
@@ -74,31 +82,32 @@ describe('initialPendingRows', () => {
     expect(initialPendingRows([], 0, 'kg')).toEqual([]);
   });
 
-  it('pre-fills reps to the range CEILING, not the minimum', () => {
+  it('suggests reps at the range CEILING, not the minimum — nothing typed either way', () => {
     const rows = initialPendingRows([target(8, 12, 60)], 0, 'kg');
-    expect(rows[0].targetReps).toBe('12');
+    expect(rows[0].targetReps).toBe('');
+    expect(rows[0].suggestedReps).toBe('12');
     expect(rows[0].targetRepsMin).toBe('8');
     expect(rows[0].targetRepsMax).toBe('12');
   });
 
-  it('displays the target weight in the requested unit', () => {
+  it('displays the suggested weight in the requested unit', () => {
     const rows = initialPendingRows([target(8, 10, 100)], 0, 'lbs');
-    expect(rows[0].targetWeight).toBe('220');
+    expect(rows[0].suggestedWeight).toBe('220');
   });
 
-  it('leaves the weight blank for a bodyweight target', () => {
+  it('leaves the suggested weight blank for a bodyweight target', () => {
     const rows = initialPendingRows([target(10, 12, null)], 0, 'kg');
-    expect(rows[0].targetWeight).toBe('');
+    expect(rows[0].suggestedWeight).toBe('');
   });
 
-  it('passes target_weight_kg through as-is (the server already resolved it from history) while reps stay the routine goal', () => {
+  it('passes target_weight_kg through as-is (the server already resolved it from history) as the suggestion, while reps stay the routine goal', () => {
     // The server already put the resolved suggestion (27, from history) in
     // target_weight_kg — this only checks the client doesn't re-derive or
-    // second-guess it, and that target_reps (10, the routine's own ceiling)
-    // stays independent of previous_reps (8, what was actually done).
+    // second-guess it, and that suggestedReps (10, the routine's own
+    // ceiling) stays independent of previous_reps (8, what was actually done).
     const rows = initialPendingRows([target(8, 10, 27, false, 27, 8)], 0, 'kg');
-    expect(rows[0].targetWeight).toBe('27');
-    expect(rows[0].targetReps).toBe('10');
+    expect(rows[0].suggestedWeight).toBe('27');
+    expect(rows[0].suggestedReps).toBe('10');
     expect(rows[0].previousWeight).toBe('27');
     expect(rows[0].previousReps).toBe('8');
   });
@@ -120,23 +129,58 @@ describe('initialPendingRows', () => {
   });
 });
 
+describe('effectivePendingReps / effectivePendingWeight', () => {
+  const row = (overrides: Partial<import('@/lib/domain/workoutSession').PendingSetRow> = {}) => ({
+    targetReps: '',
+    targetRepsMin: '',
+    targetRepsMax: '',
+    suggestedReps: '',
+    targetWeight: '',
+    suggestedWeight: '',
+    isFailureTarget: false,
+    previousWeight: '',
+    previousReps: '',
+    isProgressiveOverloadSuggestion: false,
+    ...overrides,
+  });
+
+  it('uses the suggestion untouched', () => {
+    expect(effectivePendingReps(row({ suggestedReps: '10' }))).toBe(10);
+    expect(effectivePendingWeight(row({ suggestedWeight: '60' }))).toBe(60);
+  });
+
+  it('prefers whatever the member actually typed over the suggestion', () => {
+    expect(effectivePendingReps(row({ targetReps: '8', suggestedReps: '10' }))).toBe(8);
+    expect(effectivePendingWeight(row({ targetWeight: '65', suggestedWeight: '60' }))).toBe(65);
+  });
+
+  it('is 0 / undefined with neither typed nor suggested (a blank freeform row)', () => {
+    expect(effectivePendingReps(row())).toBe(0);
+    expect(effectivePendingWeight(row())).toBeUndefined();
+  });
+});
+
 describe('nextPendingRow', () => {
-  it('copies the previous row forward, clearing the failure flag', () => {
+  it('carries the previous row\'s EFFECTIVE numbers forward as the new suggestion, clearing the failure flag', () => {
     const row = nextPendingRow({
       targetReps: '8',
       targetRepsMin: '8',
       targetRepsMax: '10',
-      targetWeight: '60',
+      suggestedReps: '10',
+      targetWeight: '65',
+      suggestedWeight: '60',
       isFailureTarget: true,
       previousWeight: '55',
       previousReps: '8',
       isProgressiveOverloadSuggestion: true,
     });
     expect(row).toEqual({
-      targetReps: '8',
+      targetReps: '',
       targetRepsMin: '8',
       targetRepsMax: '10',
-      targetWeight: '60',
+      suggestedReps: '8', // what was actually typed last time, not the old suggestion
+      targetWeight: '',
+      suggestedWeight: '65',
       isFailureTarget: false,
       previousWeight: '55',
       previousReps: '8',
@@ -144,12 +188,31 @@ describe('nextPendingRow', () => {
     });
   });
 
+  it('falls back to the previous row\'s own suggestion when nothing was typed there either', () => {
+    const row = nextPendingRow({
+      targetReps: '',
+      targetRepsMin: '8',
+      targetRepsMax: '10',
+      suggestedReps: '10',
+      targetWeight: '',
+      suggestedWeight: '60',
+      isFailureTarget: false,
+      previousWeight: '',
+      previousReps: '',
+      isProgressiveOverloadSuggestion: false,
+    });
+    expect(row.suggestedReps).toBe('10');
+    expect(row.suggestedWeight).toBe('60');
+  });
+
   it('starts blank when there is no previous row', () => {
     expect(nextPendingRow(undefined)).toEqual({
       targetReps: '',
       targetRepsMin: '',
       targetRepsMax: '',
+      suggestedReps: '',
       targetWeight: '',
+      suggestedWeight: '',
       isFailureTarget: false,
       previousWeight: '',
       previousReps: '',
