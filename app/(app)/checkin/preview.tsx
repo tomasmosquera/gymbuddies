@@ -220,7 +220,11 @@ export default function CheckinPreviewScreen() {
   const capturedAtDate = new Date(draft.capturedAt);
   const overlayText = formatZonedDateTime12h(capturedAtDate, group.timezone);
   const coordsText = `${draft.latitude.toFixed(5)}, ${draft.longitude.toFixed(5)}`;
-  const otherActiveGroups = memberships.filter((m) => m.group_id !== group.id);
+  // admin_only excluded — that status never checks in (see
+  // useWorkoutLiveActivity's own comment on this exact distinction), so it
+  // has no business appearing as a fan-out destination; pending_deposit
+  // stays in, since it fully participates in check-ins same as active.
+  const otherActiveGroups = memberships.filter((m) => m.group_id !== group.id && m.status !== 'admin_only');
 
   const handleRetake = () => {
     setDraft(null);
