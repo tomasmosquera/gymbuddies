@@ -21,8 +21,6 @@ export interface GroupPeriodStat {
   failedDays: number;
   consistencyPercent: number | null;
   gbScore: number | null;
-  /** 1-based, ties share a rank — null with no decided days yet this period. */
-  rank: number | null;
   activeMemberCount: number;
 }
 
@@ -31,11 +29,26 @@ export interface MyGroupSummary {
   /** null only for a pending_deposit membership — there's no attendance to rank yet. */
   statsByPeriod: Record<SummaryPeriod, GroupPeriodStat> | null;
   /**
-   * League mode only, from the exact same source as the money shown on
-   * Inicio (liquidate_group_now) — same value regardless of which period
-   * tab is selected, since it reflects the whole cycle, not a period-scoped
-   * total. Null for Cooperativo/Mixto, or while there's no ranking signal
-   * yet (cycle just started, nobody's checked in since).
+   * The member's ONE standing in this group — deliberately independent of
+   * whichever period tab (Semana/Mes/Acumulado) is selected, unlike the
+   * completed/failed/consistency/GB numbers in statsByPeriod above, which
+   * are meant to vary by period. Switching tabs must never change this
+   * number: it's "how positions are actually decided in this group", not a
+   * period-scoped snapshot.
+   *
+   * League/Mixto: the real cycle place, same source as the money shown on
+   * Inicio (liquidate_group_now) — falls back to the all-time GB Score rank
+   * only while there's no ranking signal yet (cycle just started, nobody's
+   * checked in since). Cooperativo: always the all-time GB Score rank, since
+   * there's no cycle to anchor to. Null only with no attendance data at all.
+   */
+  position: { rank: number; of: number } | null;
+  /**
+   * League mode only, from the exact same source as `position` above
+   * (liquidate_group_now) — kept as its own field because the UI shows it
+   * as a separate "Liga: puesto X · $Y" line alongside the generic
+   * "Posición #X" one. Null for Cooperativo/Mixto, or while there's no
+   * ranking signal yet.
    */
   leaguePlace: number | null;
   leagueAmount: number | null;
@@ -47,7 +60,7 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
   const group = membership.group;
 
   if (membership.status === 'pending_deposit') {
-    return { membership, statsByPeriod: null, leaguePlace: null, leagueAmount: null, level: null };
+    return { membership, statsByPeriod: null, position: null, leaguePlace: null, leagueAmount: null, level: null };
   }
 
   const timezone = group.timezone;
@@ -70,17 +83,31 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
       const tally = tallyAttendance(statuses);
       return { userId: m.userId, completedCount: tally.completedCount, failedCount: tally.failedCount };
     });
-    const rankByUserId = rankMembersByConsistency(perMember);
     const mine = perMember.find((m) => m.userId === userId);
     return {
       completedDays: mine?.completedCount ?? 0,
       failedDays: mine?.failedCount ?? 0,
       consistencyPercent: mine ? consistencyPercent(mine.completedCount, mine.failedCount) : null,
       gbScore: mine ? gbScore(mine.completedCount, mine.failedCount) : null,
-      rank: mine ? (rankByUserId.get(userId) ?? null) : null,
       activeMemberCount: perMember.length,
     };
   };
+
+  // position: see the doc comment on MyGroupSummary.position — always
+  // all-time attendance, never a period tab, with League/Mixto's real cycle
+  // place taking over once there's a ranking signal for it.
+  const allTimePerMember = records.map((m) => {
+    const tally = tallyAttendance(m.days.map((d) => d.status));
+    return { userId: m.userId, completedCount: tally.completedCount, failedCount: tally.failedCount };
+  });
+  const allTimeRankByUserId = rankMembersByConsistency(allTimePerMember);
+  const cyclePlace = leaguePreview.placeByUserId[userId] ?? null;
+  const position =
+    cyclePlace !== null
+      ? { rank: cyclePlace, of: allTimePerMember.length }
+      : allTimeRankByUserId.has(userId)
+        ? { rank: allTimeRankByUserId.get(userId)!, of: allTimePerMember.length }
+        : null;
 
   return {
     membership,
@@ -89,7 +116,8 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
       month: buildStat(monthStart, todayString),
       total: buildStat('0001-01-01', todayString),
     },
-    leaguePlace: group.payout_mode === 'league' ? (leaguePreview.placeByUserId[userId] ?? null) : null,
+    position,
+    leaguePlace: group.payout_mode === 'league' ? cyclePlace : null,
     leagueAmount: group.payout_mode === 'league' ? (leaguePreview.amountByUserId[userId] ?? 0) : null,
     level: myLevel,
   };

@@ -37,7 +37,7 @@ function GroupSummaryCard({
   initials: string;
   onPress: () => void;
 }) {
-  const { membership, statsByPeriod, leaguePlace, leagueAmount, level } = summary;
+  const { membership, statsByPeriod, position, leaguePlace, leagueAmount, level } = summary;
   const group = membership.group;
   const stat = statsByPeriod?.[period] ?? null;
 
@@ -63,8 +63,10 @@ function GroupSummaryCard({
 
         {stat ? (
           <>
+            {/* Fixed regardless of which period tab is selected below — see
+                MyGroupSummary.position's doc comment for why. */}
             <Text style={styles.positionText}>
-              {stat.rank !== null ? `Posición #${stat.rank} de ${stat.activeMemberCount}` : 'Sin datos todavía'}
+              {position ? `Posición #${position.rank} de ${position.of}` : 'Sin datos todavía'}
             </Text>
             <View style={styles.statsRow}>
               <View style={styles.statTile}>
