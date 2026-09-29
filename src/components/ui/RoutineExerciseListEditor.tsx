@@ -68,6 +68,15 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
   };
   const removeExercise = (index: number) => onChange(values.filter((_, i) => i !== index));
   const addExercise = (exercise: Exercise) => onChange([...values, exerciseToFormRow(exercise, defaultUnit)]);
+  // Swaps with the adjacent row — a no-op past either end (the up arrow at
+  // index 0, the down arrow at the last index) rather than wrapping around.
+  const moveExercise = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= values.length) return;
+    const next = [...values];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
 
   // Converts every already-typed weight so the physical target stays the same when the unit changes —
   // switching a card from kg to lbs re-displays the same weight, it never reinterprets the digits.
@@ -119,6 +128,30 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
             >
               <Text style={styles.unitPillText}>{exercise.unit.toUpperCase()}</Text>
             </Pressable>
+            <View style={styles.reorderColumn}>
+              <Pressable
+                onPress={() => moveExercise(exerciseIndex, -1)}
+                disabled={exerciseIndex === 0}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Subir ejercicio"
+              >
+                <Ionicons name="chevron-up" size={18} color={exerciseIndex === 0 ? colors.border : colors.textMuted} />
+              </Pressable>
+              <Pressable
+                onPress={() => moveExercise(exerciseIndex, 1)}
+                disabled={exerciseIndex === values.length - 1}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Bajar ejercicio"
+              >
+                <Ionicons
+                  name="chevron-down"
+                  size={18}
+                  color={exerciseIndex === values.length - 1 ? colors.border : colors.textMuted}
+                />
+              </Pressable>
+            </View>
             <Pressable onPress={() => removeExercise(exerciseIndex)} hitSlop={8} accessibilityRole="button">
               <Ionicons name="close-circle" size={22} color={colors.textMuted} />
             </Pressable>
@@ -234,6 +267,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   unitPillText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  reorderColumn: { alignItems: 'center', justifyContent: 'center', gap: 2 },
   notesInput: {
     backgroundColor: colors.surface,
     borderWidth: 1,

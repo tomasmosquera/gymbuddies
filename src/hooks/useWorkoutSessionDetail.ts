@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { MuscleGroup } from '@/lib/supabase/types';
+import type { WeightUnit } from '@/lib/domain/workoutUnits';
 
 export interface WorkoutDetailSet {
   id: string;
@@ -41,7 +42,16 @@ interface SessionRow {
   }[];
 }
 
-/** Perfil → Rutinas → Historial de entrenos → un entreno: full per-exercise, per-set detail for one already-completed session (read-only — unlike workout-session.tsx, which is for one still in_progress). */
+/**
+ * Perfil → Rutinas → Historial de entrenos → un entreno: full per-exercise,
+ * per-set detail for one already-completed session. updateSet/deleteSet let
+ * a mistyped weight/reps be fixed after the fact — update_set/delete_set no
+ * longer require the session to still be in_progress (that guard existed
+ * for weekly_evaluation_results-style ledger immutability, which doesn't
+ * apply here: workout_sets never feeds a financial number, only personal
+ * tracking/records, so there's no fairness reason to freeze it at
+ * finish_workout_session).
+ */
 export function useWorkoutSessionDetail(sessionId: string) {
   const [detail, setDetail] = useState<WorkoutSessionDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,5 +101,23 @@ export function useWorkoutSessionDetail(sessionId: string) {
     refresh();
   }, [refresh]);
 
-  return { detail, isLoading, refresh };
+  const updateSet = useCallback(
+    async (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
+      const { error } = await supabase.rpc('update_set', { p_set_id: setId, p_reps: reps, p_weight: weight ?? null, p_unit: unit });
+      if (error) throw new Error(error.message);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const deleteSet = useCallback(
+    async (setId: string) => {
+      const { error } = await supabase.rpc('delete_set', { p_set_id: setId });
+      if (error) throw new Error(error.message);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  return { detail, isLoading, refresh, updateSet, deleteSet };
 }
