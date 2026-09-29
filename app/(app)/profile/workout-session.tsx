@@ -439,13 +439,16 @@ export default function WorkoutSessionScreen() {
 
       {restTimer.isActive ? (
         <View style={styles.restBar}>
-          <Ionicons name="timer" size={32} color={colors.primaryText} />
-          <Text style={styles.restBarText}>
-            Descansando: <Text style={styles.restBarTime}>{formatDuration(restTimer.remainingSeconds!)}</Text>
-          </Text>
-          <Pressable onPress={restTimer.skip} accessibilityRole="button">
-            <Text style={styles.restBarSkip}>Saltar</Text>
-          </Pressable>
+          <View style={styles.restBarLeft}>
+            <Ionicons name="timer" size={32} color={colors.primaryText} />
+            <View>
+              <Text style={styles.restBarText}>Descansando</Text>
+              <Pressable onPress={restTimer.skip} accessibilityRole="button">
+                <Text style={styles.restBarSkip}>Saltar</Text>
+              </Pressable>
+            </View>
+          </View>
+          <Text style={styles.restBarTime}>{formatDuration(restTimer.remainingSeconds!)}</Text>
         </View>
       ) : null}
 
@@ -500,13 +503,13 @@ const styles = StyleSheet.create({
   restBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: spacing.md,
     backgroundColor: colors.primary,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.md,
   },
+  restBarLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   restBarText: { color: colors.primaryText, fontWeight: '700', fontSize: 28 },
   restBarTime: { color: colors.primaryText, fontWeight: '800', fontSize: 40 },
   restBarSkip: { color: colors.primaryText, fontWeight: '700', textDecorationLine: 'underline', fontSize: 18 },
