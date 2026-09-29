@@ -67,7 +67,7 @@ const VIEW_MODE_OPTIONS: { key: ViewMode; label: string }[] = [
  * still work as before — this just blocks opening a NEW one while the
  * feature is paused. Flip back to true to re-enable.
  */
-const PHOTO_CHALLENGE_VOTES_ENABLED = false;
+const PHOTO_CHALLENGE_VOTES_ENABLED = true;
 
 const WEEKDAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const WEEKDAY_SHORT_NAMES = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
