@@ -16,7 +16,16 @@ import {
   type HeadToHeadRow,
 } from '@/lib/domain/groupExerciseComparison';
 import type { ExerciseChartMetric } from '@/lib/domain/exerciseRecords';
-import { computeMuscleBucketCounts, computeMuscleDistributionRadar, MUSCLE_BUCKET_LABELS, MUSCLE_BUCKET_ORDER } from '@/lib/domain/muscleDistribution';
+import {
+  computeMuscleAbsoluteRadar,
+  computeMuscleBucketCounts,
+  computeMuscleGroupPercentileRadar,
+  computeMuscleShareRadar,
+  MUSCLE_BUCKET_LABELS,
+  MUSCLE_BUCKET_ORDER,
+  type MuscleBucket,
+  type MuscleRadarScaleMode,
+} from '@/lib/domain/muscleDistribution';
 import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 import { RadarChart } from '@/components/stats/RadarChart';
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from '@/constants/muscleGroups';
@@ -163,50 +172,92 @@ function CompareTab({
   );
 }
 
+const ZERO_MUSCLE_COUNTS: Record<MuscleBucket, number> = MUSCLE_BUCKET_ORDER.reduce(
+  (acc, b) => ({ ...acc, [b]: 0 }),
+  {} as Record<MuscleBucket, number>
+);
+
+const SCALE_MODE_OPTIONS: { key: MuscleRadarScaleMode; label: string }[] = [
+  { key: 'ownShare', label: '% propio' },
+  { key: 'groupPercentile', label: 'Vs. grupo' },
+  { key: 'absolute', label: 'Absoluta' },
+];
+
+/** Every roster member's own muscle bucket counts, keyed by user_id — computeMuscleGroupPercentileRadar's "everyone else" pool for the Vs. grupo scale mode. */
+function bucketCountsByUser(history: GroupExerciseHistory[], roster: { userId: string }[]): Map<string, Record<MuscleBucket, number>> {
+  const result = new Map<string, Record<MuscleBucket, number>>();
+  for (const m of roster) {
+    const entries = history.map((ex) => ({
+      muscleGroup: ex.muscleGroup,
+      secondaryMuscles: ex.secondaryMuscles,
+      sets: ex.entriesByUser.get(m.userId)?.flatMap((e) => e.sets) ?? [],
+    }));
+    result.set(m.userId, computeMuscleBucketCounts(entries));
+  }
+  return result;
+}
+
 /**
  * "Qué tanto ejercitan las distintas partes del cuerpo" — Tú vs el compañero
  * elegido, un eje por grupo muscular (ver muscleDistribution.ts), primary y
  * secondary combinados. Sits above the metric pills (Comparar tab) since
  * it's independent of which weight metric is selected — this is about
- * training FREQUENCY (real set counts), not how heavy anything was.
+ * training FREQUENCY (real set counts), not how heavy anything was. Three
+ * switchable scale modes (own pill row, independent of the tab/metric
+ * pills) since "who trains X more, head to head" (the original, one-mode
+ * version) made whoever trains more of a muscle always hit the edge, which
+ * didn't read well — see muscleDistribution.ts for what each mode means.
  */
 function MuscleRadarSection({
   history,
+  roster,
   myUserId,
   comparedUserId,
   comparedName,
 }: {
   history: GroupExerciseHistory[];
+  roster: { userId: string; fullName: string }[];
   myUserId: string | null;
   comparedUserId: string | null;
   comparedName: string | null;
 }) {
+  const [scaleMode, setScaleMode] = useState<MuscleRadarScaleMode>('ownShare');
+
   if (!myUserId || !comparedUserId || !comparedName) return null;
 
-  const myCounts = computeMuscleBucketCounts(
-    history.map((ex) => ({ muscleGroup: ex.muscleGroup, secondaryMuscles: ex.secondaryMuscles, sets: ex.entriesByUser.get(myUserId)?.flatMap((e) => e.sets) ?? [] }))
-  );
-  const theirCounts = computeMuscleBucketCounts(
-    history.map((ex) => ({
-      muscleGroup: ex.muscleGroup,
-      secondaryMuscles: ex.secondaryMuscles,
-      sets: ex.entriesByUser.get(comparedUserId)?.flatMap((e) => e.sets) ?? [],
-    }))
-  );
-  const radar = computeMuscleDistributionRadar(myCounts, theirCounts);
+  const countsByUser = bucketCountsByUser(history, roster);
+  const myCounts = countsByUser.get(myUserId) ?? ZERO_MUSCLE_COUNTS;
+  const theirCounts = countsByUser.get(comparedUserId) ?? ZERO_MUSCLE_COUNTS;
 
   if (Object.values(myCounts).every((v) => v === 0) && Object.values(theirCounts).every((v) => v === 0)) {
     return <Text style={styles.compareHint}>Todavía nadie ha registrado ejercicios para ver la distribución muscular.</Text>;
   }
 
+  let mineValues: number[];
+  let theirValues: number[];
+  if (scaleMode === 'ownShare') {
+    mineValues = computeMuscleShareRadar(myCounts);
+    theirValues = computeMuscleShareRadar(theirCounts);
+  } else if (scaleMode === 'groupPercentile') {
+    const others = Array.from(countsByUser.entries()).filter(([id]) => id !== myUserId).map(([, c]) => c);
+    const othersForThem = Array.from(countsByUser.entries()).filter(([id]) => id !== comparedUserId).map(([, c]) => c);
+    mineValues = computeMuscleGroupPercentileRadar(myCounts, others);
+    theirValues = computeMuscleGroupPercentileRadar(theirCounts, othersForThem);
+  } else {
+    const sharedMax = Math.max(...MUSCLE_BUCKET_ORDER.map((b) => Math.max(myCounts[b], theirCounts[b])));
+    mineValues = computeMuscleAbsoluteRadar(myCounts, sharedMax);
+    theirValues = computeMuscleAbsoluteRadar(theirCounts, sharedMax);
+  }
+
   return (
     <Card style={styles.radarCard}>
       <Text style={styles.radarTitle}>Distribución muscular</Text>
+      <SegmentedControl options={SCALE_MODE_OPTIONS} value={scaleMode} onChange={setScaleMode} />
       <RadarChart
         axes={MUSCLE_BUCKET_ORDER.map((b) => MUSCLE_BUCKET_LABELS[b])}
         series={[
-          { label: 'Tú', color: colors.primary, values: radar.mine },
-          { label: comparedName, color: colors.warning, values: radar.theirs },
+          { label: 'Tú', color: colors.primary, values: mineValues },
+          { label: comparedName, color: colors.warning, values: theirValues },
         ]}
         size={260}
       />
@@ -267,6 +318,7 @@ export default function ComparativasScreen() {
         {tab === 'comparar' ? (
           <MuscleRadarSection
             history={history}
+            roster={roster}
             myUserId={myUserId}
             comparedUserId={effectiveComparedUserId}
             comparedName={comparedTeammate?.fullName ?? null}

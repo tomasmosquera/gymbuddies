@@ -1,3 +1,4 @@
+import { percentileAmong } from './personalStatsV2';
 import type { MuscleGroup } from '@/lib/supabase/types';
 
 /** The 7 axes requested for the Comparar tab's muscle radar — coarser than MuscleGroup (quads/hamstrings/glutes/calves all fold into "legs"), and deliberately leaves out forearms/cardio/full_body: those weren't asked for, and forcing them into the nearest bucket would misrepresent what's actually being trained. */
@@ -112,29 +113,45 @@ export function computeMuscleBucketCounts(entries: readonly MuscleDistributionEn
   return counts;
 }
 
-export interface MuscleDistributionRadar {
-  mine: number[];
-  theirs: number[];
+export type MuscleRadarScaleMode = 'ownShare' | 'groupPercentile' | 'absolute';
+
+/**
+ * Mode A — "% de tu propio entreno": each axis is this person's OWN share of
+ * their OWN total training (always sums to 100 across the 7 axes). Shows
+ * internal balance/emphasis — which muscles THIS person prioritizes —
+ * completely independent of how much the other person trains in total, so
+ * two people with wildly different total volume can still show similarly
+ * "balanced" (or similarly lopsided) shapes.
+ */
+export function computeMuscleShareRadar(counts: Record<MuscleBucket, number>): number[] {
+  const total = MUSCLE_BUCKET_ORDER.reduce((sum, b) => sum + counts[b], 0);
+  if (total === 0) return MUSCLE_BUCKET_ORDER.map(() => 0);
+  return MUSCLE_BUCKET_ORDER.map((b) => (counts[b] / total) * 100);
 }
 
 /**
- * Head-to-head radar values (0-100 each, aligned with MUSCLE_BUCKET_ORDER) —
- * each axis independently scaled to whichever of the two people trains that
- * muscle more, so the "winner" of an axis always reaches the outer edge and
- * the other shows their share relative to that. Deliberately NOT a group
- * percentile (unlike the old member-comparison radar) — Comparar is already
- * a two-person view, there's no group-wide pool to rank against here.
+ * Mode B — "Percentil contra el grupo": each axis ranks this person against
+ * everyone ELSE on the roster (not just the one compared teammate) for that
+ * muscle — the same "beat N% of the group" idea personalStatsV2's
+ * percentileAmong already provides, just per muscle bucket instead of per
+ * overall stat. `others` is every other roster member's counts (the caller
+ * excludes the person being ranked). A group of 1 (nobody else) returns 50
+ * for every axis — neither strong nor weak, undefined.
  */
-export function computeMuscleDistributionRadar(
-  mine: Record<MuscleBucket, number>,
-  theirs: Record<MuscleBucket, number>
-): MuscleDistributionRadar {
-  const mineValues: number[] = [];
-  const theirsValues: number[] = [];
-  for (const bucket of MUSCLE_BUCKET_ORDER) {
-    const max = Math.max(mine[bucket], theirs[bucket], 1);
-    mineValues.push((mine[bucket] / max) * 100);
-    theirsValues.push((theirs[bucket] / max) * 100);
-  }
-  return { mine: mineValues, theirs: theirsValues };
+export function computeMuscleGroupPercentileRadar(mine: Record<MuscleBucket, number>, others: Record<MuscleBucket, number>[]): number[] {
+  if (others.length === 0) return MUSCLE_BUCKET_ORDER.map(() => 50);
+  return MUSCLE_BUCKET_ORDER.map((b) => percentileAmong(mine[b], others.map((o) => o[b])) ?? 50);
+}
+
+/**
+ * Mode C — "Escala absoluta compartida": every axis shares ONE scale
+ * (`sharedMax`, e.g. the largest count seen across both compared people's
+ * every bucket) instead of each axis independently stretching to fill the
+ * chart — a real imbalance (legs trained far more than arms, say) shows up
+ * as genuinely different-sized spokes instead of every axis looking equally
+ * "full".
+ */
+export function computeMuscleAbsoluteRadar(counts: Record<MuscleBucket, number>, sharedMax: number): number[] {
+  const max = Math.max(sharedMax, 1);
+  return MUSCLE_BUCKET_ORDER.map((b) => (counts[b] / max) * 100);
 }

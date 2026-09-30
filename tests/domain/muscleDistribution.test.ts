@@ -1,9 +1,14 @@
 import {
+  computeMuscleAbsoluteRadar,
   computeMuscleBucketCounts,
-  computeMuscleDistributionRadar,
+  computeMuscleGroupPercentileRadar,
+  computeMuscleShareRadar,
   MUSCLE_BUCKET_ORDER,
+  type MuscleBucket,
   type MuscleDistributionEntry,
 } from '@/lib/domain/muscleDistribution';
+
+const zeroCounts = (): Record<MuscleBucket, number> => MUSCLE_BUCKET_ORDER.reduce((acc, b) => ({ ...acc, [b]: 0 }), {} as Record<MuscleBucket, number>);
 
 const realSets = (n: number) => Array.from({ length: n }, () => ({ isWarmup: false }));
 
@@ -66,30 +71,63 @@ describe('computeMuscleBucketCounts', () => {
   });
 });
 
-describe('computeMuscleDistributionRadar', () => {
-  const zero = MUSCLE_BUCKET_ORDER.reduce((acc, b) => ({ ...acc, [b]: 0 }), {} as Record<string, number>);
-
-  it('gives whoever trains a muscle more the full 100 on that axis', () => {
-    const mine = { ...zero, chest: 10 } as any;
-    const theirs = { ...zero, chest: 5 } as any;
-    const { mine: mineValues, theirs: theirsValues } = computeMuscleDistributionRadar(mine, theirs);
-    const i = MUSCLE_BUCKET_ORDER.indexOf('chest');
-    expect(mineValues[i]).toBe(100);
-    expect(theirsValues[i]).toBe(50);
+describe('computeMuscleShareRadar', () => {
+  it('sums to 100 across axes for someone with real data', () => {
+    const counts = { ...zeroCounts(), back: 10, legs: 30 };
+    const values = computeMuscleShareRadar(counts);
+    expect(values.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 5);
   });
 
-  it('is 0/0 on an axis neither has ever trained, not NaN', () => {
-    const { mine: mineValues, theirs: theirsValues } = computeMuscleDistributionRadar(zero as any, zero as any);
-    expect(mineValues.every((v) => v === 0)).toBe(true);
-    expect(theirsValues.every((v) => v === 0)).toBe(true);
+  it('gives each axis its own share of the total, not a per-axis max', () => {
+    const counts = { ...zeroCounts(), back: 25, legs: 75 };
+    const values = computeMuscleShareRadar(counts);
+    expect(values[MUSCLE_BUCKET_ORDER.indexOf('back')]).toBeCloseTo(25, 5);
+    expect(values[MUSCLE_BUCKET_ORDER.indexOf('legs')]).toBeCloseTo(75, 5);
   });
 
-  it('is symmetric — swapping who is "mine" vs "theirs" just swaps the output', () => {
-    const a = { ...zero, back: 8, legs: 2 } as any;
-    const b = { ...zero, back: 4, legs: 6 } as any;
-    const ab = computeMuscleDistributionRadar(a, b);
-    const ba = computeMuscleDistributionRadar(b, a);
-    expect(ab.mine).toEqual(ba.theirs);
-    expect(ab.theirs).toEqual(ba.mine);
+  it('is all zeros, not NaN, for someone with no training logged at all', () => {
+    const values = computeMuscleShareRadar(zeroCounts());
+    expect(values.every((v) => v === 0)).toBe(true);
+  });
+
+  it('is independent of how much anyone else trains — same shape regardless of scale', () => {
+    const small = { ...zeroCounts(), back: 2, legs: 6 };
+    const big = { ...zeroCounts(), back: 20, legs: 60 };
+    expect(computeMuscleShareRadar(small)).toEqual(computeMuscleShareRadar(big));
+  });
+});
+
+describe('computeMuscleGroupPercentileRadar', () => {
+  it('is 100 on an axis where this person beats everyone else on the roster', () => {
+    const mine = { ...zeroCounts(), chest: 20 };
+    const others = [{ ...zeroCounts(), chest: 5 }, { ...zeroCounts(), chest: 10 }];
+    const values = computeMuscleGroupPercentileRadar(mine, others);
+    expect(values[MUSCLE_BUCKET_ORDER.indexOf('chest')]).toBe(100);
+  });
+
+  it('is 0 on an axis where this person trains the least of the roster', () => {
+    const mine = { ...zeroCounts(), chest: 1 };
+    const others = [{ ...zeroCounts(), chest: 5 }, { ...zeroCounts(), chest: 10 }];
+    const values = computeMuscleGroupPercentileRadar(mine, others);
+    expect(values[MUSCLE_BUCKET_ORDER.indexOf('chest')]).toBe(0);
+  });
+
+  it('defaults every axis to 50 with nobody else on the roster to rank against', () => {
+    const values = computeMuscleGroupPercentileRadar(zeroCounts(), []);
+    expect(values).toEqual(MUSCLE_BUCKET_ORDER.map(() => 50));
+  });
+});
+
+describe('computeMuscleAbsoluteRadar', () => {
+  it('scales every axis against the SAME shared max, not its own per-axis max', () => {
+    const counts = { ...zeroCounts(), back: 10, legs: 40 };
+    const values = computeMuscleAbsoluteRadar(counts, 40);
+    expect(values[MUSCLE_BUCKET_ORDER.indexOf('back')]).toBe(25); // 10/40, not 10/10
+    expect(values[MUSCLE_BUCKET_ORDER.indexOf('legs')]).toBe(100); // 40/40
+  });
+
+  it('never divides by zero when sharedMax is 0', () => {
+    const values = computeMuscleAbsoluteRadar(zeroCounts(), 0);
+    expect(values.every((v) => v === 0)).toBe(true);
   });
 });
