@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRestTimer } from '@/hooks/useRestTimer';
 import { useWorkoutSession, type WorkoutSessionExerciseWithDetails } from '@/hooks/useWorkoutSession';
 import { usePreviousExercisePerformance } from '@/hooks/usePreviousExercisePerformance';
+import { friendlyErrorMessage } from '@/lib/domain/errorMessages';
 import { formatSetLine } from '@/lib/domain/workoutSets';
 import {
   effectivePendingReps,
@@ -387,7 +388,7 @@ export default function WorkoutSessionScreen() {
       await logSet(sessionExerciseId, reps, weight, setUnit);
       if (restSeconds) restTimer.start(restSeconds);
     } catch (err) {
-      Alert.alert('No se pudo registrar la serie', err instanceof Error ? err.message : 'Intenta de nuevo');
+      Alert.alert('No se pudo registrar la serie', friendlyErrorMessage(err));
       // Rethrown so ExerciseCard's confirm() (its caller) knows to undo its
       // optimistic row — this alert already told the member, so that catch
       // block doesn't show a second one.
@@ -399,7 +400,7 @@ export default function WorkoutSessionScreen() {
     try {
       await updateLoggedSet(setId, reps, weight, setUnit);
     } catch (err) {
-      Alert.alert('No se pudo actualizar la serie', err instanceof Error ? err.message : 'Intenta de nuevo');
+      Alert.alert('No se pudo actualizar la serie', friendlyErrorMessage(err));
     }
   };
 
@@ -408,7 +409,7 @@ export default function WorkoutSessionScreen() {
     try {
       await addExercise(session.id, exercise.id);
     } catch (err) {
-      Alert.alert('No se pudo agregar el ejercicio', err instanceof Error ? err.message : 'Intenta de nuevo');
+      Alert.alert('No se pudo agregar el ejercicio', friendlyErrorMessage(err));
     }
   };
 
@@ -432,7 +433,7 @@ export default function WorkoutSessionScreen() {
             // might be left dangling, not a substitute for this.
             replaceThenCrossTabPush('/profile', '/checkin');
           } catch (err) {
-            Alert.alert('No se pudo terminar', err instanceof Error ? err.message : 'Intenta de nuevo');
+            Alert.alert('No se pudo terminar', friendlyErrorMessage(err));
           } finally {
             setIsFinishing(false);
           }
