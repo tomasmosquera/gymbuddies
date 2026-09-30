@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Animated, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import { Alert, Animated, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import ViewShot, { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 import { Button } from '@/components/ui/Button';
 import { CrownIcon } from '@/components/ui/CrownIcon';
 import { colors, radii, spacing } from '@/constants/theme';
@@ -81,6 +83,8 @@ export function LeagueCycleResultsModal({
 }: LeagueCycleResultsModalProps) {
   const [pop] = useState(() => new Animated.Value(0));
   const [fade] = useState(() => new Animated.Value(0));
+  const shotRef = useRef<ComponentRef<typeof ViewShot>>(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -100,142 +104,169 @@ export function LeagueCycleResultsModal({
   const mine = results.standings.find((r) => r.userId === myUserId) ?? null;
   const placeLine = myPlaceLine(results, myUserId);
 
+  // Snapshots the standings card itself (hero + champions/standings —
+  // everything inside shotRef, not the footer buttons) as a PNG and hands it
+  // to the native share sheet. react-native-view-shot captures the ref'd
+  // view at its own full laid-out size, not just whatever's currently
+  // scrolled into view, so a long standings list still comes through whole.
+  const handleShare = async () => {
+    if (!shotRef.current) return;
+    setIsSharing(true);
+    try {
+      const uri = await captureRef(shotRef, { format: 'png', quality: 0.92 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Compartir resultados del ciclo' });
+      }
+    } catch (err) {
+      Alert.alert('No se pudo compartir', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            <View style={styles.hero}>
-              <Animated.View style={[styles.crownHalo, { transform: [{ scale: pop }] }]}>
-                <CrownIcon size={56} />
-              </Animated.View>
-              <Text style={styles.kicker}>Liga · Ciclo #{results.cycleNumber}</Text>
-              <Text style={styles.title}>{isPast ? 'Resultados del ciclo' : '¡Se cerró el ciclo!'}</Text>
-              <Text style={styles.dates}>
-                {formatDateOnly(results.startDate)} – {formatDateOnly(results.endDate)}
-              </Text>
-              {results.closedEarly ? (
-                <View style={styles.earlyPill}>
-                  <Text style={styles.earlyPillText}>Cierre anticipado</Text>
-                </View>
-              ) : null}
-            </View>
-
-            <Animated.View style={{ opacity: fade, gap: spacing.md }}>
-              {champions.length === 0 ? (
-                <Text style={styles.muted}>No hay resultados guardados de este ciclo.</Text>
-              ) : (
-              <View style={styles.championsBox}>
-                <Text style={styles.championsLabel}>{champions.length > 1 ? 'CAMPEONES' : 'CAMPEÓN'}</Text>
-                {champions.map((c) => (
-                  <View key={c.userId} style={styles.championRow}>
-                    <PersonAvatar row={c} size={48} isChampion />
-                    <View style={styles.flex}>
-                      <Text style={styles.championName} numberOfLines={1}>
-                        {c.fullName}
-                        {c.userId === myUserId ? ' (tú)' : ''}
-                      </Text>
-                      <Text style={styles.muted}>{c.score} pts</Text>
-                    </View>
-                    {c.prizeAmount > 0 ? <Text style={styles.championPrize}>{money(results.currency, c.prizeAmount)}</Text> : null}
+            <ViewShot ref={shotRef} style={styles.shareableArea}>
+              <View style={styles.hero}>
+                <Animated.View style={[styles.crownHalo, { transform: [{ scale: pop }] }]}>
+                  <CrownIcon size={56} />
+                </Animated.View>
+                <Text style={styles.kicker}>Liga · Ciclo #{results.cycleNumber}</Text>
+                <Text style={styles.title}>{isPast ? 'Resultados del ciclo' : '¡Se cerró el ciclo!'}</Text>
+                <Text style={styles.dates}>
+                  {formatDateOnly(results.startDate)} – {formatDateOnly(results.endDate)}
+                </Text>
+                {results.closedEarly ? (
+                  <View style={styles.earlyPill}>
+                    <Text style={styles.earlyPillText}>Cierre anticipado</Text>
                   </View>
-                ))}
-                <Text style={styles.congrats}>{congratsHeadline(results, myUserId)}</Text>
-              </View>
-              )}
-
-              {mine && placeLine ? (
-                <View style={styles.mineBox}>
-                  <Text style={styles.mineTitle}>{placeLine}</Text>
-                  <Text style={styles.muted}>
-                    {mine.prizeAmount > 0
-                      ? `Te llevas ${money(results.currency, mine.prizeAmount)} del premio.`
-                      : isPast
-                        ? 'Este puesto no llevó premio.'
-                        : 'Este puesto no lleva premio — ¡ve por la corona en el próximo ciclo!'}
-                  </Text>
-                  {mine.relegated ? (
-                    <Text style={styles.relegatedText}>
-                      Quedaste en zona de descenso
-                      {mine.descensoAmount > 0 ? ` (multa de ${money(results.currency, mine.descensoAmount)})` : ''}.
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {results.standings.length > 0 ? (
-              <View>
-                <Text style={styles.sectionTitle}>{results.partial ? 'Puestos con premio' : 'Posiciones finales'}</Text>
-                {results.partial ? (
-                  <Text style={[styles.muted, styles.partialNote]}>
-                    Este ciclo se cerró antes de que se guardaran las posiciones completas: solo se muestran los puestos que llevaron premio.
-                  </Text>
                 ) : null}
-                {results.standings.map((row) => {
-                  const isChampion = row.place === 1;
-                  const isMe = row.userId === myUserId;
-                  return (
-                    <View key={row.userId} style={[styles.standingRow, isMe && styles.standingRowMe]}>
-                      <PlaceMark place={row.place} />
-                      <PersonAvatar row={row} size={34} isChampion={isChampion} />
-                      <View style={styles.flex}>
-                        <Text style={styles.standingName} numberOfLines={1}>
-                          {row.fullName}
-                          {isMe ? ' (tú)' : ''}
-                        </Text>
-                        <Text style={styles.muted}>{results.partial ? 'Con premio' : `${row.score} pts`}</Text>
-                      </View>
-                      {row.relegated ? (
-                        <View style={styles.relegatedPill}>
-                          <Text style={styles.relegatedPillText}>Descenso</Text>
-                        </View>
-                      ) : null}
-                      <Text style={[styles.standingPrize, row.prizeAmount <= 0 && styles.muted]}>
-                        {row.prizeAmount > 0 ? money(results.currency, row.prizeAmount) : '—'}
-                      </Text>
-                    </View>
-                  );
-                })}
               </View>
-              ) : null}
-
-              {relegated.length > 0 ? (
-                <View style={styles.relegatedBox}>
-                  <Text style={styles.relegatedLabel}>ZONA DE DESCENSO</Text>
-                  {relegated.map((r) => (
-                    <View key={r.userId} style={styles.relegatedRow}>
-                      <PersonAvatar row={r} size={30} isChampion={false} />
-                      <Text style={[styles.standingName, styles.flex]} numberOfLines={1}>
-                        {r.fullName}
-                        {r.userId === myUserId ? ' (tú)' : ''} · {r.place}°
-                      </Text>
-                      <Text style={styles.relegatedAmount}>
-                        {r.descensoAmount > 0 ? `−${money(results.currency, r.descensoAmount)}` : 'Sin multa'}
-                      </Text>
+  
+              <Animated.View style={{ opacity: fade, gap: spacing.md }}>
+                {champions.length === 0 ? (
+                  <Text style={styles.muted}>No hay resultados guardados de este ciclo.</Text>
+                ) : (
+                <View style={styles.championsBox}>
+                  <Text style={styles.championsLabel}>{champions.length > 1 ? 'CAMPEONES' : 'CAMPEÓN'}</Text>
+                  {champions.map((c) => (
+                    <View key={c.userId} style={styles.championRow}>
+                      <PersonAvatar row={c} size={48} isChampion />
+                      <View style={styles.flex}>
+                        <Text style={styles.championName} numberOfLines={1}>
+                          {c.fullName}
+                          {c.userId === myUserId ? ' (tú)' : ''}
+                        </Text>
+                        <Text style={styles.muted}>{c.score} pts</Text>
+                      </View>
+                      {c.prizeAmount > 0 ? <Text style={styles.championPrize}>{money(results.currency, c.prizeAmount)}</Text> : null}
                     </View>
                   ))}
-                  <Text style={styles.muted}>
-                    Los últimos lugares del ranking. Lo que pagaron se sumó al premio de este mismo ciclo.
-                  </Text>
+                  <Text style={styles.congrats}>{congratsHeadline(results, myUserId)}</Text>
                 </View>
-              ) : null}
-
-              <View style={styles.footerNote}>
-                {results.poolAmount > 0 ? (
-                  <Text style={styles.muted}>Fondo repartido: {money(results.currency, results.poolAmount)}</Text>
-                ) : null}
-                {isPast ? null : (
-                  <Text style={styles.muted}>
-                    {results.autoRenewed
-                      ? 'Ya arrancó un ciclo nuevo — ¡a defender (o a conquistar) la corona!'
-                      : 'La Liga queda en pausa hasta que el administrador inicie el próximo ciclo.'}
-                  </Text>
                 )}
-              </View>
-            </Animated.View>
+  
+                {mine && placeLine ? (
+                  <View style={styles.mineBox}>
+                    <Text style={styles.mineTitle}>{placeLine}</Text>
+                    <Text style={styles.muted}>
+                      {mine.prizeAmount > 0
+                        ? `Te llevas ${money(results.currency, mine.prizeAmount)} del premio.`
+                        : isPast
+                          ? 'Este puesto no llevó premio.'
+                          : 'Este puesto no lleva premio — ¡ve por la corona en el próximo ciclo!'}
+                    </Text>
+                    {mine.relegated ? (
+                      <Text style={styles.relegatedText}>
+                        Quedaste en zona de descenso
+                        {mine.descensoAmount > 0 ? ` (multa de ${money(results.currency, mine.descensoAmount)})` : ''}.
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+  
+                {results.standings.length > 0 ? (
+                <View>
+                  <Text style={styles.sectionTitle}>{results.partial ? 'Puestos con premio' : 'Posiciones finales'}</Text>
+                  {results.partial ? (
+                    <Text style={[styles.muted, styles.partialNote]}>
+                      Este ciclo se cerró antes de que se guardaran las posiciones completas: solo se muestran los puestos que llevaron premio.
+                    </Text>
+                  ) : null}
+                  {results.standings.map((row) => {
+                    const isChampion = row.place === 1;
+                    const isMe = row.userId === myUserId;
+                    return (
+                      <View key={row.userId} style={[styles.standingRow, isMe && styles.standingRowMe]}>
+                        <PlaceMark place={row.place} />
+                        <PersonAvatar row={row} size={34} isChampion={isChampion} />
+                        <View style={styles.flex}>
+                          <Text style={styles.standingName} numberOfLines={1}>
+                            {row.fullName}
+                            {isMe ? ' (tú)' : ''}
+                          </Text>
+                          <Text style={styles.muted}>{results.partial ? 'Con premio' : `${row.score} pts`}</Text>
+                        </View>
+                        {row.relegated ? (
+                          <View style={styles.relegatedPill}>
+                            <Text style={styles.relegatedPillText}>Descenso</Text>
+                          </View>
+                        ) : null}
+                        <Text style={[styles.standingPrize, row.prizeAmount <= 0 && styles.muted]}>
+                          {row.prizeAmount > 0 ? money(results.currency, row.prizeAmount) : '—'}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                ) : null}
+  
+                {relegated.length > 0 ? (
+                  <View style={styles.relegatedBox}>
+                    <Text style={styles.relegatedLabel}>ZONA DE DESCENSO</Text>
+                    {relegated.map((r) => (
+                      <View key={r.userId} style={styles.relegatedRow}>
+                        <PersonAvatar row={r} size={30} isChampion={false} />
+                        <Text style={[styles.standingName, styles.flex]} numberOfLines={1}>
+                          {r.fullName}
+                          {r.userId === myUserId ? ' (tú)' : ''} · {r.place}°
+                        </Text>
+                        <Text style={styles.relegatedAmount}>
+                          {r.descensoAmount > 0 ? `−${money(results.currency, r.descensoAmount)}` : 'Sin multa'}
+                        </Text>
+                      </View>
+                    ))}
+                    <Text style={styles.muted}>
+                      Los últimos lugares del ranking. Lo que pagaron se sumó al premio de este mismo ciclo.
+                    </Text>
+                  </View>
+                ) : null}
+  
+                <View style={styles.footerNote}>
+                  {results.poolAmount > 0 ? (
+                    <Text style={styles.muted}>Fondo repartido: {money(results.currency, results.poolAmount)}</Text>
+                  ) : null}
+                  {isPast ? null : (
+                    <Text style={styles.muted}>
+                      {results.autoRenewed
+                        ? 'Ya arrancó un ciclo nuevo — ¡a defender (o a conquistar) la corona!'
+                        : 'La Liga queda en pausa hasta que el administrador inicie el próximo ciclo.'}
+                    </Text>
+                  )}
+                </View>
+              </Animated.View>
+            </ViewShot>
           </ScrollView>
           <View style={styles.footer}>
-            <Button label={isPast ? 'Cerrar' : 'Continuar'} onPress={onClose} />
+            <View style={styles.footerButton}>
+              <Button label="📤 Compartir" variant="secondary" onPress={handleShare} loading={isSharing} />
+            </View>
+            <View style={styles.footerButton}>
+              <Button label={isPast ? 'Cerrar' : 'Continuar'} onPress={onClose} />
+            </View>
           </View>
         </View>
       </View>
@@ -350,5 +381,11 @@ const styles = StyleSheet.create({
   relegatedLabel: { color: colors.danger, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   relegatedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   relegatedAmount: { color: colors.danger, fontSize: 14, fontWeight: '700' },
-  footer: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  footer: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  footerButton: { flex: 1 },
+  // Solid background (not transparent) — react-native-view-shot captures
+  // exactly what's rendered, and a transparent PNG shared to WhatsApp/etc.
+  // would show whatever's behind it (often plain white) instead of the
+  // app's own dark card look.
+  shareableArea: { backgroundColor: colors.surface, gap: spacing.md },
 });
