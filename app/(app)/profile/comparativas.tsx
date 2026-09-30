@@ -39,17 +39,19 @@ const METRIC_OPTIONS: { key: ExerciseChartMetric; label: string }[] = [
   { key: 'bestSetVolume', label: 'Mejor Vol. Set' },
 ];
 
-/** Récords: one row per exercise the group's ever logged, whoever currently holds the group's best value for the selected metric — the "who's the strongest at X" table, without opening each exercise one by one. */
+/** Récords: one row per exercise the group's ever logged, whoever currently holds the group's best value for the selected metric — the "who's the strongest at X" table, without opening each exercise one by one. The metric pills are the list's own ListHeaderComponent (not a fixed header outside it) so they scroll away with everything else — a fixed header ate space that should go to seeing the actual list. */
 function RecordsTab({
   history,
   roster,
   metric,
+  setMetric,
   unit,
   myUserId,
 }: {
   history: GroupExerciseHistory[];
   roster: { userId: string; fullName: string }[];
   metric: ExerciseChartMetric;
+  setMetric: (metric: ExerciseChartMetric) => void;
   unit: WeightUnit;
   myUserId: string | null;
 }) {
@@ -78,6 +80,11 @@ function RecordsTab({
     <SectionList
       style={styles.flex}
       contentContainerStyle={styles.listContent}
+      ListHeaderComponent={
+        <View style={styles.metricPillsWrap}>
+          <SegmentedControl options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
+        </View>
+      }
       sections={sections}
       keyExtractor={(item) => item.exerciseId}
       renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>}
@@ -106,25 +113,24 @@ function RecordsTab({
   );
 }
 
-/** Comparar: the same "Tú vs [compañero]" exercise-detail.tsx already has per exercise, generalized across every exercise the group's logged at once — pick someone, see every exercise either of you has done side by side. Who's picked lives in the parent (ComparativasScreen) — the muscle radar above these pills needs it too. */
+/** Comparar: the same "Tú vs [compañero]" exercise-detail.tsx already has per exercise, generalized across every exercise the group's logged at once — pick someone, see every exercise either of you has done side by side. Everything (muscle radar, metric pills, teammate picker, per-exercise list) lives inside this one ScrollView now — it used to sit under a fixed, non-scrolling header, which ate the screen once the radar made that header tall enough that the list below barely fit. */
 function CompareTab({
   history,
   roster,
   metric,
+  setMetric,
   unit,
   myUserId,
-  comparedUserId,
-  setComparedUserId,
 }: {
   history: GroupExerciseHistory[];
   roster: { userId: string; fullName: string }[];
   metric: ExerciseChartMetric;
+  setMetric: (metric: ExerciseChartMetric) => void;
   unit: WeightUnit;
   myUserId: string | null;
-  comparedUserId: string | null;
-  setComparedUserId: (userId: string) => void;
 }) {
   const teammates = roster.filter((m) => m.userId !== myUserId);
+  const [comparedUserId, setComparedUserId] = useState<string | null>(teammates[0]?.userId ?? null);
   const compared = teammates.find((m) => m.userId === comparedUserId) ?? null;
 
   const table: HeadToHeadRow[] = useMemo(
@@ -138,6 +144,8 @@ function CompareTab({
 
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.compareContent}>
+      <MuscleRadarSection history={history} roster={roster} myUserId={myUserId} comparedUserId={comparedUserId} comparedName={compared?.fullName ?? null} />
+      <SegmentedControl options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
         {teammates.map((m) => (
           <Pressable key={m.userId} onPress={() => setComparedUserId(m.userId)} style={[styles.chip, comparedUserId === m.userId && styles.chipActive]}>
@@ -280,13 +288,6 @@ export default function ComparativasScreen() {
   const [metric, setMetric] = useState<ExerciseChartMetric>('heaviestWeight');
   const myUserId = session?.user.id ?? null;
   const unit = profile?.weight_unit ?? 'kg';
-  const teammates = roster.filter((m) => m.userId !== myUserId);
-  // Lives here, not inside CompareTab, since MuscleRadarSection (above the
-  // metric pills) needs to know who's picked too — both read/write the same
-  // selection.
-  const [comparedUserId, setComparedUserId] = useState<string | null>(null);
-  const effectiveComparedUserId = comparedUserId ?? teammates[0]?.userId ?? null;
-  const comparedTeammate = teammates.find((m) => m.userId === effectiveComparedUserId) ?? null;
 
   if (!group) {
     return (
@@ -305,6 +306,9 @@ export default function ComparativasScreen() {
 
   return (
     <View style={styles.flex}>
+      {/* Just the tab switcher stays fixed — everything else (metric pills,
+          muscle radar, lists) now scrolls away with the content, so it
+          doesn't eat screen space a tall radar needs. */}
       <View style={styles.header}>
         <SegmentedControl
           options={[
@@ -315,30 +319,12 @@ export default function ComparativasScreen() {
           onChange={setTab}
           size="lg"
         />
-        {tab === 'comparar' ? (
-          <MuscleRadarSection
-            history={history}
-            roster={roster}
-            myUserId={myUserId}
-            comparedUserId={effectiveComparedUserId}
-            comparedName={comparedTeammate?.fullName ?? null}
-          />
-        ) : null}
-        <SegmentedControl options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
       </View>
 
       {tab === 'records' ? (
-        <RecordsTab history={history} roster={roster} metric={metric} unit={unit} myUserId={myUserId} />
+        <RecordsTab history={history} roster={roster} metric={metric} setMetric={setMetric} unit={unit} myUserId={myUserId} />
       ) : (
-        <CompareTab
-          history={history}
-          roster={roster}
-          metric={metric}
-          unit={unit}
-          myUserId={myUserId}
-          comparedUserId={effectiveComparedUserId}
-          setComparedUserId={setComparedUserId}
-        />
+        <CompareTab history={history} roster={roster} metric={metric} setMetric={setMetric} unit={unit} myUserId={myUserId} />
       )}
     </View>
   );
@@ -347,8 +333,9 @@ export default function ComparativasScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background, padding: spacing.lg },
-  header: { padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm, backgroundColor: colors.background },
+  header: { padding: spacing.lg, paddingBottom: spacing.sm, backgroundColor: colors.background },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
+  metricPillsWrap: { paddingBottom: spacing.sm },
   sectionHeader: {
     color: colors.textMuted,
     fontSize: 12,
