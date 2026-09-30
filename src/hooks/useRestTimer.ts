@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import { createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { cancelRestTimerNotification, scheduleRestTimerNotification } from '@/lib/notifications/restTimer';
+import { setRestTimerEndAt } from '@/state/restTimerStore';
+import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
 
 const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
 
@@ -52,11 +54,17 @@ export function useRestTimer() {
   // own (tick(), below) already alerted in-app, so the scheduled one would
   // just be a redundant late alert if the app happened to be foregrounded
   // right at the boundary. Fire-and-forget: nothing here needs to block on
-  // it actually finishing.
+  // it actually finishing. Also clears the shared rest-timer store (see
+  // restTimerStore.ts) so the routine Live Activity — which reads it when
+  // reconciling — never has a stale end time to show; the sync itself is
+  // triggered separately by whichever caller actually wants one (start(),
+  // skip(), and tick()'s own "ran out" branch), since start() calling clear()
+  // first would otherwise fire two syncs back to back for one state change.
   const clear = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
     endAtRef.current = null;
+    setRestTimerEndAt(null);
     void cancelRestTimerNotification();
   };
 
@@ -71,6 +79,7 @@ export function useRestTimer() {
       // knows they're ending the rest early.
       playRestTimerDoneSound();
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      requestWorkoutActivitySync();
       return;
     }
     setRemainingSeconds(remaining);
@@ -91,11 +100,14 @@ export function useRestTimer() {
     // still reaches the member if they've switched apps or locked the
     // screen by the time the rest period ends.
     void scheduleRestTimerNotification(new Date(endAtRef.current));
+    setRestTimerEndAt(endAtRef.current);
+    requestWorkoutActivitySync();
   };
 
   const skip = () => {
     clear();
     setRemainingSeconds(null);
+    requestWorkoutActivitySync();
   };
 
   useEffect(() => {

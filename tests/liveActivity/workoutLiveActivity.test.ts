@@ -1,4 +1,6 @@
-import { WORKOUT_ACTIVITY_URL, type WorkoutActivityProps } from '@/lib/domain/workoutActivity';
+import { WORKOUT_ACTIVITY_URL } from '@/lib/domain/workoutActivity';
+import { ROUTINE_ACTIVITY_OPEN_URL, ROUTINE_ACTIVITY_SKIP_REST_URL } from '@/lib/domain/routineActivity';
+import type { LiveActivityContent } from '@/lib/domain/liveActivityContent';
 
 const mockStart = jest.fn();
 let mockInstances: { update: jest.Mock; end: jest.Mock }[] = [];
@@ -11,11 +13,22 @@ jest.mock('@/lib/liveActivity/WorkoutActivity', () => ({
   },
 }));
 
-const props: WorkoutActivityProps = {
+const props: LiveActivityContent = {
+  kind: 'checkout',
   startedAt: '2026-09-28T14:00:00Z',
   minMinutes: 45,
   groupLabel: 'Mis 59',
   checkoutUrl: WORKOUT_ACTIVITY_URL,
+};
+const routineProps: LiveActivityContent = {
+  kind: 'routine',
+  routineName: 'Empuje',
+  startedAt: '2026-09-28T14:00:00Z',
+  completedSets: 2,
+  totalSets: 7,
+  restEndAt: null,
+  openUrl: ROUTINE_ACTIVITY_OPEN_URL,
+  skipRestUrl: ROUTINE_ACTIVITY_SKIP_REST_URL,
 };
 const instance = () => ({ update: jest.fn().mockResolvedValue(undefined), end: jest.fn().mockResolvedValue(undefined) });
 
@@ -41,6 +54,12 @@ describe('syncWorkoutLiveActivity', () => {
     await syncWorkoutLiveActivity(props);
     expect(mockStart).toHaveBeenCalledTimes(1);
     expect(mockStart).toHaveBeenCalledWith(props, WORKOUT_ACTIVITY_URL);
+  });
+
+  it('starts a routine activity with its own open-url, not the checkout deep link', async () => {
+    const { syncWorkoutLiveActivity } = load('ios');
+    await syncWorkoutLiveActivity(routineProps);
+    expect(mockStart).toHaveBeenCalledWith(routineProps, ROUTINE_ACTIVITY_OPEN_URL);
   });
 
   it('updates the running one instead of starting a second', async () => {

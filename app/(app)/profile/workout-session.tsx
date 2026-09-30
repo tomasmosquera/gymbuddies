@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
@@ -375,6 +375,20 @@ export default function WorkoutSessionScreen() {
   const restTimer = useRestTimer();
   const insets = useSafeAreaInsets();
   const unit = profile?.weight_unit ?? 'kg';
+
+  // Set by the routine Live Activity/Dynamic Island's "Saltar Descanso" button
+  // (gymbuddies://profile/workout-session?skipRest=1) — opens the app AND skips
+  // the rest in one tap, rather than just opening the screen and leaving the
+  // member to tap Saltar again in here. Same consume-then-clear pattern as
+  // checkin/index.tsx's own `checkout` param, so it can't re-trigger on a
+  // later visit to this screen.
+  const { skipRest: skipRestParam } = useLocalSearchParams<{ skipRest?: string }>();
+  useEffect(() => {
+    if (skipRestParam !== '1') return;
+    if (restTimer.isActive) restTimer.skip();
+    router.setParams({ skipRest: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skipRestParam]);
 
   // Redirects out once there's genuinely nothing to show (finished/discarded, or none was ever started) —
   // this screen doesn't create one itself. useFocusEffect, not useEffect: a

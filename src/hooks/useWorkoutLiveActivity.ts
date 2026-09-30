@@ -4,9 +4,11 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toZonedDateString } from '@/lib/domain/dateUtils';
 import { workoutActivityForGroups, type WorkoutGroupState } from '@/lib/domain/workoutActivity';
+import { routineActivityForSession, type RoutineSessionLike } from '@/lib/domain/routineActivity';
 import { syncWorkoutLiveActivity } from '@/lib/liveActivity/workoutLiveActivity';
 import { syncWorkoutMilestoneNotifications } from '@/lib/notifications/workoutMilestones';
 import { useWorkoutActivitySyncStore } from '@/state/workoutActivitySyncStore';
+import { useRestTimerStore } from '@/state/restTimerStore';
 
 interface MembershipRow {
   group_id: string;
@@ -20,13 +22,17 @@ interface MembershipRow {
 }
 
 /**
- * Keeps the workout timer — the iOS Live Activity plus its two local notifications ("you reached
- * the minimum", "your timer is about to end") — in step with the person's check-ins. There is ONE
- * timer for all of the user's groups: it is up while any group that asks for a final photo has
- * today's check-in waiting for it (see workoutActivityForGroups for what it shows), and gone
- * otherwise. Reconciles from the database rather than tracking events, so it also recovers after
- * the app was killed, on returning to the foreground and after any check-in change on this device.
- * Mount once, in app/(app)/_layout.tsx.
+ * Keeps the ONE Live Activity/Dynamic Island slot this app uses in step with two unrelated things
+ * it can show: the checkout-photo timer (plus its two local notifications — "you reached the
+ * minimum", "your timer is about to end") and, taking priority over it whenever both apply, an
+ * in-progress routine. The checkout timer's own milestone notifications are still scheduled purely
+ * from check-in state regardless of which one the widget is currently displaying — they are about
+ * the check-in's own minimum-workout-duration requirement, not about whatever the widget happens to
+ * show. Reconciles from the database (plus the rest timer's own small store, restTimerStore.ts,
+ * since that countdown's state otherwise lives only in workout-session.tsx's local refs) rather
+ * than tracking events, so it also recovers after the app was killed, on returning to the
+ * foreground and after any relevant change on this device (a check-in, or a routine session/set/
+ * rest-timer change via requestWorkoutActivitySync()). Mount once, in app/(app)/_layout.tsx.
  */
 export function useWorkoutLiveActivity() {
   const { session } = useAuth();
@@ -72,9 +78,28 @@ export function useWorkoutLiveActivity() {
       }));
     }
 
-    const props = workoutActivityForGroups({ groups: states, now });
-    await syncWorkoutLiveActivity(props);
-    await syncWorkoutMilestoneNotifications(props, now);
+    const checkoutProps = workoutActivityForGroups({ groups: states, now });
+    await syncWorkoutMilestoneNotifications(checkoutProps, now);
+
+    // An in-progress routine takes over the widget's display, regardless of whether a checkout
+    // timer is also running for some group — they're independent concerns that happen to share one
+    // visual slot. A failed read here falls through to the checkout display below, same reasoning
+    // as the membership/check-in reads above: never let a bad read end something really still going.
+    const { data: activeSession, error: sessionError } = await supabase
+      .from('workout_sessions')
+      .select('started_at, routine_name_snapshot, exercises:workout_session_exercises(target_sets_snapshot, sets:workout_sets(id))')
+      .eq('user_id', userId)
+      .eq('status', 'in_progress')
+      .maybeSingle();
+
+    if (!sessionError && activeSession) {
+      const restEndAt = useRestTimerStore.getState().endAt;
+      const routineProps = routineActivityForSession(activeSession as unknown as RoutineSessionLike, restEndAt);
+      await syncWorkoutLiveActivity({ kind: 'routine', ...routineProps });
+      return;
+    }
+
+    await syncWorkoutLiveActivity(checkoutProps ? { kind: 'checkout', ...checkoutProps } : null);
   }, [userId]);
 
   useEffect(() => {

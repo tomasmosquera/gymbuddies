@@ -11,14 +11,21 @@ import {
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
-import type { WorkoutActivityProps } from '@/lib/domain/workoutActivity';
+import type { LiveActivityContent } from '@/lib/domain/liveActivityContent';
+
+const wide = 10000; // stands in for "as wide as the parent allows" (JSON cannot carry Infinity)
 
 /**
- * The workout timer shown on the lock screen and in the Dynamic Island from the check-in photo
- * until the final one. Everything inside a 'widget' component runs in the widget's own isolated
- * runtime: only @expo/ui/swift-ui components, no hooks, no app state, no async work — so it
- * cannot import from the rest of the app at runtime: only a type is imported (it erases), and the
- * deep link for the button arrives inside the props (`checkoutUrl`).
+ * The ONE Live Activity/Dynamic Island slot this app uses, shared by two unrelated things —
+ * `content.kind` says which: the pending-checkout-photo timer (unchanged from before routine
+ * mode existed), or an in-progress routine, switching further between "training" (elapsed count-up
+ * + sets progress) and "resting" (a live countdown to when rest ends) depending on whether
+ * `restEndAt` is set. Everything inside a 'widget' component runs in the widget's own isolated
+ * runtime: only @expo/ui/swift-ui components, no hooks, no app state, no async work — so it cannot
+ * import from the rest of the app at runtime: only types are imported (they erase), and every deep
+ * link a button needs arrives inside the props. Kept as one function (rather than split into
+ * per-mode helpers) since the 'widget' directive marks this exact function for extraction into
+ * SwiftUI — the two modes are unified below into a shared set of display variables instead.
  *
  * The clocks are drawn by the system (`timerInterval`), so they keep ticking with the app closed
  * and need no updates or pushes. A SwiftUI timer text is greedy — it stretches to whatever width
@@ -28,20 +35,52 @@ import type { WorkoutActivityProps } from '@/lib/domain/workoutActivity';
  * iOS caps the lock-screen banner at about 160 pt of height and clips whatever does not fit, so the
  * banner below is budgeted to stay around 135 pt (5 rows + 4 gaps + 24 pt of vertical padding).
  * `ProgressView(timerInterval:)` draws its own remaining-time label under the bar; it is hidden
- * (`labelsHidden`) because the banner already has its own "Tiempo mínimo restante" line.
+ * (`labelsHidden`) because the banner already has its own label row next to (or under) it.
  */
-const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityEnvironment) => {
+const WorkoutActivity = (content: LiveActivityContent, environment: LiveActivityEnvironment) => {
   'widget';
   const green = environment.isLuminanceReduced ? '#FFFFFF' : '#3DDC97';
   const muted = '#9AA7B5';
-  const start = new Date(props.startedAt);
-  // iOS ends a Live Activity after 8 h; that is also the count-up timer's upper bound.
+  const start = new Date(content.startedAt);
+  // iOS ends a Live Activity after 8 h; that is also the count-up timer's upper bound whenever
+  // nothing sooner applies (the checkout minimum, or a routine's current rest period).
   const timerEnd = new Date(start.getTime() + 8 * 60 * 60 * 1000);
-  const minEnd = new Date(start.getTime() + props.minMinutes * 60 * 1000);
-  const hasMinimum = props.minMinutes > 0;
-  // "44:59" while the minimum is under an hour, "1:14:59" from an hour up.
-  const remainingWidth = props.minMinutes >= 60 ? 58 : 44;
-  const wide = 10000; // stands in for "as wide as the parent allows" (JSON cannot carry Infinity)
+
+  let topLabel: string;
+  let buttonLabel: string;
+  let buttonUrl: string;
+  // The big clock: counts UP from `start` normally, or DOWN to a nearer deadline when one applies
+  // (the checkout minimum's own countdown is a separate row below it — this only ever switches to
+  // counting down for a routine's rest period).
+  let bigClockUpper = timerEnd;
+  let bigClockCountsDown = false;
+  // Checkout mode's time-based minimum-reached bar + its own "time remaining" row.
+  let hasMinimumBar = false;
+  let minimumEnd = timerEnd;
+  let minimumWidth = 44;
+  // Routine mode's fraction-based sets-completed bar + its plain "x/y series" label.
+  let hasSetsBar = false;
+  let setsFraction = 0;
+  let setsLabel = '';
+
+  if (content.kind === 'checkout') {
+    topLabel = content.groupLabel;
+    buttonLabel = 'Tomar Foto Final';
+    buttonUrl = content.checkoutUrl;
+    hasMinimumBar = content.minMinutes > 0;
+    minimumEnd = hasMinimumBar ? new Date(start.getTime() + content.minMinutes * 60 * 1000) : timerEnd;
+    minimumWidth = content.minMinutes >= 60 ? 58 : 44; // "44:59" under an hour, "1:14:59" from an hour up
+  } else {
+    const resting = content.restEndAt !== null;
+    topLabel = content.routineName;
+    buttonLabel = resting ? 'Saltar Descanso' : 'Abrir Entreno';
+    buttonUrl = resting ? content.skipRestUrl : content.openUrl;
+    bigClockUpper = resting ? new Date(content.restEndAt as string) : timerEnd;
+    bigClockCountsDown = resting;
+    hasSetsBar = content.totalSets > 0;
+    setsFraction = hasSetsBar ? content.completedSets / content.totalSets : 0;
+    setsLabel = `${content.completedSets}/${content.totalSets} series`;
+  }
 
   return {
     banner: (
@@ -49,11 +88,11 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
         <HStack>
           <Text modifiers={[font({ weight: 'bold', size: 13 }), foregroundStyle(green)]}>Gym Buddies</Text>
           <Spacer />
-          <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupLabel}</Text>
+          <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{topLabel}</Text>
         </HStack>
         <Text
-          timerInterval={{ lower: start, upper: timerEnd }}
-          countsDown={false}
+          timerInterval={{ lower: start, upper: bigClockUpper }}
+          countsDown={bigClockCountsDown}
           modifiers={[
             font({ weight: 'bold', size: 34 }),
             monospacedDigit(),
@@ -61,10 +100,10 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
             frame({ maxWidth: wide, alignment: 'center' }),
           ]}
         />
-        {hasMinimum ? (
+        {hasMinimumBar ? (
           <VStack spacing={4}>
             <ProgressView
-              timerInterval={{ lower: start, upper: minEnd }}
+              timerInterval={{ lower: start, upper: minimumEnd }}
               countsDown={false}
               modifiers={[tint(green), labelsHidden()]}
             />
@@ -72,26 +111,37 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
               <Spacer />
               <Text modifiers={[font({ size: 13 })]}>Tiempo mínimo restante:</Text>
               <Text
-                timerInterval={{ lower: start, upper: minEnd }}
+                timerInterval={{ lower: start, upper: minimumEnd }}
                 countsDown
                 modifiers={[
                   font({ weight: 'semibold', size: 13 }),
                   monospacedDigit(),
                   multilineTextAlignment('leading'),
-                  frame({ width: remainingWidth, alignment: 'leading' }),
+                  frame({ width: minimumWidth, alignment: 'leading' }),
                 ]}
               />
               <Spacer />
             </HStack>
           </VStack>
         ) : null}
+        {hasSetsBar ? (
+          <VStack spacing={4}>
+            <ProgressView value={setsFraction} modifiers={[tint(green), labelsHidden()]} />
+            <Text
+              modifiers={[
+                font({ size: 13 }),
+                foregroundStyle(muted),
+                multilineTextAlignment('center'),
+                frame({ maxWidth: wide, alignment: 'center' }),
+              ]}
+            >
+              {setsLabel}
+            </Text>
+          </VStack>
+        ) : null}
         <HStack>
           <Spacer />
-          <Link
-            label="Tomar Foto Final"
-            destination={props.checkoutUrl}
-            modifiers={[font({ weight: 'semibold', size: 15 }), foregroundStyle(green)]}
-          />
+          <Link label={buttonLabel} destination={buttonUrl} modifiers={[font({ weight: 'semibold', size: 15 }), foregroundStyle(green)]} />
           <Spacer />
         </HStack>
       </VStack>
@@ -103,8 +153,8 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
     ),
     compactTrailing: (
       <Text
-        timerInterval={{ lower: start, upper: timerEnd }}
-        countsDown={false}
+        timerInterval={{ lower: start, upper: bigClockUpper }}
+        countsDown={bigClockCountsDown}
         modifiers={[
           font({ weight: 'semibold', size: 13 }),
           monospacedDigit(),
@@ -119,14 +169,14 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
     expandedLeading: (
       <VStack modifiers={[padding({ all: 14 })]}>
         <Text modifiers={[font({ weight: 'bold', size: 14 }), foregroundStyle(green)]}>Gym Buddies</Text>
-        <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{props.groupLabel}</Text>
+        <Text modifiers={[font({ size: 12 }), foregroundStyle(muted)]}>{topLabel}</Text>
       </VStack>
     ),
     expandedTrailing: (
       <VStack modifiers={[padding({ all: 14 })]}>
         <Text
-          timerInterval={{ lower: start, upper: timerEnd }}
-          countsDown={false}
+          timerInterval={{ lower: start, upper: bigClockUpper }}
+          countsDown={bigClockCountsDown}
           modifiers={[
             font({ weight: 'bold', size: 22 }),
             monospacedDigit(),
@@ -138,20 +188,31 @@ const WorkoutActivity = (props: WorkoutActivityProps, environment: LiveActivityE
     ),
     expandedBottom: (
       <VStack spacing={10} modifiers={[padding({ horizontal: 20, vertical: 12 })]}>
-        {hasMinimum ? (
+        {hasMinimumBar ? (
           <ProgressView
-            timerInterval={{ lower: start, upper: minEnd }}
+            timerInterval={{ lower: start, upper: minimumEnd }}
             countsDown={false}
             modifiers={[tint(green), labelsHidden()]}
           />
         ) : null}
+        {hasSetsBar ? (
+          <VStack spacing={4}>
+            <ProgressView value={setsFraction} modifiers={[tint(green), labelsHidden()]} />
+            <Text
+              modifiers={[
+                font({ size: 13 }),
+                foregroundStyle(muted),
+                multilineTextAlignment('center'),
+                frame({ maxWidth: wide, alignment: 'center' }),
+              ]}
+            >
+              {setsLabel}
+            </Text>
+          </VStack>
+        ) : null}
         <HStack>
           <Spacer />
-          <Link
-            label="Tomar Foto Final"
-            destination={props.checkoutUrl}
-            modifiers={[font({ weight: 'semibold', size: 16 }), foregroundStyle(green)]}
-          />
+          <Link label={buttonLabel} destination={buttonUrl} modifiers={[font({ weight: 'semibold', size: 16 }), foregroundStyle(green)]} />
           <Spacer />
         </HStack>
       </VStack>

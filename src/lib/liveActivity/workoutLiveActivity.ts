@@ -1,16 +1,17 @@
 import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { WORKOUT_ACTIVITY_URL, type WorkoutActivityProps } from '@/lib/domain/workoutActivity';
+import { WORKOUT_ACTIVITY_URL } from '@/lib/domain/workoutActivity';
+import type { LiveActivityContent } from '@/lib/domain/liveActivityContent';
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 interface ActivityInstance {
-  update(props: WorkoutActivityProps): Promise<void>;
+  update(props: LiveActivityContent): Promise<void>;
   end(dismissalPolicy?: 'default' | 'immediate'): Promise<void>;
 }
 
 interface ActivityFactory {
-  start(props: WorkoutActivityProps, url?: string): ActivityInstance;
+  start(props: LiveActivityContent, url?: string): ActivityInstance;
   getInstances(): ActivityInstance[];
 }
 
@@ -34,18 +35,18 @@ function loadFactory(): ActivityFactory | null {
 // can never both see "no activity yet" and start two of them.
 let queue: Promise<void> = Promise.resolve();
 
-async function apply(props: WorkoutActivityProps | null): Promise<void> {
+async function apply(content: LiveActivityContent | null): Promise<void> {
   const factory = loadFactory();
   if (!factory) return;
   try {
     const [current, ...extra] = factory.getInstances();
     await Promise.all(extra.map((instance) => instance.end('immediate')));
-    if (!props) {
+    if (!content) {
       if (current) await current.end('immediate');
       return;
     }
-    if (current) await current.update(props);
-    else factory.start(props, WORKOUT_ACTIVITY_URL);
+    if (current) await current.update(content);
+    else factory.start(content, content.kind === 'routine' ? content.openUrl : WORKOUT_ACTIVITY_URL);
   } catch (error) {
     // Live Activities can be switched off in iOS Settings, or refused by the system —
     // never let that get in the way of the check-in itself.
@@ -54,10 +55,11 @@ async function apply(props: WorkoutActivityProps | null): Promise<void> {
 }
 
 /**
- * Makes the lock-screen workout timer match `props`: starts it, refreshes it, or ends it when
- * `props` is null. Safe to call as often as you like (it is idempotent) and it never throws.
+ * Makes the lock-screen widget match `content` — the checkout timer, an in-progress routine, or
+ * (when `content` is null) none — starting it, refreshing it, or ending it as needed. Safe to call
+ * as often as you like (it is idempotent) and it never throws.
  */
-export function syncWorkoutLiveActivity(props: WorkoutActivityProps | null): Promise<void> {
-  queue = queue.then(() => apply(props));
+export function syncWorkoutLiveActivity(content: LiveActivityContent | null): Promise<void> {
+  queue = queue.then(() => apply(content));
   return queue;
 }

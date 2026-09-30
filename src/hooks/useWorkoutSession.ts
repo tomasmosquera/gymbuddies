@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getBodyWeightFromHealth, saveWorkoutToHealth } from '@/lib/health';
 import { DEFAULT_BODY_WEIGHT_KG, estimateWorkoutCalories } from '@/lib/domain/calorieEstimate';
 import { retryOnTransientNetworkError } from '@/lib/retry';
+import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
 import type { WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '@/lib/supabase/types';
 
@@ -61,6 +62,7 @@ export function useWorkoutSession() {
         if (error) throw new Error(error.message);
       });
       await refresh();
+      requestWorkoutActivitySync();
     },
     [refresh]
   );
@@ -73,6 +75,7 @@ export function useWorkoutSession() {
         return data;
       });
       await refresh();
+      requestWorkoutActivitySync();
       return data;
     },
     [refresh]
@@ -85,6 +88,7 @@ export function useWorkoutSession() {
         if (error) throw new Error(error.message);
       });
       await refresh();
+      requestWorkoutActivitySync();
     },
     [refresh]
   );
@@ -101,6 +105,7 @@ export function useWorkoutSession() {
         if (error) throw new Error(error.message);
       });
       await refresh();
+      requestWorkoutActivitySync();
     },
     [refresh]
   );
@@ -141,6 +146,7 @@ export function useWorkoutSession() {
           }
         : prev
     );
+    requestWorkoutActivitySync();
   }, []);
 
   const updateLoggedSet = useCallback(async (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
@@ -163,6 +169,7 @@ export function useWorkoutSession() {
         if (error) throw new Error(error.message);
       });
       await refresh();
+      requestWorkoutActivitySync();
     },
     [refresh]
   );
@@ -205,6 +212,7 @@ export function useWorkoutSession() {
         if (error) throw new Error(error.message);
       });
       refresh();
+      requestWorkoutActivitySync();
 
       // Best-effort and fire-and-forget, same reasoning as refresh() above —
       // saveWorkoutToHealth never throws on its own, this is purely so a
@@ -223,6 +231,7 @@ export function useWorkoutSession() {
         if (error) throw new Error(error.message);
       });
       refresh();
+      requestWorkoutActivitySync();
     },
     [refresh]
   );
