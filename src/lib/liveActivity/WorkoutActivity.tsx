@@ -46,41 +46,29 @@ const WorkoutActivity = (content: LiveActivityContent, environment: LiveActivity
   // nothing sooner applies (the checkout minimum, or a routine's current rest period).
   const timerEnd = new Date(start.getTime() + 8 * 60 * 60 * 1000);
 
-  let topLabel: string;
-  let buttonLabel: string;
-  let buttonUrl: string;
+  // The 'widget' directive extracts this function into native SwiftUI at build time, so it must
+  // stay pure expressions (ternaries), never `let` reassigned across if/else branches — that
+  // broke the extraction and rendered the whole activity blank.
+  const resting = content.kind === 'routine' && content.restEndAt !== null;
+
+  const topLabel = content.kind === 'checkout' ? content.groupLabel : content.routineName;
+  const buttonLabel = content.kind === 'checkout' ? 'Tomar Foto Final' : resting ? 'Saltar Descanso' : 'Abrir Entreno';
+  const buttonUrl =
+    content.kind === 'checkout' ? content.checkoutUrl : resting ? content.skipRestUrl : content.kind === 'routine' ? content.openUrl : '';
   // The big clock: counts UP from `start` normally, or DOWN to a nearer deadline when one applies
   // (the checkout minimum's own countdown is a separate row below it — this only ever switches to
   // counting down for a routine's rest period).
-  let bigClockUpper = timerEnd;
-  let bigClockCountsDown = false;
+  const bigClockUpper = content.kind === 'routine' && resting ? new Date(content.restEndAt as string) : timerEnd;
+  const bigClockCountsDown = content.kind === 'routine' && resting;
   // Checkout mode's time-based minimum-reached bar + its own "time remaining" row.
-  let hasMinimumBar = false;
-  let minimumEnd = timerEnd;
-  let minimumWidth = 44;
+  const hasMinimumBar = content.kind === 'checkout' && content.minMinutes > 0;
+  const minimumEnd =
+    content.kind === 'checkout' && content.minMinutes > 0 ? new Date(start.getTime() + content.minMinutes * 60 * 1000) : timerEnd;
+  const minimumWidth = content.kind === 'checkout' && content.minMinutes >= 60 ? 58 : 44; // "44:59" under an hour, "1:14:59" from an hour up
   // Routine mode's fraction-based sets-completed bar + its plain "x/y series" label.
-  let hasSetsBar = false;
-  let setsFraction = 0;
-  let setsLabel = '';
-
-  if (content.kind === 'checkout') {
-    topLabel = content.groupLabel;
-    buttonLabel = 'Tomar Foto Final';
-    buttonUrl = content.checkoutUrl;
-    hasMinimumBar = content.minMinutes > 0;
-    minimumEnd = hasMinimumBar ? new Date(start.getTime() + content.minMinutes * 60 * 1000) : timerEnd;
-    minimumWidth = content.minMinutes >= 60 ? 58 : 44; // "44:59" under an hour, "1:14:59" from an hour up
-  } else {
-    const resting = content.restEndAt !== null;
-    topLabel = content.routineName;
-    buttonLabel = resting ? 'Saltar Descanso' : 'Abrir Entreno';
-    buttonUrl = resting ? content.skipRestUrl : content.openUrl;
-    bigClockUpper = resting ? new Date(content.restEndAt as string) : timerEnd;
-    bigClockCountsDown = resting;
-    hasSetsBar = content.totalSets > 0;
-    setsFraction = hasSetsBar ? content.completedSets / content.totalSets : 0;
-    setsLabel = `${content.completedSets}/${content.totalSets} series`;
-  }
+  const hasSetsBar = content.kind === 'routine' && content.totalSets > 0;
+  const setsFraction = content.kind === 'routine' && content.totalSets > 0 ? content.completedSets / content.totalSets : 0;
+  const setsLabel = content.kind === 'routine' ? `${content.completedSets}/${content.totalSets} series` : '';
 
   return {
     banner: (
