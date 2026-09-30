@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -506,7 +507,13 @@ export default function WorkoutSessionScreen() {
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      {/* KeyboardAwareScrollView, not a plain ScrollView — this screen never
+          had ANY keyboard handling before, so typing into the last
+          exercise's weight/reps fields just got covered outright, with no
+          way to see what was typed. This scrolls whichever field is
+          actually focused into view above the keyboard, no matter how far
+          down the list it is. */}
+      <KeyboardAwareScrollView contentContainerStyle={styles.container} bottomOffset={spacing.lg} keyboardShouldPersistTaps="handled">
         {session.exercises.map((sessionExercise) => (
           <ExerciseCard
             key={sessionExercise.id}
@@ -519,7 +526,7 @@ export default function WorkoutSessionScreen() {
           />
         ))}
         <Button label="+ Agregar ejercicio" onPress={() => setIsPickerOpen(true)} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <ExercisePickerModal
         visible={isPickerOpen}

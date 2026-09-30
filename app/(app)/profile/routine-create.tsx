@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
+import { Alert, StyleSheet, Text } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -52,26 +53,31 @@ export default function CreateRoutineScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Card style={styles.card}>
-          <TextField label="Nombre de la rutina" value={name} onChangeText={setName} placeholder="Día de pierna" />
-          {group ? (
-            <SegmentedControl options={SCOPE_OPTIONS} value={scope} onChange={setScope} />
-          ) : (
-            <Text style={styles.hint}>Entra a un grupo para poder compartir rutinas con él.</Text>
-          )}
-        </Card>
+    // Replaces the old KeyboardAvoidingView + ScrollView pair — that combo
+    // just shifted the whole screen up by the keyboard's height, which did
+    // nothing for a field further down the list than that shift could
+    // reach (the last exercise, reported bug). This scrolls the exact
+    // focused field into view above the keyboard instead, and mode="insets"
+    // (the default) keeps everything else visually stable — no reflow/jump
+    // — while it does.
+    <KeyboardAwareScrollView style={styles.flex} contentContainerStyle={styles.container} bottomOffset={spacing.lg} keyboardShouldPersistTaps="handled">
+      <Card style={styles.card}>
+        <TextField label="Nombre de la rutina" value={name} onChangeText={setName} placeholder="Día de pierna" />
+        {group ? (
+          <SegmentedControl options={SCOPE_OPTIONS} value={scope} onChange={setScope} />
+        ) : (
+          <Text style={styles.hint}>Entra a un grupo para poder compartir rutinas con él.</Text>
+        )}
+      </Card>
 
-        <Card style={styles.card}>
-          <Text style={styles.sectionTitle}>Ejercicios</Text>
-          <RoutineExerciseListEditor values={exercises} onChange={setExercises} defaultUnit={unit} />
-        </Card>
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Ejercicios</Text>
+        <RoutineExerciseListEditor values={exercises} onChange={setExercises} defaultUnit={unit} />
+      </Card>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button label="Crear rutina" onPress={handleSubmit} loading={isSubmitting} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Button label="Crear rutina" onPress={handleSubmit} loading={isSubmitting} />
+    </KeyboardAwareScrollView>
   );
 }
 

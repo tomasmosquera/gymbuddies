@@ -1,5 +1,6 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -32,31 +33,37 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <ErrorBoundary>
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.text,
-              headerBackButtonDisplayMode: 'minimal',
-              contentStyle: { backgroundColor: colors.background },
-            }}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-            <Stack.Screen name="(app)" options={{ headerShown: false }} />
-            {/* group-select controls its own headerLeft (see its own useLayoutEffect) —
-                it's the only component that can reliably tell whether it was reached
-                from Profile > "Cambiar de grupo" (real back target) or a cold-start
-                redirect chain with nowhere to go back to. Default here is no back
-                button at all, so there's nothing to flash before that effect runs. */}
-            <Stack.Screen name="group-select" options={{ title: 'Mis grupos', headerLeft: () => null }} />
-            <Stack.Screen name="join/[code]" options={{ title: 'Invitación' }} />
-          </Stack>
-        </ErrorBoundary>
-      </SafeAreaProvider>
+      {/* Required by KeyboardAwareScrollView (routine-create/edit,
+          workout-session) — it tracks keyboard movement/focused-input
+          layout globally, one Provider for the whole app rather than one
+          per screen that uses it. */}
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          <ErrorBoundary>
+            <Stack
+              screenOptions={{
+                headerStyle: { backgroundColor: colors.background },
+                headerTintColor: colors.text,
+                headerBackButtonDisplayMode: 'minimal',
+                contentStyle: { backgroundColor: colors.background },
+              }}
+            >
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+              <Stack.Screen name="(app)" options={{ headerShown: false }} />
+              {/* group-select controls its own headerLeft (see its own useLayoutEffect) —
+                  it's the only component that can reliably tell whether it was reached
+                  from Profile > "Cambiar de grupo" (real back target) or a cold-start
+                  redirect chain with nowhere to go back to. Default here is no back
+                  button at all, so there's nothing to flash before that effect runs. */}
+              <Stack.Screen name="group-select" options={{ title: 'Mis grupos', headerLeft: () => null }} />
+              <Stack.Screen name="join/[code]" options={{ title: 'Invitación' }} />
+            </Stack>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

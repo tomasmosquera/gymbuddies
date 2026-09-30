@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -79,24 +80,23 @@ export default function EditRoutineScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Card style={styles.card}>
-          <TextField label="Nombre de la rutina" value={name} onChangeText={setName} placeholder="Día de pierna" />
-          <Text style={styles.hint}>
-            {routine.group_id ? 'Compartida con el grupo.' : 'Personal.'} Esto no se puede cambiar después de crearla.
-          </Text>
-        </Card>
+    // See routine-create.tsx's own comment on this — same fix, same reason.
+    <KeyboardAwareScrollView style={styles.flex} contentContainerStyle={styles.container} bottomOffset={spacing.lg} keyboardShouldPersistTaps="handled">
+      <Card style={styles.card}>
+        <TextField label="Nombre de la rutina" value={name} onChangeText={setName} placeholder="Día de pierna" />
+        <Text style={styles.hint}>
+          {routine.group_id ? 'Compartida con el grupo.' : 'Personal.'} Esto no se puede cambiar después de crearla.
+        </Text>
+      </Card>
 
-        <Card style={styles.card}>
-          <Text style={styles.sectionTitle}>Ejercicios</Text>
-          <RoutineExerciseListEditor values={exercises} onChange={setExercises} defaultUnit={unit} />
-        </Card>
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Ejercicios</Text>
+        <RoutineExerciseListEditor values={exercises} onChange={setExercises} defaultUnit={unit} />
+      </Card>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button label="Guardar cambios" onPress={handleSubmit} loading={isSubmitting} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Button label="Guardar cambios" onPress={handleSubmit} loading={isSubmitting} />
+    </KeyboardAwareScrollView>
   );
 }
 
