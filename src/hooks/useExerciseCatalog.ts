@@ -11,6 +11,7 @@ export function useExerciseCatalog() {
     supabase
       .from('exercises')
       .select('*')
+      .order('popularity', { ascending: false })
       .order('name', { ascending: true })
       .then(({ data }) => {
         setExercises(data ?? []);

@@ -1,4 +1,4 @@
-import { formatWeightUnit, kgToLbs, kgToUnit, lbsToKg, sanitizeWeightInput, unitToKg } from '@/lib/domain/workoutUnits';
+import { formatCompactNumber, formatWeightUnit, kgToLbs, kgToUnit, lbsToKg, sanitizeWeightInput, unitToKg } from '@/lib/domain/workoutUnits';
 
 describe('kgToLbs / lbsToKg', () => {
   it('round-trips (within floating-point tolerance)', () => {
@@ -34,6 +34,40 @@ describe('formatWeightUnit', () => {
   it('never shows more than one decimal digit, even from an ugly conversion', () => {
     // 27.65kg -> ~60.98lbs raw, would read as "60.99"-ish noise unrounded.
     expect(formatWeightUnit(27.65, 'lbs')).toMatch(/^\d+\.\d$/);
+  });
+});
+
+describe('formatCompactNumber', () => {
+  it('shows the plain rounded number under 1000, no suffix', () => {
+    expect(formatCompactNumber(543)).toBe('543');
+    expect(formatCompactNumber(999)).toBe('999');
+    expect(formatCompactNumber(0)).toBe('0');
+  });
+
+  it('matches the exact example from the request: 26000 -> "26k"', () => {
+    expect(formatCompactNumber(26000)).toBe('26k');
+  });
+
+  it('drops a trailing .0 for a whole number of thousands', () => {
+    expect(formatCompactNumber(1000)).toBe('1k');
+  });
+
+  it('keeps one decimal for a genuine fraction of a thousand', () => {
+    expect(formatCompactNumber(1200)).toBe('1.2k');
+  });
+
+  it('rounds to at most one decimal, never more', () => {
+    expect(formatCompactNumber(1234)).toBe('1.2k');
+    expect(formatCompactNumber(1250)).toBe('1.3k'); // rounds .25k up to .3k, not .25k
+  });
+
+  it('switches to M at a million', () => {
+    expect(formatCompactNumber(3_400_000)).toBe('3.4M');
+    expect(formatCompactNumber(1_000_000)).toBe('1M');
+  });
+
+  it('handles negatives the same way, sign preserved', () => {
+    expect(formatCompactNumber(-26000)).toBe('-26k');
   });
 });
 

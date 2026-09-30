@@ -45,6 +45,22 @@ export function formatWeightUnit(kg: number, unit: WeightUnit): string {
 }
 
 /**
+ * "26k" for 26000, "1.2k" for 1200, "3.4M" for 3400000 — a large aggregate
+ * (e.g. "Volumen total levantado" across every set ever logged) read as a
+ * wall of digits otherwise. Under 1000 shows the plain rounded number, no
+ * suffix. Trims a trailing ".0" (e.g. 1000 -> "1k", not "1.0k") but keeps a
+ * genuine decimal (1200 -> "1.2k") — one decimal max, always rounded, never
+ * exact past that.
+ */
+export function formatCompactNumber(value: number): string {
+  const abs = Math.abs(value);
+  const trimmed = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  if (abs < 1000) return String(Math.round(value));
+  if (abs < 1_000_000) return `${trimmed(Math.round((value / 1000) * 10) / 10)}k`;
+  return `${trimmed(Math.round((value / 1_000_000) * 10) / 10)}M`;
+}
+
+/**
  * Strips a weight TextInput down to digits + one decimal separator, and
  * normalizes a comma to a period — es-* keyboards' `decimal-pad` often types
  * "," for the decimal point (Spanish locale convention), and a naive

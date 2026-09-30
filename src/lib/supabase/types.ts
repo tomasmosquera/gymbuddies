@@ -523,6 +523,8 @@ export type Exercise = {
   secondary_muscles: string[];
   /** Step-by-step, from WorkoutX — the Explicación tab's content. Empty until exercise-gif-sync has run for this exercise. */
   instructions: string[];
+  /** 0-100, hand/heuristic-scored in migration 0153 — how common this exercise is in a real gym, used to sort the catalog within each muscle group. */
+  popularity: number;
   created_at: string;
 };
 

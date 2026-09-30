@@ -9,7 +9,7 @@ import { usePersonalStatsV2, type PersonalStatsV2 } from '@/hooks/usePersonalSta
 import { formatHour } from '@/lib/domain/personalStats';
 import { BADGES } from '@/lib/domain/badges';
 import { levelProgress } from '@/lib/domain/xp';
-import { kgToUnit } from '@/lib/domain/workoutUnits';
+import { formatCompactNumber, kgToUnit } from '@/lib/domain/workoutUnits';
 import type { MemberSummary } from '@/lib/domain/personalStatsV2';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -397,7 +397,7 @@ export default function PersonalStatsScreen() {
                       mine={me.totalVolumeKg}
                       theirs={versusTeammate.totalVolumeKg}
                       theirName={versusTeammate.fullName}
-                      format={(v) => `${kgToUnit(v, unit)} ${unit}`}
+                      format={(v) => `${formatCompactNumber(kgToUnit(v, unit))} ${unit}`}
                     />
                   </>
                 ) : null}
