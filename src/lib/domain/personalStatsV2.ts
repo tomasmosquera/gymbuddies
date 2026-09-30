@@ -40,6 +40,8 @@ export interface MemberSummary {
   daysAsMember: number;
   /** Sum of weight_kg × reps across every real (non-warmup, weighted) set ever logged, all exercises, all-time — the "Volumen total levantado" row in Estadísticas' Cara a Cara / Comparativa con el grupo. */
   totalVolumeKg: number;
+  reactionsGivenTotal: number;
+  reactionsReceivedTotal: number;
 }
 
 export function buildMemberSummary(input: {
@@ -58,6 +60,8 @@ export function buildMemberSummary(input: {
   kothValidClaims: number;
   requireCheckoutPhoto: boolean;
   totalVolumeKg: number;
+  reactionsGivenTotal: number;
+  reactionsReceivedTotal: number;
 }): MemberSummary {
   const tally = tallyAttendance(input.days.map((d) => d.status));
   const consistencyPercent = tally.completedCount + tally.failedCount > 0
@@ -107,6 +111,8 @@ export function buildMemberSummary(input: {
     kothValidClaims: input.kothValidClaims,
     daysAsMember: daysBetweenDateStrings(startDate, input.todayString) + 1,
     totalVolumeKg: input.totalVolumeKg,
+    reactionsGivenTotal: input.reactionsGivenTotal,
+    reactionsReceivedTotal: input.reactionsReceivedTotal,
   };
 }
 
@@ -117,6 +123,46 @@ export function percentileAmong(myValue: number | null, othersValues: readonly (
   if (comparable.length === 0) return null;
   const beaten = comparable.filter((v) => v < myValue).length;
   return Math.round((beaten / comparable.length) * 100);
+}
+
+export interface RadarAxisDef {
+  label: string;
+  /** Raw metric for this axis — always "higher is better" after this transform (penalties get negated here so fewer of them scores higher). */
+  value: (m: MemberSummary) => number;
+}
+
+/**
+ * The 6-axis "spider" comparing group members (Estadísticas' Cara a Cara) —
+ * picked for being as mutually independent as possible, so two members'
+ * shapes actually differ instead of one just being a scaled-up version of
+ * the other: attendance discipline, raw lifting output, habit persistence,
+ * gamified progress, community engagement, and financial discipline are
+ * each their own, fairly uncorrelated thing.
+ */
+export const RADAR_AXES: RadarAxisDef[] = [
+  { label: 'Consistencia', value: (m) => m.consistencyPercent ?? 0 },
+  { label: 'Fuerza', value: (m) => m.totalVolumeKg },
+  { label: 'Racha', value: (m) => m.longestStreak },
+  { label: 'Progreso', value: (m) => m.totalXp },
+  { label: 'Social', value: (m) => m.reactionsGivenTotal + m.reactionsReceivedTotal },
+  { label: 'Finanzas', value: (m) => -m.totalPenalties },
+];
+
+/**
+ * One member's radar shape: one 0-100 value per RADAR_AXES entry, each their
+ * percentile rank against everyone else in `allMembers` (self excluded from
+ * the comparison pool) — the same "beat N% of the group" idea gbScorePercentile
+ * already uses, just per-axis instead of GB Score alone. This is what makes
+ * axes measured in wildly different units (kg, days, XP, reaction counts)
+ * plot on one shared 0-100 scale. A group of 1 (nobody else to rank
+ * against) returns 50 for every axis — neither strong nor weak, undefined.
+ */
+export function computeRadarValues(member: MemberSummary, allMembers: MemberSummary[]): number[] {
+  return RADAR_AXES.map((axis) => {
+    const others = allMembers.filter((m) => m.userId !== member.userId).map(axis.value);
+    if (others.length === 0) return 50;
+    return percentileAmong(axis.value(member), others) ?? 50;
+  });
 }
 
 export interface Insight {
