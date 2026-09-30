@@ -50,6 +50,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
     Map<string, { workoutMinutes: number | null; activeEnergyKcal: number | null; hourBogota: number; date: string }[]>
   >(new Map());
   const [penaltiesByUser, setPenaltiesByUser] = useState<Map<string, number>>(new Map());
+  const [volumeByUser, setVolumeByUser] = useState<Map<string, number>>(new Map());
   const [groupInfo, setGroupInfo] = useState<{ currency: string; requireCheckoutPhoto: boolean } | null>(null);
   const [extrasLoading, setExtrasLoading] = useState(true);
 
@@ -57,6 +58,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
     if (!groupId) {
       setCheckinsByUser(new Map());
       setPenaltiesByUser(new Map());
+      setVolumeByUser(new Map());
       setGroupInfo(null);
       setExtrasLoading(false);
       return;
@@ -64,7 +66,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
     setExtrasLoading(true);
     const todayString = toZonedDateString(new Date(), timezone);
 
-    const [checkinsRes, resultsRes, groupRes] = await Promise.all([
+    const [checkinsRes, resultsRes, groupRes, volumeRes] = await Promise.all([
       supabase
         .from('checkins')
         .select('user_id, checkin_date, captured_at, workout_minutes, active_energy_kcal')
@@ -72,6 +74,13 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
         .lte('checkin_date', todayString),
       supabase.from('weekly_evaluation_results').select('user_id, penalty_charged').eq('group_id', groupId),
       supabase.from('groups').select('currency, require_checkout_photo').eq('id', groupId).single(),
+      // Unscoped by user (same pattern as useExerciseGroupLeaderboard/
+      // useGroupExerciseHistory — RLS already lets a member read any
+      // group-mate's sets, scoping to THIS group's roster happens below via
+      // `records`), all exercises this time instead of one, to total up
+      // every real set's weight×reps ever logged for "Volumen total
+      // levantado" in the Cara a Cara / Comparativa con el grupo sections.
+      supabase.from('workout_session_exercises').select('session:workout_sessions(status, user_id), sets:workout_sets(reps, weight_kg, is_warmup)'),
     ]);
 
     const nextCheckins = new Map<
@@ -101,11 +110,23 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
     }
     setPenaltiesByUser(nextPenalties);
 
+    const rosterIds = new Set(records.map((r) => r.userId));
+    const nextVolume = new Map<string, number>();
+    for (const row of (volumeRes.data as unknown as {
+      session: { status: string; user_id: string } | null;
+      sets: { reps: number; weight_kg: number | null; is_warmup: boolean }[];
+    }[]) ?? []) {
+      if (!row.session || row.session.status !== 'completed' || !rosterIds.has(row.session.user_id)) continue;
+      const volume = row.sets.filter((s) => !s.is_warmup && s.weight_kg !== null).reduce((sum, s) => sum + s.weight_kg! * s.reps, 0);
+      nextVolume.set(row.session.user_id, (nextVolume.get(row.session.user_id) ?? 0) + volume);
+    }
+    setVolumeByUser(nextVolume);
+
     setGroupInfo(
       groupRes.data ? { currency: groupRes.data.currency, requireCheckoutPhoto: groupRes.data.require_checkout_photo } : null
     );
     setExtrasLoading(false);
-  }, [groupId, timezone]);
+  }, [groupId, timezone, records]);
 
   useEffect(() => {
     refreshExtras();
@@ -138,6 +159,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
         earnedBadgesCount: badges?.earnedCount ?? 0,
         kothValidClaims: badges?.kothClaims.filter((c) => c.status === 'valid').length ?? 0,
         requireCheckoutPhoto: groupInfo.requireCheckoutPhoto,
+        totalVolumeKg: volumeByUser.get(m.userId) ?? 0,
       });
     });
     const allMembers = [...summaries].sort((a, b) => (b.gbScore ?? -1) - (a.gbScore ?? -1));
@@ -207,7 +229,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
       currency: groupInfo.currency,
       requireCheckoutPhoto: groupInfo.requireCheckoutPhoto,
     };
-  }, [records, membersBadges, checkinsByUser, penaltiesByUser, groupInfo, userId, timezone]);
+  }, [records, membersBadges, checkinsByUser, penaltiesByUser, volumeByUser, groupInfo, userId, timezone]);
 
   return { data, isLoading: recordsLoading || badgesLoading || extrasLoading, refresh };
 }

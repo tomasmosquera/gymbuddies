@@ -280,6 +280,7 @@ export default function ProfileScreen() {
         <Card style={styles.stackCard}>
           <Button label="Rutinas de entreno" variant="secondary" onPress={() => router.push('/profile/routines')} />
           <Button label="Historial de entrenos" variant="secondary" onPress={() => router.push('/profile/workout-history')} />
+          <Button label="Comparativas" variant="secondary" onPress={() => router.push('/profile/comparativas')} />
           <Button label="Ejercicios" variant="secondary" onPress={() => router.push('/profile/exercises')} />
         </Card>
       </View>

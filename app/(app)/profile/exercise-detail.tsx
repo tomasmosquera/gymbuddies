@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
+import { ComparisonMetric } from '@/components/ui/ComparisonMetric';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { LineChart } from '@/components/stats/LineChart';
@@ -134,64 +135,9 @@ function ExplanationTab({ instructions }: { instructions: string[] }) {
   );
 }
 
-function ComparisonBar({ label, value, pct, isYou }: { label: string; value: string; pct: number; isYou: boolean }) {
-  return (
-    <View style={styles.comparisonBarRow}>
-      <Text style={styles.comparisonBarLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <View style={styles.comparisonBarTrack}>
-        <View style={[styles.comparisonBarFill, { width: `${pct}%` }, isYou ? styles.comparisonBarFillYou : styles.comparisonBarFillOther]} />
-      </View>
-      <Text style={styles.comparisonBarValue}>{value}</Text>
-    </View>
-  );
-}
-
-/** One metric's "you vs them" comparison — two bars scaled to whichever value is larger, plus a % delta. */
-function ComparisonMetric({
-  label,
-  youKg,
-  otherKg,
-  otherName,
-  unit,
-}: {
-  label: string;
-  youKg: number | null;
-  otherKg: number | null;
-  otherName: string;
-  unit: WeightUnit;
-}) {
-  const maxKg = Math.max(youKg ?? 0, otherKg ?? 0, 1);
-  const deltaPct = youKg !== null && otherKg !== null && otherKg > 0 ? Math.round(((youKg - otherKg) / otherKg) * 100) : null;
-  return (
-    <View style={styles.comparisonMetric}>
-      <View style={styles.comparisonMetricHeader}>
-        <Text style={styles.comparisonMetricLabel}>{label}</Text>
-        {deltaPct !== null ? (
-          <View style={styles.comparisonDeltaRow}>
-            <Ionicons name={deltaPct >= 0 ? 'arrow-up' : 'arrow-down'} size={12} color={deltaPct >= 0 ? colors.primary : colors.danger} />
-            <Text style={[styles.comparisonDeltaText, { color: deltaPct >= 0 ? colors.primary : colors.danger }]}>
-              {Math.abs(deltaPct)}%
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <ComparisonBar
-        label="Tú"
-        value={youKg !== null ? `${kgToUnit(youKg, unit)} ${unit}` : '—'}
-        pct={youKg !== null ? (youKg / maxKg) * 100 : 0}
-        isYou
-      />
-      <ComparisonBar
-        label={otherName}
-        value={otherKg !== null ? `${kgToUnit(otherKg, unit)} ${unit}` : '—'}
-        pct={otherKg !== null ? (otherKg / maxKg) * 100 : 0}
-        isYou={false}
-      />
-    </View>
-  );
-}
+// ComparisonBar/ComparisonMetric moved to src/components/ui/ComparisonMetric.tsx
+// so comparativas.tsx's whole-catalog head-to-head can render the exact same
+// "you vs them" bars without duplicating them.
 
 /** Grupo: this exercise's leaderboard across the active group (switchable metric, same pills as Resumen), plus a "you vs them" comparison when a member is tapped. */
 function GroupTab({ exerciseId, unit, currentUserId }: { exerciseId: string; unit: WeightUnit; currentUserId: string | null }) {
@@ -491,16 +437,4 @@ const styles = StyleSheet.create({
   strongerBadgeYes: { backgroundColor: 'rgba(61, 220, 151, 0.15)' },
   strongerBadgeNo: { backgroundColor: 'rgba(255, 107, 107, 0.15)' },
   strongerBadgeText: { fontSize: 10, fontWeight: '800', color: colors.text },
-  comparisonMetric: { gap: 4 },
-  comparisonMetricHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  comparisonMetricLabel: { color: colors.text, fontWeight: '700', fontSize: 14 },
-  comparisonDeltaRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  comparisonDeltaText: { fontSize: 12, fontWeight: '700' },
-  comparisonBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  comparisonBarLabel: { width: 60, color: colors.textMuted, fontSize: 12 },
-  comparisonBarTrack: { flex: 1, height: 10, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
-  comparisonBarFill: { height: '100%', borderRadius: radii.pill },
-  comparisonBarFillYou: { backgroundColor: colors.primary },
-  comparisonBarFillOther: { backgroundColor: colors.textMuted },
-  comparisonBarValue: { width: 64, textAlign: 'right', color: colors.text, fontSize: 12, fontWeight: '600' },
 });

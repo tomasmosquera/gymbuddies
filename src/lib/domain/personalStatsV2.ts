@@ -38,6 +38,8 @@ export interface MemberSummary {
   earnedBadgesCount: number;
   kothValidClaims: number;
   daysAsMember: number;
+  /** Sum of weight_kg × reps across every real (non-warmup, weighted) set ever logged, all exercises, all-time — the "Volumen total levantado" row in Estadísticas' Cara a Cara / Comparativa con el grupo. */
+  totalVolumeKg: number;
 }
 
 export function buildMemberSummary(input: {
@@ -55,6 +57,7 @@ export function buildMemberSummary(input: {
   earnedBadgesCount: number;
   kothValidClaims: number;
   requireCheckoutPhoto: boolean;
+  totalVolumeKg: number;
 }): MemberSummary {
   const tally = tallyAttendance(input.days.map((d) => d.status));
   const consistencyPercent = tally.completedCount + tally.failedCount > 0
@@ -103,6 +106,7 @@ export function buildMemberSummary(input: {
     earnedBadgesCount: input.earnedBadgesCount,
     kothValidClaims: input.kothValidClaims,
     daysAsMember: daysBetweenDateStrings(startDate, input.todayString) + 1,
+    totalVolumeKg: input.totalVolumeKg,
   };
 }
 

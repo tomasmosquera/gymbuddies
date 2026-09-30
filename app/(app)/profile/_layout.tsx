@@ -106,6 +106,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="workout-session" options={{ title: 'Entreno', headerShown: false }} />
       <Stack.Screen name="exercise-detail" options={{ title: 'Ejercicio' }} />
       <Stack.Screen name="workout-history" options={{ title: 'Historial de entrenos' }} />
+      <Stack.Screen name="comparativas" options={{ title: 'Comparativas' }} />
       <Stack.Screen name="workout-detail" options={{ title: 'Detalle del entreno' }} />
       <Stack.Screen name="exercises" options={{ title: 'Ejercicios' }} />
       <Stack.Screen name="king-of-the-hill" options={{ title: 'King of the Hill' }} />

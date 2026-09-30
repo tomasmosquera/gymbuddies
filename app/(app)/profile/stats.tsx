@@ -9,6 +9,7 @@ import { usePersonalStatsV2, type PersonalStatsV2 } from '@/hooks/usePersonalSta
 import { formatHour } from '@/lib/domain/personalStats';
 import { BADGES } from '@/lib/domain/badges';
 import { levelProgress } from '@/lib/domain/xp';
+import { kgToUnit } from '@/lib/domain/workoutUnits';
 import type { MemberSummary } from '@/lib/domain/personalStatsV2';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -97,7 +98,8 @@ function ComparisonRow({ label, mine, group }: { label: string; mine: string; gr
 }
 
 export default function PersonalStatsScreen() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
+  const unit = profile?.weight_unit ?? 'kg';
   const { group, membership, isLoading: groupLoading } = useActiveGroup();
   const isAdminOnly = membership?.status === 'admin_only';
   // An admin_only viewer never has a records row of their own (they don't
@@ -389,6 +391,13 @@ export default function PersonalStatsScreen() {
                       theirs={versusTeammate.totalPenalties}
                       theirName={versusTeammate.fullName}
                       format={(v) => formatMoney(v, statsV2.currency)}
+                    />
+                    <VersusBar
+                      label="Volumen total levantado"
+                      mine={me.totalVolumeKg}
+                      theirs={versusTeammate.totalVolumeKg}
+                      theirName={versusTeammate.fullName}
+                      format={(v) => `${kgToUnit(v, unit)} ${unit}`}
                     />
                   </>
                 ) : null}
