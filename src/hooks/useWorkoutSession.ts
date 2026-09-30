@@ -89,6 +89,22 @@ export function useWorkoutSession() {
     [refresh]
   );
 
+  // Session-scoped only (workout_session_exercises), never touches the
+  // routine itself — "no voy a hacer Pull Ups hoy" shouldn't mean editing
+  // the routine, just today's list. Cascades to any sets already logged for
+  // it (see migration 0154) — workout-session.tsx confirms destructively
+  // before calling this whenever there's something to lose.
+  const removeExercise = useCallback(
+    async (sessionExerciseId: string) => {
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('remove_session_exercise', { p_session_exercise_id: sessionExerciseId });
+        if (error) throw new Error(error.message);
+      });
+      await refresh();
+    },
+    [refresh]
+  );
+
   // Both log_set and update_set already return the persisted row — splicing
   // it straight into local state means the newly-completed set appears the
   // moment this one RPC resolves, instead of waiting on a second round trip
@@ -218,6 +234,7 @@ export function useWorkoutSession() {
     startFromRoutine,
     startFreeform,
     addExercise,
+    removeExercise,
     logSet,
     updateLoggedSet,
     deleteLoggedSet,

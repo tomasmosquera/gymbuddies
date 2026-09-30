@@ -45,6 +45,7 @@ function ExerciseCard({
   onLogSet,
   onUpdateSet,
   onDeleteSet,
+  onRemoveExercise,
   defaultUnit,
 }: {
   sessionExercise: WorkoutSessionExerciseWithDetails;
@@ -52,6 +53,7 @@ function ExerciseCard({
   onLogSet: (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit, restSeconds: number | null) => Promise<void>;
   onUpdateSet: (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => void;
   onDeleteSet: (setId: string) => void;
+  onRemoveExercise: (sessionExerciseId: string) => void;
   defaultUnit: WeightUnit;
 }) {
   const [unit, setUnit] = useState<WeightUnit>(defaultUnit);
@@ -109,6 +111,25 @@ function ExerciseCard({
         },
       },
     ]);
+  };
+
+  // Session-only removal — never touches the routine (see useWorkoutSession's
+  // removeExercise). Warns specifically about losing logged sets only when
+  // there actually are any to lose; an untouched exercise (the reported
+  // case — decided not to do Pull Ups, never confirmed a set) gets a
+  // lighter-weight confirmation.
+  const confirmRemoveExercise = () => {
+    const hasLoggedSets = sessionExercise.sets.length > 0;
+    Alert.alert(
+      `Quitar ${sessionExercise.exercise.name}`,
+      hasLoggedSets
+        ? 'Esto borra las series que ya registraste hoy para este ejercicio. La rutina no cambia — la próxima vez que la hagas, va a aparecer de nuevo.'
+        : 'Se quita solo de este entreno. La rutina no cambia — la próxima vez que la hagas, va a aparecer de nuevo.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Quitar', style: 'destructive', onPress: () => onRemoveExercise(sessionExercise.id) },
+      ]
+    );
   };
 
   const toggleUnit = () => {
@@ -198,6 +219,9 @@ function ExerciseCard({
         </Pressable>
         <Pressable onPress={toggleUnit} style={styles.unitPill} accessibilityRole="button">
           <Text style={styles.unitPillText}>{unit.toUpperCase()}</Text>
+        </Pressable>
+        <Pressable onPress={confirmRemoveExercise} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Quitar ${sessionExercise.exercise.name} de este entreno`}>
+          <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
         </Pressable>
       </View>
 
@@ -345,7 +369,7 @@ function ExerciseCard({
  */
 export default function WorkoutSessionScreen() {
   const { profile } = useAuth();
-  const { session, isLoading, addExercise, logSet, updateLoggedSet, deleteLoggedSet, finish, discard } = useWorkoutSession();
+  const { session, isLoading, addExercise, removeExercise, logSet, updateLoggedSet, deleteLoggedSet, finish, discard } = useWorkoutSession();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const restTimer = useRestTimer();
@@ -410,6 +434,14 @@ export default function WorkoutSessionScreen() {
       await addExercise(session.id, exercise.id);
     } catch (err) {
       Alert.alert('No se pudo agregar el ejercicio', friendlyErrorMessage(err));
+    }
+  };
+
+  const handleRemoveExercise = async (sessionExerciseId: string) => {
+    try {
+      await removeExercise(sessionExerciseId);
+    } catch (err) {
+      Alert.alert('No se pudo quitar el ejercicio', friendlyErrorMessage(err));
     }
   };
 
@@ -523,6 +555,7 @@ export default function WorkoutSessionScreen() {
             onLogSet={handleLogSet}
             onUpdateSet={handleUpdateSet}
             onDeleteSet={deleteLoggedSet}
+            onRemoveExercise={handleRemoveExercise}
             defaultUnit={unit}
           />
         ))}
