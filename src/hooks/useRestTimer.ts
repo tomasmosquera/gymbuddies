@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
+import { cancelRestTimerNotification, scheduleRestTimerNotification } from '@/lib/notifications/restTimer';
 
 const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
 
@@ -45,10 +46,18 @@ export function useRestTimer() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endAtRef = useRef<number | null>(null);
 
+  // Cancels the scheduled local notification (see restTimer.ts) every time,
+  // not just on skip()/unmount — start() calls this right before scheduling
+  // the NEW rest period's own notification, and the countdown ending on its
+  // own (tick(), below) already alerted in-app, so the scheduled one would
+  // just be a redundant late alert if the app happened to be foregrounded
+  // right at the boundary. Fire-and-forget: nothing here needs to block on
+  // it actually finishing.
   const clear = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
     endAtRef.current = null;
+    void cancelRestTimerNotification();
   };
 
   const tick = () => {
@@ -76,6 +85,12 @@ export function useRestTimer() {
     endAtRef.current = Date.now() + seconds * 1000;
     setRemainingSeconds(seconds);
     intervalRef.current = setInterval(tick, 1000);
+    // The in-app sound/haptic (tick(), above) only fire while this screen is
+    // mounted and the JS interval is actually able to run — both platforms
+    // throttle it within seconds of backgrounding. This is the half that
+    // still reaches the member if they've switched apps or locked the
+    // screen by the time the rest period ends.
+    void scheduleRestTimerNotification(new Date(endAtRef.current));
   };
 
   const skip = () => {
