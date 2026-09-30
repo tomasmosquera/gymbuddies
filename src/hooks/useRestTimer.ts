@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { useAudioPlayer } from 'expo-audio';
+import { createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
 const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
+
+/**
+ * A fresh player per play — NOT a single instance reused across rest
+ * periods via seekTo(0)+play(). That was flaky (reported: 1st rest period
+ * played fine, 2nd silently didn't, 3rd did again) — most likely a race
+ * between the seek and play commands landing on the native side, since
+ * seekTo()'s promise was never awaited before calling play(). A brand new
+ * player is already at position 0 with nothing to race, so it sidesteps
+ * the bug entirely instead of chasing the exact native timing issue.
+ * createAudioPlayer (unlike the useAudioPlayer hook) doesn't auto-release,
+ * so this disposes it itself once the ~0.5s clip has had time to finish.
+ */
+function playRestTimerDoneSound() {
+  const player = createAudioPlayer(REST_TIMER_DONE_SOUND);
+  player.play();
+  setTimeout(() => player.remove(), 1500);
+}
 
 /**
  * The in-app rest countdown between sets — no Live Activity/background
@@ -27,7 +44,6 @@ export function useRestTimer() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endAtRef = useRef<number | null>(null);
-  const player = useAudioPlayer(REST_TIMER_DONE_SOUND);
 
   const clear = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -43,12 +59,9 @@ export function useRestTimer() {
       setRemainingSeconds(null);
       // Only when the countdown genuinely runs out on its own — skip() below
       // has its own path and never reaches this, since the member already
-      // knows they're ending the rest early. seekTo(0) first since a second
-      // rest period in the same exercise would otherwise try to play from
-      // wherever last time's short clip left off (already at the end).
-      player.seekTo(0).catch(() => {});
-      player.play();
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // knows they're ending the rest early.
+      playRestTimerDoneSound();
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       return;
     }
     setRemainingSeconds(remaining);

@@ -299,7 +299,7 @@ export default function CheckinPreviewScreen() {
 
         setDraft(null);
         requestWorkoutActivitySync();
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
         Alert.alert(
@@ -416,7 +416,7 @@ export default function CheckinPreviewScreen() {
 
       setDraft(null);
       requestWorkoutActivitySync();
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
         (group.require_checkout_photo
