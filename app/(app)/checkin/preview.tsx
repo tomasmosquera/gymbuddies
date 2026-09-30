@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
@@ -298,6 +299,7 @@ export default function CheckinPreviewScreen() {
 
         setDraft(null);
         requestWorkoutActivitySync();
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
         Alert.alert(
@@ -414,6 +416,7 @@ export default function CheckinPreviewScreen() {
 
       setDraft(null);
       requestWorkoutActivitySync();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
         (group.require_checkout_photo

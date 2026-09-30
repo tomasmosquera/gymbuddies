@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 
 const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
 
@@ -47,6 +48,7 @@ export function useRestTimer() {
       // wherever last time's short clip left off (already at the end).
       player.seekTo(0).catch(() => {});
       player.play();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       return;
     }
     setRemainingSeconds(remaining);
