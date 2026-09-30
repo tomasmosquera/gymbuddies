@@ -5,12 +5,27 @@ import { registerForPushNotificationsAsync, unregisterCurrentDeviceToken } from 
 import { stopArrivalGeofence } from '@/lib/notifications/checkinArrivalReminders';
 import { syncWorkoutLiveActivity } from '@/lib/liveActivity/workoutLiveActivity';
 import { syncWorkoutMilestoneNotifications } from '@/lib/notifications/workoutMilestones';
+import { retryOnTransientNetworkError } from '@/lib/retry';
 import type { Profile } from '@/lib/supabase/types';
 
+/**
+ * Never throws, even on a network-level failure — this callers rely on that
+ * (see the getSession().then callback below, which sets isInitializing
+ * false right after awaiting this; letting a rejection escape here would
+ * skip that and strand the app on its splash/loading screen forever, same
+ * bug class as useActiveGroup's refresh()). retryOnTransientNetworkError
+ * absorbs a brief connectivity blip first; a genuine failure after that
+ * still resolves to null rather than throwing, same as the existing
+ * "PostgREST returned an error" branch already did.
+ */
 async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-  if (error) return null;
-  return data;
+  try {
+    const { data, error } = await retryOnTransientNetworkError(async () => supabase.from('profiles').select('*').eq('id', userId).single());
+    if (error) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -29,9 +44,12 @@ export function useAuthBootstrap() {
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!isMounted) return;
-      setSession(session);
-      setProfile(session ? await fetchProfile(session.user.id) : null);
-      setInitializing(false);
+      try {
+        setSession(session);
+        setProfile(session ? await fetchProfile(session.user.id) : null);
+      } finally {
+        setInitializing(false);
+      }
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange(async (event, session) => {
