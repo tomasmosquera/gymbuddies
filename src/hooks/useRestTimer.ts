@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { useAudioPlayer } from 'expo-audio';
+
+const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
 
 /**
  * The in-app rest countdown between sets — no Live Activity/background
@@ -23,6 +26,7 @@ export function useRestTimer() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endAtRef = useRef<number | null>(null);
+  const player = useAudioPlayer(REST_TIMER_DONE_SOUND);
 
   const clear = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -36,6 +40,13 @@ export function useRestTimer() {
     if (remaining <= 0) {
       clear();
       setRemainingSeconds(null);
+      // Only when the countdown genuinely runs out on its own — skip() below
+      // has its own path and never reaches this, since the member already
+      // knows they're ending the rest early. seekTo(0) first since a second
+      // rest period in the same exercise would otherwise try to play from
+      // wherever last time's short clip left off (already at the end).
+      player.seekTo(0).catch(() => {});
+      player.play();
       return;
     }
     setRemainingSeconds(remaining);

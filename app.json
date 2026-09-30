@@ -114,7 +114,15 @@
       "expo-video",
       "react-native-compressor",
       "expo-font",
-      "expo-widgets"
+      "expo-widgets",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
