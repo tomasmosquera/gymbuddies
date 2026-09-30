@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { getBodyWeightFromHealth, saveWorkoutToHealth } from '@/lib/health';
 import { DEFAULT_BODY_WEIGHT_KG, estimateWorkoutCalories } from '@/lib/domain/calorieEstimate';
+import { retryOnTransientNetworkError } from '@/lib/retry';
 import type { WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '@/lib/supabase/types';
 
@@ -55,8 +56,10 @@ export function useWorkoutSession() {
 
   const startFromRoutine = useCallback(
     async (routineId: string, checkinId: string | null = null) => {
-      const { error } = await supabase.rpc('start_workout_session', { p_routine_id: routineId, p_checkin_id: checkinId });
-      if (error) throw new Error(error.message);
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('start_workout_session', { p_routine_id: routineId, p_checkin_id: checkinId });
+        if (error) throw new Error(error.message);
+      });
       await refresh();
     },
     [refresh]
@@ -64,8 +67,11 @@ export function useWorkoutSession() {
 
   const startFreeform = useCallback(
     async (checkinId: string | null = null) => {
-      const { data, error } = await supabase.rpc('start_workout_session', { p_checkin_id: checkinId });
-      if (error || !data) throw new Error(error?.message ?? 'No se pudo iniciar el entreno');
+      const data = await retryOnTransientNetworkError(async () => {
+        const { data, error } = await supabase.rpc('start_workout_session', { p_checkin_id: checkinId });
+        if (error || !data) throw new Error(error?.message ?? 'No se pudo iniciar el entreno');
+        return data;
+      });
       await refresh();
       return data;
     },
@@ -74,8 +80,10 @@ export function useWorkoutSession() {
 
   const addExercise = useCallback(
     async (sessionId: string, exerciseId: string) => {
-      const { error } = await supabase.rpc('add_session_exercise', { p_session_id: sessionId, p_exercise_id: exerciseId });
-      if (error) throw new Error(error.message);
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('add_session_exercise', { p_session_id: sessionId, p_exercise_id: exerciseId });
+        if (error) throw new Error(error.message);
+      });
       await refresh();
     },
     [refresh]
@@ -89,14 +97,24 @@ export function useWorkoutSession() {
   // the other half of this fix (an optimistic row shown before even this
   // RPC resolves) — this part is what that optimistic row reconciles
   // against once the real one arrives.
+  //
+  // retryOnTransientNetworkError wraps every RPC call in this hook (not
+  // just this one) — logging a set is by far the most frequent action in
+  // this screen, so a member locking their phone or fighting gym wifi mid-
+  // set hit "se perdió la conexión" ~20 times across one routine, each one
+  // needing a manual re-tap. This silently absorbs a connection blip that
+  // resolves within a couple seconds instead of surfacing it at all.
   const logSet = useCallback(async (sessionExerciseId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
-    const { data, error } = await supabase.rpc('log_set', {
-      p_session_exercise_id: sessionExerciseId,
-      p_reps: reps,
-      p_weight: weight ?? null,
-      p_unit: unit,
+    const data = await retryOnTransientNetworkError(async () => {
+      const { data, error } = await supabase.rpc('log_set', {
+        p_session_exercise_id: sessionExerciseId,
+        p_reps: reps,
+        p_weight: weight ?? null,
+        p_unit: unit,
+      });
+      if (error) throw new Error(error.message);
+      return data;
     });
-    if (error) throw new Error(error.message);
     setSession((prev) =>
       prev
         ? {
@@ -110,8 +128,11 @@ export function useWorkoutSession() {
   }, []);
 
   const updateLoggedSet = useCallback(async (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => {
-    const { data, error } = await supabase.rpc('update_set', { p_set_id: setId, p_reps: reps, p_weight: weight ?? null, p_unit: unit });
-    if (error) throw new Error(error.message);
+    const data = await retryOnTransientNetworkError(async () => {
+      const { data, error } = await supabase.rpc('update_set', { p_set_id: setId, p_reps: reps, p_weight: weight ?? null, p_unit: unit });
+      if (error) throw new Error(error.message);
+      return data;
+    });
     setSession((prev) =>
       prev
         ? { ...prev, exercises: prev.exercises.map((se) => ({ ...se, sets: se.sets.map((s) => (s.id === setId ? data : s)) })) }
@@ -121,8 +142,10 @@ export function useWorkoutSession() {
 
   const deleteLoggedSet = useCallback(
     async (setId: string) => {
-      const { error } = await supabase.rpc('delete_set', { p_set_id: setId });
-      if (error) throw new Error(error.message);
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('delete_set', { p_set_id: setId });
+        if (error) throw new Error(error.message);
+      });
       await refresh();
     },
     [refresh]
@@ -157,12 +180,14 @@ export function useWorkoutSession() {
         estimatedCalories = estimateWorkoutCalories(durationSeconds, bodyWeightKg);
       }
 
-      const { error } = await supabase.rpc('finish_workout_session', {
-        p_session_id: sessionId,
-        p_notes: notes ?? null,
-        p_estimated_calories: estimatedCalories,
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('finish_workout_session', {
+          p_session_id: sessionId,
+          p_notes: notes ?? null,
+          p_estimated_calories: estimatedCalories,
+        });
+        if (error) throw new Error(error.message);
       });
-      if (error) throw new Error(error.message);
       refresh();
 
       // Best-effort and fire-and-forget, same reasoning as refresh() above —
@@ -177,8 +202,10 @@ export function useWorkoutSession() {
 
   const discard = useCallback(
     async (sessionId: string) => {
-      const { error } = await supabase.rpc('delete_workout_session', { p_session_id: sessionId });
-      if (error) throw new Error(error.message);
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('delete_workout_session', { p_session_id: sessionId });
+        if (error) throw new Error(error.message);
+      });
       refresh();
     },
     [refresh]
