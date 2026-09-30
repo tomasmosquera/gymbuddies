@@ -16,6 +16,7 @@ const history: GroupExerciseHistory[] = [
     exerciseId: 'bench',
     exerciseName: 'Bench Press',
     muscleGroup: 'chest',
+    secondaryMuscles: [],
     entriesByUser: new Map([
       ['a', entries(60, 65)],
       ['b', entries(80)],
@@ -25,12 +26,14 @@ const history: GroupExerciseHistory[] = [
     exerciseId: 'squat',
     exerciseName: 'Squat',
     muscleGroup: 'quads',
+    secondaryMuscles: [],
     entriesByUser: new Map([['a', entries(100)]]),
   },
   {
     exerciseId: 'nobody',
     exerciseName: 'Nobody Did This',
     muscleGroup: 'core',
+    secondaryMuscles: [],
     entriesByUser: new Map(),
   },
 ];

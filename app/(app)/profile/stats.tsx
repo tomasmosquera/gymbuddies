@@ -10,7 +10,7 @@ import { formatHour } from '@/lib/domain/personalStats';
 import { BADGES } from '@/lib/domain/badges';
 import { levelProgress } from '@/lib/domain/xp';
 import { formatCompactNumber, kgToUnit } from '@/lib/domain/workoutUnits';
-import { computeRadarValues, RADAR_AXES, type MemberSummary } from '@/lib/domain/personalStatsV2';
+import type { MemberSummary } from '@/lib/domain/personalStatsV2';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
@@ -19,7 +19,6 @@ import { LineChart } from '@/components/stats/LineChart';
 import { Heatmap } from '@/components/stats/Heatmap';
 import { BarList } from '@/components/stats/BarList';
 import { VersusBar } from '@/components/stats/VersusBar';
-import { RadarChart } from '@/components/stats/RadarChart';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -331,18 +330,6 @@ export default function PersonalStatsScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-            {versusTeammate ? (
-              <Card style={styles.card}>
-                <Text style={styles.cardTitle}>Radar comparativo</Text>
-                <RadarChart
-                  axes={RADAR_AXES.map((a) => a.label)}
-                  series={[
-                    { label: 'Tú', color: colors.primary, values: computeRadarValues(me, statsV2.allMembers) },
-                    { label: versusTeammate.fullName, color: colors.warning, values: computeRadarValues(versusTeammate, statsV2.allMembers) },
-                  ]}
-                />
-              </Card>
-            ) : null}
             {versusTeammate ? (
               <Card style={[styles.card, styles.versusCard]}>
                 <VersusBar

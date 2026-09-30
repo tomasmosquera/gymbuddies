@@ -51,7 +51,6 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
   >(new Map());
   const [penaltiesByUser, setPenaltiesByUser] = useState<Map<string, number>>(new Map());
   const [volumeByUser, setVolumeByUser] = useState<Map<string, number>>(new Map());
-  const [reactionsByUser, setReactionsByUser] = useState<Map<string, { given: number; received: number }>>(new Map());
   const [groupInfo, setGroupInfo] = useState<{ currency: string; requireCheckoutPhoto: boolean } | null>(null);
   const [extrasLoading, setExtrasLoading] = useState(true);
 
@@ -60,7 +59,6 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
       setCheckinsByUser(new Map());
       setPenaltiesByUser(new Map());
       setVolumeByUser(new Map());
-      setReactionsByUser(new Map());
       setGroupInfo(null);
       setExtrasLoading(false);
       return;
@@ -68,7 +66,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
     setExtrasLoading(true);
     const todayString = toZonedDateString(new Date(), timezone);
 
-    const [checkinsRes, resultsRes, groupRes, volumeRes, reactionsRes] = await Promise.all([
+    const [checkinsRes, resultsRes, groupRes, volumeRes] = await Promise.all([
       supabase
         .from('checkins')
         .select('user_id, checkin_date, captured_at, workout_minutes, active_energy_kcal')
@@ -83,10 +81,6 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
       // every real set's weight×reps ever logged for "Volumen total
       // levantado" in the Cara a Cara / Comparativa con el grupo sections.
       supabase.from('workout_session_exercises').select('session:workout_sessions(status, user_id), sets:workout_sets(reps, weight_kg, is_warmup)'),
-      // Same table/shape usePersonalStats (V1) already queries for "me"
-      // alone — here for every member at once, feeding the radar's "Social"
-      // axis (see computeRadarValues).
-      supabase.from('checkin_reactions').select('user_id, checkin:checkins(user_id)').eq('group_id', groupId),
     ]);
 
     const nextCheckins = new Map<
@@ -128,18 +122,6 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
     }
     setVolumeByUser(nextVolume);
 
-    const nextReactions = new Map<string, { given: number; received: number }>();
-    const bump = (userId: string, key: 'given' | 'received') => {
-      const entry = nextReactions.get(userId) ?? { given: 0, received: 0 };
-      entry[key]++;
-      nextReactions.set(userId, entry);
-    };
-    for (const row of (reactionsRes.data as unknown as { user_id: string; checkin: { user_id: string } | null }[]) ?? []) {
-      bump(row.user_id, 'given'); // the reactor
-      if (row.checkin) bump(row.checkin.user_id, 'received'); // whoever's check-in got reacted to
-    }
-    setReactionsByUser(nextReactions);
-
     setGroupInfo(
       groupRes.data ? { currency: groupRes.data.currency, requireCheckoutPhoto: groupRes.data.require_checkout_photo } : null
     );
@@ -178,8 +160,6 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
         kothValidClaims: badges?.kothClaims.filter((c) => c.status === 'valid').length ?? 0,
         requireCheckoutPhoto: groupInfo.requireCheckoutPhoto,
         totalVolumeKg: volumeByUser.get(m.userId) ?? 0,
-        reactionsGivenTotal: reactionsByUser.get(m.userId)?.given ?? 0,
-        reactionsReceivedTotal: reactionsByUser.get(m.userId)?.received ?? 0,
       });
     });
     const allMembers = [...summaries].sort((a, b) => (b.gbScore ?? -1) - (a.gbScore ?? -1));
@@ -249,7 +229,7 @@ export function usePersonalStatsV2(groupId: string | null, userId: string | null
       currency: groupInfo.currency,
       requireCheckoutPhoto: groupInfo.requireCheckoutPhoto,
     };
-  }, [records, membersBadges, checkinsByUser, penaltiesByUser, volumeByUser, reactionsByUser, groupInfo, userId, timezone]);
+  }, [records, membersBadges, checkinsByUser, penaltiesByUser, volumeByUser, groupInfo, userId, timezone]);
 
   return { data, isLoading: recordsLoading || badgesLoading || extrasLoading, refresh };
 }

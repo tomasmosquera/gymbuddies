@@ -6,6 +6,8 @@ export interface GroupExerciseHistory {
   exerciseId: string;
   exerciseName: string;
   muscleGroup: MuscleGroup;
+  /** Free-text (WorkoutX import) — feeds the Comparar tab's muscle radar (see muscleDistribution.ts), which maps these to its own 7 buckets. */
+  secondaryMuscles: string[];
   /** Every roster member's own history for this exercise, keyed by user_id — absent key means they've never logged it. */
   entriesByUser: Map<string, ExerciseHistoryEntry[]>;
 }

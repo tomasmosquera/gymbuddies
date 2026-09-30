@@ -16,7 +16,9 @@ import {
   type HeadToHeadRow,
 } from '@/lib/domain/groupExerciseComparison';
 import type { ExerciseChartMetric } from '@/lib/domain/exerciseRecords';
+import { computeMuscleBucketCounts, computeMuscleDistributionRadar, MUSCLE_BUCKET_LABELS, MUSCLE_BUCKET_ORDER } from '@/lib/domain/muscleDistribution';
 import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { RadarChart } from '@/components/stats/RadarChart';
 import { MUSCLE_GROUP_LABELS, MUSCLE_GROUP_ORDER } from '@/constants/muscleGroups';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -95,22 +97,25 @@ function RecordsTab({
   );
 }
 
-/** Comparar: the same "Tú vs [compañero]" exercise-detail.tsx already has per exercise, generalized across every exercise the group's logged at once — pick someone, see every exercise either of you has done side by side. */
+/** Comparar: the same "Tú vs [compañero]" exercise-detail.tsx already has per exercise, generalized across every exercise the group's logged at once — pick someone, see every exercise either of you has done side by side. Who's picked lives in the parent (ComparativasScreen) — the muscle radar above these pills needs it too. */
 function CompareTab({
   history,
   roster,
   metric,
   unit,
   myUserId,
+  comparedUserId,
+  setComparedUserId,
 }: {
   history: GroupExerciseHistory[];
   roster: { userId: string; fullName: string }[];
   metric: ExerciseChartMetric;
   unit: WeightUnit;
   myUserId: string | null;
+  comparedUserId: string | null;
+  setComparedUserId: (userId: string) => void;
 }) {
   const teammates = roster.filter((m) => m.userId !== myUserId);
-  const [comparedUserId, setComparedUserId] = useState<string | null>(teammates[0]?.userId ?? null);
   const compared = teammates.find((m) => m.userId === comparedUserId) ?? null;
 
   const table: HeadToHeadRow[] = useMemo(
@@ -159,6 +164,57 @@ function CompareTab({
 }
 
 /**
+ * "Qué tanto ejercitan las distintas partes del cuerpo" — Tú vs el compañero
+ * elegido, un eje por grupo muscular (ver muscleDistribution.ts), primary y
+ * secondary combinados. Sits above the metric pills (Comparar tab) since
+ * it's independent of which weight metric is selected — this is about
+ * training FREQUENCY (real set counts), not how heavy anything was.
+ */
+function MuscleRadarSection({
+  history,
+  myUserId,
+  comparedUserId,
+  comparedName,
+}: {
+  history: GroupExerciseHistory[];
+  myUserId: string | null;
+  comparedUserId: string | null;
+  comparedName: string | null;
+}) {
+  if (!myUserId || !comparedUserId || !comparedName) return null;
+
+  const myCounts = computeMuscleBucketCounts(
+    history.map((ex) => ({ muscleGroup: ex.muscleGroup, secondaryMuscles: ex.secondaryMuscles, sets: ex.entriesByUser.get(myUserId)?.flatMap((e) => e.sets) ?? [] }))
+  );
+  const theirCounts = computeMuscleBucketCounts(
+    history.map((ex) => ({
+      muscleGroup: ex.muscleGroup,
+      secondaryMuscles: ex.secondaryMuscles,
+      sets: ex.entriesByUser.get(comparedUserId)?.flatMap((e) => e.sets) ?? [],
+    }))
+  );
+  const radar = computeMuscleDistributionRadar(myCounts, theirCounts);
+
+  if (Object.values(myCounts).every((v) => v === 0) && Object.values(theirCounts).every((v) => v === 0)) {
+    return <Text style={styles.compareHint}>Todavía nadie ha registrado ejercicios para ver la distribución muscular.</Text>;
+  }
+
+  return (
+    <Card style={styles.radarCard}>
+      <Text style={styles.radarTitle}>Distribución muscular</Text>
+      <RadarChart
+        axes={MUSCLE_BUCKET_ORDER.map((b) => MUSCLE_BUCKET_LABELS[b])}
+        series={[
+          { label: 'Tú', color: colors.primary, values: radar.mine },
+          { label: comparedName, color: colors.warning, values: radar.theirs },
+        ]}
+        size={260}
+      />
+    </Card>
+  );
+}
+
+/**
  * Comparativas (Perfil → Rutinas → debajo de Historial de entrenos) — lets
  * the group compare performance without opening each exercise one by one:
  * "Récords" (idea 1, who holds the group's best value per exercise) and
@@ -173,6 +229,13 @@ export default function ComparativasScreen() {
   const [metric, setMetric] = useState<ExerciseChartMetric>('heaviestWeight');
   const myUserId = session?.user.id ?? null;
   const unit = profile?.weight_unit ?? 'kg';
+  const teammates = roster.filter((m) => m.userId !== myUserId);
+  // Lives here, not inside CompareTab, since MuscleRadarSection (above the
+  // metric pills) needs to know who's picked too — both read/write the same
+  // selection.
+  const [comparedUserId, setComparedUserId] = useState<string | null>(null);
+  const effectiveComparedUserId = comparedUserId ?? teammates[0]?.userId ?? null;
+  const comparedTeammate = teammates.find((m) => m.userId === effectiveComparedUserId) ?? null;
 
   if (!group) {
     return (
@@ -201,13 +264,29 @@ export default function ComparativasScreen() {
           onChange={setTab}
           size="lg"
         />
+        {tab === 'comparar' ? (
+          <MuscleRadarSection
+            history={history}
+            myUserId={myUserId}
+            comparedUserId={effectiveComparedUserId}
+            comparedName={comparedTeammate?.fullName ?? null}
+          />
+        ) : null}
         <SegmentedControl options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
       </View>
 
       {tab === 'records' ? (
         <RecordsTab history={history} roster={roster} metric={metric} unit={unit} myUserId={myUserId} />
       ) : (
-        <CompareTab history={history} roster={roster} metric={metric} unit={unit} myUserId={myUserId} />
+        <CompareTab
+          history={history}
+          roster={roster}
+          metric={metric}
+          unit={unit}
+          myUserId={myUserId}
+          comparedUserId={effectiveComparedUserId}
+          setComparedUserId={setComparedUserId}
+        />
       )}
     </View>
   );
@@ -258,4 +337,6 @@ const styles = StyleSheet.create({
   compareCard: { gap: spacing.sm },
   compareExerciseName: { ...typography.heading, fontSize: 14, color: colors.primary, textDecorationLine: 'underline' },
   compareHint: { color: colors.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: spacing.lg },
+  radarCard: { gap: spacing.xs, alignItems: 'center' },
+  radarTitle: { ...typography.heading, fontSize: 14, color: colors.text, alignSelf: 'flex-start' },
 });

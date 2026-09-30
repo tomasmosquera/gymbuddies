@@ -10,7 +10,7 @@ interface RosterRow {
 
 interface SessionExerciseRow {
   exercise_id: string;
-  exercise: { name: string; muscle_group: MuscleGroup } | null;
+  exercise: { name: string; muscle_group: MuscleGroup; secondary_muscles: string[] } | null;
   session: { started_at: string; status: string; user_id: string } | null;
   sets: { reps: number; weight_kg: number | null; is_warmup: boolean }[];
 }
@@ -47,7 +47,7 @@ export function useGroupExerciseHistory(groupId: string | null) {
       supabase
         .from('workout_session_exercises')
         .select(
-          'exercise_id, exercise:exercises(name, muscle_group), session:workout_sessions(started_at, status, user_id), sets:workout_sets(reps, weight_kg, is_warmup)'
+          'exercise_id, exercise:exercises(name, muscle_group, secondary_muscles), session:workout_sessions(started_at, status, user_id), sets:workout_sets(reps, weight_kg, is_warmup)'
         ),
     ]);
 
@@ -63,7 +63,13 @@ export function useGroupExerciseHistory(groupId: string | null) {
       if (!rosterIds.has(row.session.user_id)) continue; // outside this group — RLS allows reading it, this screen doesn't want it
       let entry = byExercise.get(row.exercise_id);
       if (!entry) {
-        entry = { exerciseId: row.exercise_id, exerciseName: row.exercise.name, muscleGroup: row.exercise.muscle_group, entriesByUser: new Map() };
+        entry = {
+          exerciseId: row.exercise_id,
+          exerciseName: row.exercise.name,
+          muscleGroup: row.exercise.muscle_group,
+          secondaryMuscles: row.exercise.secondary_muscles,
+          entriesByUser: new Map(),
+        };
         byExercise.set(row.exercise_id, entry);
       }
       const userId = row.session.user_id;
