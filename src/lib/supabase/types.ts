@@ -532,6 +532,9 @@ export type Exercise = {
 export type ExerciseUpdate = Partial<Pick<Exercise, 'gif_url' | 'secondary_muscles' | 'instructions'>>;
 
 /** Personal (group_id null) or shared with exactly one of the owner's groups — never a snapshot itself, see WorkoutSession.routine_name_snapshot. */
+export type RoutineLevel = 'principiante' | 'intermedio' | 'avanzado';
+export type RoutineGoal = 'fuerza' | 'hipertrofia' | 'perdida_grasa' | 'general';
+
 export type Routine = {
   id: string;
   owner_user_id: string;
@@ -539,6 +542,12 @@ export type Routine = {
   name: string;
   created_at: string;
   updated_at: string;
+  /** True for one of Gym Buddies' own curated routines (see 0155_official_routines.sql) — browsable by every member via "Explorar rutinas", never member-authored. */
+  is_official: boolean;
+  level: RoutineLevel | null;
+  goal: RoutineGoal | null;
+  /** How many days a week the program this routine belongs to calls for — informational only, never enforced. */
+  days_per_week: number | null;
 };
 
 /** One exercise slot in a routine — rest_seconds is the target rest for THIS exercise (shown "Rest Timer: 2min 0s" style); its planned sets live in RoutineExerciseSet, not here. */

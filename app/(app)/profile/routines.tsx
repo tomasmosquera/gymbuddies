@@ -268,6 +268,8 @@ export default function RoutinesScreen() {
           )}
         </View>
       ) : null}
+
+      <Button label="Explorar rutinas" variant="secondary" onPress={() => router.push('/profile/routine-browse')} />
     </ScrollView>
   );
 }
