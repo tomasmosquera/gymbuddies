@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { useActiveGroup } from '@/hooks/useActiveGroup';
-import { useMyRoutines } from '@/hooks/useMyRoutines';
 import { useOfficialRoutines, type OfficialRoutine } from '@/hooks/useOfficialRoutines';
+import { groupRoutinesByProgram } from '@/lib/domain/routinePrograms';
 import {
   EMPTY_ROUTINE_FILTERS,
   matchesRoutineFilters,
@@ -52,29 +52,48 @@ function FilterGroup<T extends string>({
   );
 }
 
-function OfficialRoutineCard({
-  routine,
-  isCopying,
-  onCopy,
-}: {
-  routine: OfficialRoutine;
-  isCopying: boolean;
-  onCopy: () => void;
-}) {
+function RoutineBadgeRow({ routine }: { routine: OfficialRoutine }) {
+  return (
+    <View style={styles.badgeRow}>
+      {routine.level ? <Badge label={ROUTINE_LEVEL_LABELS[routine.level]} /> : null}
+      {routine.goal ? <Badge label={ROUTINE_GOAL_LABELS[routine.goal]} /> : null}
+      <Badge label={ROUTINE_EQUIPMENT_LABELS[routine.equipmentProfile]} />
+      {routine.days_per_week ? <Badge label={`${routine.days_per_week} días/semana`} /> : null}
+    </View>
+  );
+}
+
+const openPreview = (routineId: string) => router.push({ pathname: '/profile/routine-preview', params: { routineId } });
+
+/** A program's days, one tappable row per day (its own exercises/sets live behind the tap, in
+ * routine-preview.tsx) — badges shown once up top since every day of a program in practice shares
+ * the same level/goal/equipment (they're the same training split). */
+function ProgramCard({ programName, routines }: { programName: string; routines: OfficialRoutine[] }) {
   return (
     <Card style={styles.routineCard}>
-      <Text style={styles.routineName}>{routine.name}</Text>
-      <View style={styles.badgeRow}>
-        {routine.level ? <Badge label={ROUTINE_LEVEL_LABELS[routine.level]} /> : null}
-        {routine.goal ? <Badge label={ROUTINE_GOAL_LABELS[routine.goal]} /> : null}
-        <Badge label={ROUTINE_EQUIPMENT_LABELS[routine.equipmentProfile]} />
-        {routine.days_per_week ? <Badge label={`${routine.days_per_week} días/semana`} /> : null}
-      </View>
-      <Text style={styles.exercisesSummary} numberOfLines={2}>
-        {routine.exercises.map((e) => e.exercise.name).join(', ')}
-      </Text>
-      {isCopying ? <ActivityIndicator color={colors.primary} /> : <Button label="Copiar a mis rutinas" variant="secondary" onPress={onCopy} />}
+      <Text style={styles.routineName}>{programName}</Text>
+      <RoutineBadgeRow routine={routines[0]} />
+      {routines.map((routine) => (
+        <Pressable key={routine.id} onPress={() => openPreview(routine.id)} style={styles.dayRow} accessibilityRole="button">
+          <Text style={styles.dayLabel}>{routine.day_label ?? routine.name}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+      ))}
     </Card>
+  );
+}
+
+function StandaloneRoutineCard({ routine }: { routine: OfficialRoutine }) {
+  return (
+    <Pressable onPress={() => openPreview(routine.id)} accessibilityRole="button">
+      <Card style={styles.routineCard}>
+        <Text style={styles.routineName}>{routine.name}</Text>
+        <RoutineBadgeRow routine={routine} />
+        <Text style={styles.exercisesSummary} numberOfLines={2}>
+          {routine.exercises.map((e) => e.exercise.name).join(', ')}
+        </Text>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -96,30 +115,18 @@ const EQUIPMENT_OPTIONS: { value: RoutineEquipmentProfile; label: string }[] = [
 ];
 
 /** "Explorar rutinas" — Gym Buddies' own curated routines, reachable from the button below "Mis
- * Rutinas"/"Rutinas de {grupo}" on routines.tsx. Copying one reuses useMyRoutines' own copyRoutine
- * (same RPC a member already uses to copy a group-mate's shared routine) — always into "Mis
- * Rutinas" (targetGroupId null), never straight into a group, since these aren't the active
- * group's own routines to begin with. */
+ * Rutinas"/"Rutinas de {grupo}" on routines.tsx. Routines that are really days of the same program
+ * (StrongLifts 5x5, Push Pull Legs, Upper Lower) are grouped under one card; tapping any routine —
+ * standalone or a day inside a program — opens routine-preview.tsx for the full exercise/set detail
+ * and the "Copiar a mis rutinas" action, rather than copying straight from this list. */
 export default function RoutineBrowseScreen() {
-  const { group } = useActiveGroup();
   const { routines, isLoading } = useOfficialRoutines();
-  const { copyRoutine } = useMyRoutines(group?.id ?? null);
   const [filters, setFilters] = useState<RoutineFilterState>(EMPTY_ROUTINE_FILTERS);
-  const [isCopying, setIsCopying] = useState<string | null>(null);
 
-  const filtered = useMemo(() => routines.filter((r) => matchesRoutineFilters(r, filters)), [routines, filters]);
-
-  const handleCopy = async (routine: OfficialRoutine) => {
-    setIsCopying(routine.id);
-    try {
-      await copyRoutine(routine, null);
-      Alert.alert('Copiada', `"${routine.name}" se copió a Mis Rutinas.`);
-    } catch (err) {
-      Alert.alert('No se pudo copiar', err instanceof Error ? err.message : 'Intenta de nuevo');
-    } finally {
-      setIsCopying(null);
-    }
-  };
+  const groups = useMemo(() => {
+    const filtered = routines.filter((r) => matchesRoutineFilters(r, filters));
+    return groupRoutinesByProgram(filtered);
+  }, [routines, filters]);
 
   if (isLoading) {
     return (
@@ -131,7 +138,7 @@ export default function RoutineBrowseScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.hint}>Rutinas armadas por Gym Buddies. Copia la que quieras a Mis Rutinas y empezala cuando entrenes.</Text>
+      <Text style={styles.hint}>Rutinas armadas por Gym Buddies. Tocá una para ver el detalle y copiarla a Mis Rutinas.</Text>
 
       <FilterGroup label="NIVEL" options={LEVEL_OPTIONS} value={filters.level} onChange={(level) => setFilters((f) => ({ ...f, level }))} />
       <FilterGroup label="OBJETIVO" options={GOAL_OPTIONS} value={filters.goal} onChange={(goal) => setFilters((f) => ({ ...f, goal }))} />
@@ -142,12 +149,16 @@ export default function RoutineBrowseScreen() {
         onChange={(equipment) => setFilters((f) => ({ ...f, equipment }))}
       />
 
-      {filtered.length === 0 ? (
+      {groups.length === 0 ? (
         <EmptyState title="Ninguna rutina coincide" description="Probá sacando algún filtro." />
       ) : (
-        filtered.map((routine) => (
-          <OfficialRoutineCard key={routine.id} routine={routine} isCopying={isCopying === routine.id} onCopy={() => handleCopy(routine)} />
-        ))
+        groups.map((g) =>
+          g.programName ? (
+            <ProgramCard key={g.programName} programName={g.programName} routines={g.routines} />
+          ) : (
+            <StandaloneRoutineCard key={g.routines[0].id} routine={g.routines[0]} />
+          )
+        )
       )}
     </ScrollView>
   );
@@ -175,4 +186,13 @@ const styles = StyleSheet.create({
   routineName: { ...typography.heading, fontSize: 16, color: colors.text },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   exercisesSummary: { color: colors.textMuted, fontSize: 13 },
+  dayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  dayLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
 });

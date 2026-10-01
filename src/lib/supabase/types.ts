@@ -548,6 +548,12 @@ export type Routine = {
   goal: RoutineGoal | null;
   /** How many days a week the program this routine belongs to calls for — informational only, never enforced. */
   days_per_week: number | null;
+  /** Groups this routine with its sibling days under one "Programa" card in Explorar rutinas — null means it stands alone (see 0156_routine_programs.sql). */
+  program_name: string | null;
+  /** Short label shown for this routine within its program's day list ("Push", "Día A") — null when program_name is null. */
+  day_label: string | null;
+  /** Day order within program_name — null when program_name is null. */
+  program_order: number | null;
 };
 
 /** One exercise slot in a routine — rest_seconds is the target rest for THIS exercise (shown "Rest Timer: 2min 0s" style); its planned sets live in RoutineExerciseSet, not here. */
