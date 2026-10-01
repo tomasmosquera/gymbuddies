@@ -304,9 +304,12 @@ export default function CheckinPreviewScreen() {
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
         Alert.alert(
           'Foto final registrada 🏁',
-          `Entrenaste ${minutes} minuto(s).${isShort ? ` No alcanzaste el mínimo de ${group.min_workout_minutes} minutos.` : ''}`
+          `Entrenaste ${minutes} minuto(s).${isShort ? ` No alcanzaste el mínimo de ${group.min_workout_minutes} minutos.` : ''}`,
+          // Navigating only on OK (not right after showing the alert) — replacing the screen
+          // underneath while the native alert is still up raced its own transition against the
+          // alert's, rendering as a stretched, mostly-empty sheet instead of a normal alert.
+          [{ text: 'OK', onPress: () => router.replace('/home') }]
         );
-        router.replace('/home');
         return;
       }
 
@@ -421,11 +424,19 @@ export default function CheckinPreviewScreen() {
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
         (group.require_checkout_photo
           ? 'Tu día de hoy ya cuenta. Cuando termines de entrenar, vuelve a esta app y registra tu foto final.'
-          : 'Tu día de hoy ya cuenta.') + buddyLine
+          : 'Tu día de hoy ya cuenta.') + buddyLine,
+        [
+          {
+            text: 'OK',
+            // Fase 3: the "¿qué rutina quieres hacer?" step — never for a checkout, only right
+            // after a fresh check-in (see routine-choice.tsx's own doc). Navigating only from here
+            // (not right after showing the alert) matters: replacing the screen underneath while
+            // the native alert is still up raced its own transition against the alert's, rendering
+            // as a stretched, mostly-empty sheet instead of a normal alert.
+            onPress: () => router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } }),
+          },
+        ]
       );
-      // Fase 3: the "¿qué rutina quieres hacer?" step — never for a checkout,
-      // only right after a fresh check-in (see routine-choice.tsx's own doc).
-      router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } });
     } catch (err) {
       Alert.alert(
         draft.mode === 'checkout' ? 'No se pudo registrar la foto final' : 'No se pudo registrar el check-in',
