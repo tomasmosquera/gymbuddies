@@ -16,6 +16,7 @@ import { useGroupBadges } from '@/hooks/useGroupBadges';
 import { useNotifications } from '@/hooks/useNotifications';
 import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
+import { getLastLiveActivityAttempt } from '@/lib/liveActivity/liveActivityDebug';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import { APP_BUILD_NUMBER, APP_LAST_UPDATED_DDMMYY } from '@/constants/appVersionInfo';
 
@@ -372,9 +373,20 @@ export default function ProfileScreen() {
 
       <Button label="Cerrar sesión" variant="secondary" onPress={signOut} />
 
-      <Text style={styles.versionText}>
-        Versión {Constants.expoConfig?.version ?? '?'}.{APP_BUILD_NUMBER}.{APP_LAST_UPDATED_DDMMYY}
-      </Text>
+      {/* Temporary diagnostic for the Live Activity investigation — long-press
+          to see the last attempt to start/update/end it, persisted by
+          liveActivityDebug.ts. Remove this Pressable (and that file) once the
+          real bug behind the blank Live Activity is found. */}
+      <Pressable
+        onLongPress={async () => {
+          const attempt = await getLastLiveActivityAttempt();
+          Alert.alert('Diagnóstico Live Activity', attempt ? JSON.stringify(attempt, null, 2) : 'Sin intentos registrados todavía.');
+        }}
+      >
+        <Text style={styles.versionText}>
+          Versión {Constants.expoConfig?.version ?? '?'}.{APP_BUILD_NUMBER}.{APP_LAST_UPDATED_DDMMYY}
+        </Text>
+      </Pressable>
     </ScrollView>
   );
 }

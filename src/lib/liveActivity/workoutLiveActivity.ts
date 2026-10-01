@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { WORKOUT_ACTIVITY_URL } from '@/lib/domain/workoutActivity';
 import type { LiveActivityContent } from '@/lib/domain/liveActivityContent';
+import { recordLiveActivityAttempt } from './liveActivityDebug';
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
@@ -36,18 +37,49 @@ function loadFactory(): ActivityFactory | null {
 let queue: Promise<void> = Promise.resolve();
 
 async function apply(content: LiveActivityContent | null): Promise<void> {
+  const contentKind = content?.kind ?? 'none';
   const factory = loadFactory();
-  if (!factory) return;
+  if (!factory) {
+    await recordLiveActivityAttempt({
+      at: new Date().toISOString(),
+      moduleLoaded: false,
+      existingInstances: 0,
+      contentKind,
+      content,
+      action: 'none',
+      outcome: 'ok',
+    });
+    return;
+  }
   try {
     const [current, ...extra] = factory.getInstances();
+    const existingInstances = (current ? 1 : 0) + extra.length;
+    const action: 'start' | 'update' | 'end' | 'none' = !content ? (current ? 'end' : 'none') : current ? 'update' : 'start';
+    // Written BEFORE the native call below, not just after — see liveActivityDebug.ts's doc
+    // comment for why: a native exception thrown inside that call can abort the whole process
+    // without ever reaching the catch block beneath it.
+    await recordLiveActivityAttempt({ at: new Date().toISOString(), moduleLoaded: true, existingInstances, contentKind, content, action, outcome: 'pending' });
+
     await Promise.all(extra.map((instance) => instance.end('immediate')));
     if (!content) {
       if (current) await current.end('immediate');
-      return;
+    } else if (current) {
+      await current.update(content);
+    } else {
+      factory.start(content, content.kind === 'routine' ? content.openUrl : WORKOUT_ACTIVITY_URL);
     }
-    if (current) await current.update(content);
-    else factory.start(content, content.kind === 'routine' ? content.openUrl : WORKOUT_ACTIVITY_URL);
+    await recordLiveActivityAttempt({ at: new Date().toISOString(), moduleLoaded: true, existingInstances, contentKind, content, action, outcome: 'ok' });
   } catch (error) {
+    await recordLiveActivityAttempt({
+      at: new Date().toISOString(),
+      moduleLoaded: true,
+      existingInstances: -1,
+      contentKind,
+      content,
+      action: 'none',
+      outcome: 'error',
+      error: String(error),
+    });
     // Live Activities can be switched off in iOS Settings, or refused by the system —
     // never let that get in the way of the check-in itself.
     console.warn('[liveActivity] could not sync the workout activity', error);
