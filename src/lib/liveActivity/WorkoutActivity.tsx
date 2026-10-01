@@ -13,8 +13,6 @@ import {
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
 import type { LiveActivityContent } from '@/lib/domain/liveActivityContent';
 
-const wide = 10000; // stands in for "as wide as the parent allows" (JSON cannot carry Infinity)
-
 /**
  * The ONE Live Activity/Dynamic Island slot this app uses, shared by two unrelated things —
  * `content.kind` says which: the pending-checkout-photo timer (unchanged from before routine
@@ -45,10 +43,14 @@ const WorkoutActivity = (content: LiveActivityContent, environment: LiveActivity
   // iOS ends a Live Activity after 8 h; that is also the count-up timer's upper bound whenever
   // nothing sooner applies (the checkout minimum, or a routine's current rest period).
   const timerEnd = new Date(start.getTime() + 8 * 60 * 60 * 1000);
+  // Must stay INSIDE this function, not at module scope: the 'widget' directive only serializes
+  // the function body for the extension's own JS runtime to evaluate later — a module-scope value
+  // like this one used to be (regression introduced when this file was restructured for routine
+  // mode) is simply undefined there, silently breaking every frame() that referenced it, in BOTH
+  // modes. Confirmed against Expo's own docs: "the bundler serializes only the function body, so
+  // module-scope values are not present at runtime."
+  const wide = 10000; // stands in for "as wide as the parent allows" (JSON cannot carry Infinity)
 
-  // The 'widget' directive extracts this function into native SwiftUI at build time, so it must
-  // stay pure expressions (ternaries), never `let` reassigned across if/else branches — that
-  // broke the extraction and rendered the whole activity blank.
   const resting = content.kind === 'routine' && content.restEndAt !== null;
 
   const topLabel = content.kind === 'checkout' ? content.groupLabel : content.routineName;
