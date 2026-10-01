@@ -33,13 +33,13 @@ function memberWith(overrides: Partial<MemberBadges> = {}): MemberBadges {
 const earned = { earned: true, current: 1, target: 1, earnedDate: '2026-08-01' };
 
 describe('pendingNotificationsFor', () => {
-  it('announces an earned badge once, addressed to the achiever and to teammates', () => {
+  it('announces an earned badge once, addressed only to the achiever — never broadcast to the rest of the group', () => {
     const [n] = pendingNotificationsFor(memberWith({ statuses: { 'primer-paso': earned } }), new Set(), 1);
     expect(n.kind).toBe('badge');
     expect(n.period).toBe('lifetime');
     expect(n.title).toContain('¡Nuevo logro desbloqueado!');
     expect(n.body).toContain('Conseguiste');
-    expect(n.broadcastBody).toContain('Ana Gómez consiguió');
+    expect(n).not.toHaveProperty('broadcastBody');
   });
 
   it('skips what was already notified', () => {
@@ -95,7 +95,7 @@ function fixture(): Record<string, Row[]> {
   };
 }
 
-/** A push to the person who achieved it (p_data.user_id is always the achiever) — as opposed to the broadcast to their teammates. */
+/** A push to the person who achieved it (p_data.user_id is always the achiever) — every push this module sends is one of these; there is no broadcast to teammates. */
 const personal = (c: { args: Record<string, unknown> }) =>
   (c.args.p_user_ids as string[])[0] === (c.args.p_data as { user_id: string }).user_id;
 const forget = (tables: Record<string, Row[]>, predicate: (r: Row) => boolean) => {
@@ -137,7 +137,7 @@ describe('runNotifyAchievements', () => {
     expect(fake.rpcCalls).toHaveLength(0);
   });
 
-  it('a genuinely new achievement produces exactly one push to the achiever and one to the teammate — once', async () => {
+  it('a genuinely new achievement produces exactly one push, to the achiever only — never to the rest of the group', async () => {
     const fake = createFakeSupabase(fixture());
     await run(fake, true);
     const removed = forget(fake.tables, (r) => r.user_id === 'ana' && r.badge_id === 'primer-paso' && r.period === 'lifetime');
@@ -146,10 +146,9 @@ describe('runNotifyAchievements', () => {
 
     await run(fake, false);
     const calls = fake.rpcCalls;
+    expect(calls).toHaveLength(1);
     expect(calls.filter(personal)).toHaveLength(1);
-    expect(calls.filter((c) => !personal(c))).toHaveLength(1);
-    expect(calls.find(personal)!.args).toMatchObject({ p_user_ids: ['ana'], p_category: 'achievements', p_group_id: 'g1' });
-    expect(calls.find((c) => !personal(c))!.args.p_user_ids).toEqual(['beto']);
+    expect(calls[0].args).toMatchObject({ p_user_ids: ['ana'], p_category: 'achievements', p_group_id: 'g1' });
 
     markDirty(fake.tables);
     await run(fake, false);

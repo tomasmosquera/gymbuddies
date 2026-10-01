@@ -36,8 +36,6 @@ export interface PendingNotification {
   level: number;
   title: string;
   body: string;
-  broadcastTitle: string;
-  broadcastBody: string;
 }
 
 /**
@@ -61,8 +59,6 @@ export function pendingNotificationsFor(
       level: 0,
       title: `${badge.emoji} ¡Nuevo logro desbloqueado!`,
       body: `Conseguiste "${badge.name}" — ${badge.description}`,
-      broadcastTitle: `${badge.emoji} ¡Nuevo logro en el grupo!`,
-      broadcastBody: `${member.fullName} consiguió "${badge.name}" — ${badge.description}`,
     });
   }
 
@@ -79,8 +75,6 @@ export function pendingNotificationsFor(
         level: 0,
         title: `${challenge.emoji} ¡Reto del mes cumplido!`,
         body: `Conseguiste "${challenge.name}" — ${challenge.description}`,
-        broadcastTitle: `${challenge.emoji} ¡Reto del mes cumplido en el grupo!`,
-        broadcastBody: `${member.fullName} cumplió el reto "${challenge.name}" — ${challenge.description}`,
       });
     }
   }
@@ -96,8 +90,6 @@ export function pendingNotificationsFor(
       level,
       title: '🎉 ¡Subiste de nivel!',
       body: `Ahora eres nivel ${level}.`,
-      broadcastTitle: '🎉 ¡Alguien subió de nivel!',
-      broadcastBody: `${member.fullName} ahora es nivel ${level}.`,
     });
   }
 
@@ -140,7 +132,6 @@ async function deliverOne(
   client: AchievementsClient,
   groupId: string,
   member: MemberBadges,
-  otherMemberIds: string[],
   pending: PendingNotification,
   previousLevel: number,
   send: boolean,
@@ -197,20 +188,6 @@ async function deliverOne(
   }
   tally.pushesSent++;
   tally.pushesByUser.set(member.userId, (tally.pushesByUser.get(member.userId) ?? 0) + 1);
-
-  // The broadcast to teammates is a nice-to-have: if it fails, keep the record
-  // (the achiever was told) rather than re-pushing them next run.
-  if (otherMemberIds.length > 0) {
-    const broadcast = await client.rpc('send_push_notification', {
-      p_user_ids: otherMemberIds,
-      p_title: pending.broadcastTitle,
-      p_body: pending.broadcastBody,
-      p_group_id: groupId,
-      p_category: 'achievements',
-      p_data: { user_id: member.userId },
-    });
-    if (broadcast.error) tally.errors.push({ groupId, message: `broadcast failed for ${member.userId}: ${broadcast.error.message}` });
-  }
 }
 
 async function processGroup(
@@ -235,18 +212,16 @@ async function processGroup(
 
   const alreadyNotified = new Set((notifiedRes.data ?? []).map((r) => `${r.user_id}|${r.badge_id}|${r.period}`));
   const lastLevelByUser = new Map((levelsRes.data ?? []).map((r) => [r.user_id, r.last_notified_level]));
-  const allMemberIds = records.map((r) => r.userId);
 
   for (const member of membersBadges) {
     try {
       const previousLevel = lastLevelByUser.get(member.userId) ?? 0;
       const pending = pendingNotificationsFor(member, alreadyNotified, previousLevel);
-      const otherMemberIds = allMemberIds.filter((id) => id !== member.userId);
       let suppressed = 0;
       for (const item of pending) {
         const send = !baselineOnly && (tally.pushesByUser.get(member.userId) ?? 0) < MAX_PUSHES_PER_MEMBER_PER_RUN;
         if (!baselineOnly && !send) suppressed++;
-        await deliverOne(client, group.id, member, otherMemberIds, item, previousLevel, send, tally);
+        await deliverOne(client, group.id, member, item, previousLevel, send, tally);
       }
       if (suppressed > 0) {
         console.warn(
