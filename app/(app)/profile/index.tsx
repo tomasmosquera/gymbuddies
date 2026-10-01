@@ -17,6 +17,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
 import { getLastLiveActivityAttempt } from '@/lib/liveActivity/liveActivityDebug';
+import { forceEndAllLiveActivities } from '@/lib/liveActivity/workoutLiveActivity';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import { APP_BUILD_NUMBER, APP_LAST_UPDATED_DDMMYY } from '@/constants/appVersionInfo';
 
@@ -380,7 +381,21 @@ export default function ProfileScreen() {
       <Pressable
         onLongPress={async () => {
           const attempt = await getLastLiveActivityAttempt();
-          Alert.alert('Diagnóstico Live Activity', attempt ? JSON.stringify(attempt, null, 2) : 'Sin intentos registrados todavía.');
+          Alert.alert(
+            'Diagnóstico Live Activity',
+            attempt ? JSON.stringify(attempt, null, 2) : 'Sin intentos registrados todavía.',
+            [
+              { text: 'Cerrar', style: 'cancel' },
+              {
+                text: 'Terminar Live Activity',
+                style: 'destructive',
+                onPress: async () => {
+                  const result = await forceEndAllLiveActivities();
+                  Alert.alert('Listo', JSON.stringify(result));
+                },
+              },
+            ]
+          );
         }}
       >
         <Text style={styles.versionText}>

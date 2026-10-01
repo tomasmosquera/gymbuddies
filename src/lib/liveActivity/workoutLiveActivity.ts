@@ -95,3 +95,25 @@ export function syncWorkoutLiveActivity(content: LiveActivityContent | null): Pr
   queue = queue.then(() => apply(content));
   return queue;
 }
+
+/**
+ * Temporary diagnostic action (see liveActivityDebug.ts) — ends every Live Activity instance this
+ * app currently has, regardless of content. Exists because a device diagnostic showed
+ * syncWorkoutLiveActivity finding an instance already running (existingInstances: 1, from before
+ * this debug build was even installed) and successfully `update()`-ing it every time, yet nothing
+ * ever appears on screen — consistent with that instance being stuck in a broken render from
+ * whenever it first started, with every later update() only ever refreshing its (invisible)
+ * content, never its rendering. This forces a clean slate so the next sync starts a brand new one.
+ * Remove alongside the rest of the debug scaffolding once the real bug is found.
+ */
+export async function forceEndAllLiveActivities(): Promise<{ ended: number } | { error: string }> {
+  const factory = loadFactory();
+  if (!factory) return { ended: 0 };
+  try {
+    const instances = factory.getInstances();
+    await Promise.all(instances.map((instance) => instance.end('immediate')));
+    return { ended: instances.length };
+  } catch (error) {
+    return { error: String(error) };
+  }
+}
