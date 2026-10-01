@@ -36,7 +36,12 @@ export function useMyRoutines(groupId: string | null) {
     // rows per routine, cheap either way, and guaranteed correct.
     let query = supabase
       .from('routines')
-      .select('*, exercises:routine_exercises(*, exercise:exercises(*), sets:routine_exercise_sets(*))');
+      .select('*, exercises:routine_exercises(*, exercise:exercises(*), sets:routine_exercise_sets(*))')
+      // Official routines (0155_official_routines.sql) live under "Explorar rutinas" only, even
+      // for the platform-admin account that owns them — without this, that one account's own
+      // "Mis Rutinas" would show all ten the moment they were seeded, since owner_user_id matches
+      // and group_id is null, exactly the condition the branch below treats as "mine".
+      .eq('is_official', false);
     // BUG FIXED: `owner_user_id.eq.X,group_id.eq.Y` is two independent OR
     // branches — since the caller owns EVERY routine they've ever created,
     // that first branch alone matched all of them regardless of group_id,
