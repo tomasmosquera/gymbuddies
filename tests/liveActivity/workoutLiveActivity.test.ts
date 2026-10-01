@@ -13,11 +13,6 @@ jest.mock('@/lib/liveActivity/WorkoutActivity', () => ({
   },
 }));
 
-// This file replaces react-native itself with a bare { Platform } stub (see load() below), which
-// breaks AsyncStorage's own native-module lookup — irrelevant here, since these tests only care
-// about the start/update/end bridge calls, not the debug breadcrumb trail.
-jest.mock('@/lib/liveActivity/liveActivityDebug', () => ({ recordLiveActivityAttempt: jest.fn().mockResolvedValue(undefined) }));
-
 const props: LiveActivityContent = {
   kind: 'checkout',
   startedAt: '2026-09-28T14:00:00Z',
