@@ -23,7 +23,7 @@ import {
   type PendingSetRow,
 } from '@/lib/domain/workoutSession';
 import { formatWeightUnit, kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
-import { replaceThenCrossTabPush } from '@/lib/navigation';
+import { replaceThenCrossTabNavigate } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
 
@@ -473,11 +473,11 @@ export default function WorkoutSessionScreen() {
             // checkout photo, not "go manage your routines" — checkin/index.tsx
             // already knows on its own whether one's actually pending (Paso 2)
             // or there's nothing to do, so this always routes there and lets
-            // it decide what to show. replaceThenCrossTabPush also cleans this
+            // it decide what to show. replaceThenCrossTabNavigate also cleans this
             // screen out of the Profile tab's own history — the useFocusEffect
             // above is a second line of defense for however else this screen
             // might be left dangling, not a substitute for this.
-            replaceThenCrossTabPush('/profile', '/checkin');
+            replaceThenCrossTabNavigate('/profile', '/checkin');
           } catch (err) {
             Alert.alert('No se pudo terminar', friendlyErrorMessage(err));
           } finally {

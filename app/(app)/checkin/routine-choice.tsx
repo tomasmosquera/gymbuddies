@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyRoutines, type RoutineWithExercises } from '@/hooks/useMyRoutines';
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
-import { replaceThenCrossTabPush } from '@/lib/navigation';
+import { replaceThenCrossTabNavigate } from '@/lib/navigation';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /** One tappable routine — same summary line as Rutinas' own card, no "···" menu here (this screen only starts a routine, never edits one). */
@@ -61,9 +61,9 @@ export default function CheckinRoutineChoiceScreen() {
 
   // Confirmed this screen DOES have a stuck-forever risk if left dangling
   // in the checkin tab's own history (reported: revisiting it via the back
-  // button showed a spinner that never resolved) — see replaceThenCrossTabPush.
+  // button showed a spinner that never resolved) — see replaceThenCrossTabNavigate.
   const goToWorkoutSession = () => {
-    replaceThenCrossTabPush('/checkin', '/profile/workout-session');
+    replaceThenCrossTabNavigate('/checkin', '/profile/workout-session');
   };
 
   useEffect(() => {
