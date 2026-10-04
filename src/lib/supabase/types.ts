@@ -40,10 +40,12 @@ export type Profile = {
   apple_health_prompted_at: string | null;
   /** When true (default), a check-in/checkout in one group also gets created in every other group the user actively belongs to — see set_auto_checkin_other_groups. */
   auto_checkin_other_groups: boolean;
-  /** Minutes after check-in before the "no olvides tu foto de salida" reminder fires — see set_checkout_reminder_minutes. Global per user, unlike the reminders on/off toggle which is per group. */
+  /** Minutes after check-in before the "no olvides tu foto de salida" reminder fires — see set_checkout_reminder_minutes. Global per user. */
   checkout_reminder_minutes: number;
   /** Geofence radius (meters) the member has to drift past their check-in spot before the checkout reminder fires — see set_checkout_geofence_radius_meters. Global per user, 20-500, default 100. */
   checkout_geofence_radius_meters: number;
+  /** On/off switch for the on-device-only reminders (checkout photo pending, arrived-at-the-gym check-in nudge, workout milestones) — see set_local_reminders_enabled and reminderPreference.ts. Deliberately NOT the same thing as group_members.notification_preferences.reminders, which stays per-group and only gates the server-pushed daily check-in reminder + buddy nudges. */
+  local_reminders_enabled: boolean;
   /** Grants the ability to create/mark groups public — set once via a one-off migration, not client-settable. See list_public_groups/create_group/admin_set_group_public. */
   is_platform_admin: boolean;
   /** Consumed by create_group (1 per group), free to start (default 1, including a one-time backfill for every pre-existing profile). The platform admin never spends this. See admin_grant_group_creation_credits for the platform admin's manual top-up tool — in-app purchase isn't built yet. */
@@ -986,6 +988,7 @@ export type Database = {
       set_progressive_overload_enabled: { Args: { p_enabled: boolean }; Returns: void };
       set_checkout_reminder_minutes: { Args: { p_minutes: number }; Returns: void };
       set_checkout_geofence_radius_meters: { Args: { p_meters: number }; Returns: void };
+      set_local_reminders_enabled: { Args: { p_enabled: boolean }; Returns: void };
       admin_find_user_by_email: {
         Args: { p_email: string };
         Returns: { id: string; full_name: string; group_creation_credits: number }[];

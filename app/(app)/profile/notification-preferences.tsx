@@ -20,8 +20,8 @@ const CATEGORY_LABELS: Record<NotificationCategory, { label: string; hint: strin
   money: { label: 'Dinero y saldo', hint: 'Depósitos, recargas, ajustes de saldo, penalizaciones' },
   votes: { label: 'Votaciones', hint: 'Propuestas de reglas, excusas, retos de foto' },
   reminders: {
-    label: 'Recordatorios',
-    hint: 'Aviso diario de check-in, aviso al llegar al gimnasio, y aviso de foto final pendiente',
+    label: 'Recordatorios de este grupo',
+    hint: 'Aviso diario de que te falta el check-in en este grupo, y avisos de tu compañero de dupla',
   },
   admin_actions: { label: 'Administración', hint: 'Cuando el admin ajusta algo de tu cuenta directamente' },
   achievements: { label: 'Logros y niveles', hint: 'Nuevos logros, retos del mes cumplidos, y subidas de nivel' },
@@ -55,6 +55,7 @@ export default function NotificationPreferencesScreen() {
   const [isSavingReminderMinutes, setIsSavingReminderMinutes] = useState(false);
   const [geofenceRadiusInput, setGeofenceRadiusInput] = useState('100');
   const [isSavingGeofenceRadius, setIsSavingGeofenceRadius] = useState(false);
+  const [isSavingLocalReminders, setIsSavingLocalReminders] = useState(false);
 
   useEffect(() => {
     if (profile) setReminderMinutesInput(String(profile.checkout_reminder_minutes));
@@ -96,14 +97,30 @@ export default function NotificationPreferencesScreen() {
         p_preferences: next,
       });
       if (error) throw error;
-      await setRemindersEnabledCache(next.reminders);
-      // Take effect immediately rather than waiting for the arrival-reminder
-      // sync's next run (Home regaining focus) — the geofence otherwise
-      // stays alive off-screen until then, however briefly.
-      if (!next.reminders) await stopArrivalGeofence().catch(() => {});
       await refreshActiveGroup();
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Global (profiles.local_reminders_enabled), not one of the per-group
+  // categories above — see 0157_global_local_reminders.sql's own doc for why
+  // this one specifically isn't group-scoped like the rest.
+  const handleToggleLocalReminders = async (value: boolean) => {
+    setIsSavingLocalReminders(true);
+    try {
+      const { error } = await supabase.rpc('set_local_reminders_enabled', { p_enabled: value });
+      if (error) throw error;
+      await setRemindersEnabledCache(value);
+      // Take effect immediately rather than waiting for the arrival-reminder
+      // sync's next run (Home regaining focus) — the geofence otherwise
+      // stays alive off-screen until then, however briefly.
+      if (!value) await stopArrivalGeofence().catch(() => {});
+      await refreshProfile();
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingLocalReminders(false);
     }
   };
 
@@ -220,7 +237,35 @@ export default function NotificationPreferencesScreen() {
                 />
               </View>
             ))}
-            {prefs.reminders ? (
+            <Button label="Configuración del sistema" variant="secondary" onPress={() => Linking.openSettings()} />
+          </>
+        )}
+      </Card>
+
+      {notifStatus === 'granted' ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Recordatorios automáticos</Text>
+          <Text style={styles.hint}>
+            A diferencia de las categorías de arriba, esto no es por grupo — es uno solo para toda la cuenta, sin
+            importar en cuál de tus grupos entrenaste.
+          </Text>
+          <View style={styles.masterRow}>
+            <View style={styles.masterTextWrap}>
+              <Text style={styles.categoryLabel}>Avisarme</Text>
+              <Text style={styles.categoryHint}>
+                Al llegar al gimnasio (recordatorio de check-in) y si te alejas sin tomar tu foto final
+              </Text>
+            </View>
+            <Switch
+              value={profile?.local_reminders_enabled ?? true}
+              onValueChange={handleToggleLocalReminders}
+              disabled={isSavingLocalReminders}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.text}
+            />
+          </View>
+          {profile?.local_reminders_enabled ? (
+            <>
               <View style={styles.reminderMinutesField}>
                 <TextField
                   label="Avisar de la foto final después de (minutos)"
@@ -237,8 +282,6 @@ export default function NotificationPreferencesScreen() {
                   loading={isSavingReminderMinutes}
                 />
               </View>
-            ) : null}
-            {prefs.reminders ? (
               <View style={styles.reminderMinutesField}>
                 <TextField
                   label="Distancia para avisar que te alejaste del gimnasio (metros)"
@@ -255,11 +298,10 @@ export default function NotificationPreferencesScreen() {
                   loading={isSavingGeofenceRadius}
                 />
               </View>
-            ) : null}
-            <Button label="Configuración del sistema" variant="secondary" onPress={() => Linking.openSettings()} />
-          </>
-        )}
-      </Card>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
     </ScrollView>
   );
 }

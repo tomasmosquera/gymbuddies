@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/state/authStore';
 import { registerForPushNotificationsAsync, unregisterCurrentDeviceToken } from '@/lib/notifications/pushToken';
 import { stopArrivalGeofence } from '@/lib/notifications/checkinArrivalReminders';
+import { setRemindersEnabledCache } from '@/lib/notifications/reminderPreference';
 import { syncWorkoutLiveActivity } from '@/lib/liveActivity/workoutLiveActivity';
 import { syncWorkoutMilestoneNotifications } from '@/lib/notifications/workoutMilestones';
 import { retryOnTransientNetworkError } from '@/lib/retry';
@@ -38,6 +39,7 @@ export function useAuthBootstrap() {
   const setProfile = useAuthStore((s) => s.setProfile);
   const setInitializing = useAuthStore((s) => s.setInitializing);
   const userId = useAuthStore((s) => s.session?.user.id);
+  const localRemindersEnabled = useAuthStore((s) => s.profile?.local_reminders_enabled);
 
   useEffect(() => {
     let isMounted = true;
@@ -82,6 +84,15 @@ export function useAuthBootstrap() {
       registerForPushNotificationsAsync();
     }
   }, [userId]);
+
+  // Mirrors the global profile column into AsyncStorage for the background
+  // geofence task (no React tree there to read it from) — see
+  // reminderPreference.ts. undefined (no profile yet/signed out) is left
+  // alone rather than writing a false here, since getRemindersEnabledCache's
+  // own default (enabled) is the safer guess while this hasn't loaded yet.
+  useEffect(() => {
+    if (localRemindersEnabled !== undefined) setRemindersEnabledCache(localRemindersEnabled);
+  }, [localRemindersEnabled]);
 }
 
 export function useAuth() {

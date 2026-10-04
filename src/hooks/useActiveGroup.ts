@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
-import { setRemindersEnabledCache } from '@/lib/notifications/reminderPreference';
 import { retryOnTransientNetworkError } from '@/lib/retry';
 import type { Group, GroupMember } from '@/lib/supabase/types';
 
@@ -46,7 +45,6 @@ export function useActiveGroup() {
       );
       setGroup(groupRes.data ?? null);
       setMembership(memberRes.data ?? null);
-      if (memberRes.data) await setRemindersEnabledCache(memberRes.data.notification_preferences.reminders);
     } finally {
       setIsLoading(false);
       loadedForGroupIdRef.current = activeGroupId;
