@@ -171,7 +171,7 @@ export default function CheckinCameraScreen() {
     try {
       const { error } = await supabase.rpc('delete_own_checkin', { p_checkin_id: todayCheckin.id });
       if (error) throw new Error(error.message);
-      await cancelCheckoutReminders(todayCheckin.id);
+      await cancelCheckoutReminders();
       requestWorkoutActivitySync();
       setRetakeRequested(false);
       setCheckoutRequested(false);

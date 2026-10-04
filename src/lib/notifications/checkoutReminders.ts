@@ -5,6 +5,15 @@ import { distanceMeters } from '@/lib/domain/geo';
 import { CHECKOUT_GEOFENCE_TASK } from './checkoutGeofenceTask';
 import { getRemindersEnabledCache } from './reminderPreference';
 
+// Fixed identifiers — this reminder is ONE global, per-person thing (same idiom as
+// restTimer.ts's REST_TIMER_NOTIFICATION_ID), never one per check-in: a member pending
+// checkout in several groups at once (e.g. "check-in en otros grupos" fanned out to all of
+// them) used to get one of these PER GROUP, since each used to be keyed by that check-in's own
+// id — scheduling again with the same fixed id here naturally replaces whatever was pending
+// instead of stacking a duplicate alongside it.
+const CHECKOUT_REMINDER_NOTIFICATION_ID = 'gymbuddies-checkout-reminder';
+const CHECKOUT_REMINDER_FOREGROUND_NOTIFICATION_ID = 'gymbuddies-checkout-reminder-foreground';
+
 /** Falls back to this if a caller doesn't have the member's profile loaded yet — matches profiles.checkout_reminder_minutes' own DB default. */
 const DEFAULT_REMINDER_MINUTES = 20;
 /** Falls back to this if a caller doesn't have the member's profile loaded yet — matches profiles.checkout_geofence_radius_meters' own DB default. */
@@ -16,11 +25,11 @@ const FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS = 20;
 // geofence task already makes with its single fixed task name.
 let foregroundSubscription: Location.LocationSubscription | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
-let pendingWatch: { checkinId: string; latitude: number; longitude: number; radiusMeters: number } | null = null;
+let pendingWatch: { latitude: number; longitude: number; radiusMeters: number } | null = null;
 
 async function runForegroundWatchIfActive(): Promise<void> {
   if (!pendingWatch || AppState.currentState !== 'active' || foregroundSubscription) return;
-  const { checkinId, latitude, longitude, radiusMeters } = pendingWatch;
+  const { latitude, longitude, radiusMeters } = pendingWatch;
   try {
     foregroundSubscription = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.Balanced, distanceInterval: FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS },
@@ -31,7 +40,7 @@ async function runForegroundWatchIfActive(): Promise<void> {
           getRemindersEnabledCache().then((enabled) => {
             if (!enabled) return;
             Notifications.scheduleNotificationAsync({
-              identifier: `${checkinId}-foreground`,
+              identifier: CHECKOUT_REMINDER_FOREGROUND_NOTIFICATION_ID,
               content: {
                 title: 'Gym Buddies',
                 body: 'Parece que ya te alejaste del gimnasio — no olvides tomar tu foto de salida.',
@@ -61,8 +70,8 @@ function stopForegroundWatchSubscription(): void {
  * anyway — and restarts if the app comes back to the foreground with a
  * checkout still pending.
  */
-function startForegroundDistanceWatch(checkinId: string, latitude: number, longitude: number, radiusMeters: number): void {
-  pendingWatch = { checkinId, latitude, longitude, radiusMeters };
+function startForegroundDistanceWatch(latitude: number, longitude: number, radiusMeters: number): void {
+  pendingWatch = { latitude, longitude, radiusMeters };
   if (!appStateSubscription) {
     appStateSubscription = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') runForegroundWatchIfActive();
@@ -85,12 +94,12 @@ function stopForegroundDistanceWatch(): void {
  * profiles.checkout_reminder_minutes, 20 by default), a foreground distance
  * watch (only needs "When In Use"), and — best-effort, only if "Always"
  * location is granted — a background geofence that also fires while the app
- * is closed. Using the checkin row's own id as the notification identifier
- * means cancelCheckoutReminders can cancel it later with no extra persisted
- * state, even across an app restart.
+ * is closed. One global reminder per person, not one per check-in: calling
+ * this again (e.g. a second group's check-in fanned out the same moment, or
+ * a retake) replaces whichever reminder/geofence was already pending instead
+ * of adding another alongside it — see the fixed-id comment above.
  */
 export async function scheduleCheckoutReminders(
-  checkinId: string,
   latitude: number,
   longitude: number,
   reminderMinutes: number = DEFAULT_REMINDER_MINUTES,
@@ -100,7 +109,7 @@ export async function scheduleCheckoutReminders(
 
   try {
     await Notifications.scheduleNotificationAsync({
-      identifier: checkinId,
+      identifier: CHECKOUT_REMINDER_NOTIFICATION_ID,
       content: {
         title: 'Gym Buddies',
         body: 'No olvides tomar tu foto de salida del entreno.',
@@ -114,7 +123,7 @@ export async function scheduleCheckoutReminders(
     // best-effort — never block the check-in flow over a reminder
   }
 
-  startForegroundDistanceWatch(checkinId, latitude, longitude, geofenceRadiusMeters);
+  startForegroundDistanceWatch(latitude, longitude, geofenceRadiusMeters);
 
   try {
     const { status } = await Location.requestBackgroundPermissionsAsync();
@@ -136,7 +145,7 @@ export async function scheduleCheckoutReminders(
     }
     await Location.startGeofencingAsync(CHECKOUT_GEOFENCE_TASK, [
       {
-        identifier: checkinId,
+        identifier: CHECKOUT_REMINDER_NOTIFICATION_ID,
         latitude,
         longitude,
         radius: geofenceRadiusMeters,
@@ -149,10 +158,10 @@ export async function scheduleCheckoutReminders(
   }
 }
 
-/** Cancels every checkout reminder — call once the checkout photo is confirmed. */
-export async function cancelCheckoutReminders(checkinId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(checkinId).catch(() => {});
-  await Notifications.cancelScheduledNotificationAsync(`${checkinId}-foreground`).catch(() => {});
+/** Cancels the (one, global) pending checkout reminder — call once a checkout photo is confirmed. */
+export async function cancelCheckoutReminders(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(CHECKOUT_REMINDER_NOTIFICATION_ID).catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(CHECKOUT_REMINDER_FOREGROUND_NOTIFICATION_ID).catch(() => {});
   stopForegroundDistanceWatch();
   await stopCheckoutGeofence();
 }

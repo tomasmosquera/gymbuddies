@@ -86,7 +86,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
         // data is null when a genuinely separate manual check-in already
         // existed that day in this group — respected as-is, nothing to do.
         if (data && m.group.require_checkout_photo) {
-          await scheduleCheckoutReminders(data.id, latitude, longitude, reminderMinutes, radiusMeters);
+          await scheduleCheckoutReminders(latitude, longitude, reminderMinutes, radiusMeters);
         }
       } catch {
         // Best-effort — see function doc.
@@ -139,7 +139,7 @@ async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
           p_auto_created: true,
         });
         if (data) {
-          await cancelCheckoutReminders(existing.id);
+          await cancelCheckoutReminders();
         }
       } catch {
         // Best-effort — see fanOutCheckinToOtherGroups's doc.
@@ -255,7 +255,7 @@ export default function CheckinPreviewScreen() {
         });
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
 
-        await cancelCheckoutReminders(draft.existingCheckinId);
+        await cancelCheckoutReminders();
 
         // Fire-and-forget — never awaited before navigating away. Also
         // retried on every future app foreground (useAppleHealthForegroundSync)
@@ -365,7 +365,6 @@ export default function CheckinPreviewScreen() {
 
       if (group.require_checkout_photo) {
         await scheduleCheckoutReminders(
-          checkinRow.id,
           draft.latitude,
           draft.longitude,
           profile?.checkout_reminder_minutes,
