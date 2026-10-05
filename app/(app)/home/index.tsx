@@ -36,7 +36,7 @@ const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export default function HomeScreen() {
   const { session } = useAuth();
-  const { session: activeWorkoutSession } = useWorkoutSession();
+  const { session: activeWorkoutSession, refresh: refreshWorkoutSession } = useWorkoutSession();
   const { group, membership, isLoading: groupLoading, refresh: refreshGroup } = useActiveGroup();
   const timezone = group?.timezone ?? 'America/Bogota';
   const [weekOffset, setWeekOffset] = useState(0);
@@ -154,6 +154,7 @@ export default function HomeScreen() {
       refreshExcuseVote();
       refreshChallenges();
       refreshKothClaims();
+      refreshWorkoutSession();
     }, [
       refreshGroup,
       refreshCheckins,
@@ -164,6 +165,7 @@ export default function HomeScreen() {
       refreshExcuseVote,
       refreshChallenges,
       refreshKothClaims,
+      refreshWorkoutSession,
     ])
   );
 
