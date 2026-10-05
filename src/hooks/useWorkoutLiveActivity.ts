@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,6 +38,7 @@ export function useWorkoutLiveActivity() {
   const { session } = useAuth();
   const syncVersion = useWorkoutActivitySyncStore((s) => s.version);
   const userId = session?.user.id ?? null;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reconcile = useCallback(async () => {
     if (!userId) {
@@ -102,12 +103,36 @@ export function useWorkoutLiveActivity() {
     await syncWorkoutLiveActivity(checkoutProps ? { kind: 'checkout', ...checkoutProps } : null);
   }, [userId]);
 
+  // Mount and returning to the foreground: run right away — both are infrequent, and a member
+  // opening the app (or switching back to it) should see the Live Activity settle immediately.
   useEffect(() => {
     reconcile();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') reconcile();
     });
     return () => subscription.remove();
-    // syncVersion is not read inside — bumping it is what re-runs this effect after a check-in changes.
-  }, [reconcile, syncVersion]);
+  }, [reconcile]);
+
+  // requestWorkoutActivitySync() bumps syncVersion on every set logged, exercise added/removed,
+  // and rest-timer start/skip — several of those can fire within a second or two of each other
+  // during an active routine. A device crash confirmed expo-widgets' native update() call is a
+  // fire-and-forget bridge method (performVoidMethodInvocation in the backtrace): our own await on
+  // it resolves immediately while the real ActivityKit work keeps running detached on the native
+  // side, so workoutLiveActivity.ts's JS-side queue can't actually stop two of them from running
+  // concurrently there — only how OFTEN we even attempt one is in our control. Debouncing collapses
+  // a burst of rapid actions into one sync of the final state, cutting how often that native call
+  // fires back-to-back instead of chasing the exact native race. syncVersion starts at 0 and the
+  // mount effect above already covers that initial state, so this only engages from the first real
+  // bump onward.
+  useEffect(() => {
+    if (syncVersion === 0) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      reconcile();
+    }, 600);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [syncVersion, reconcile]);
 }
