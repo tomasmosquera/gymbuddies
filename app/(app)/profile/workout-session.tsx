@@ -48,8 +48,20 @@ const MAX_PLATE_WEIGHT: Record<WeightUnit, number> = { kg: 20, lbs: 45 };
  * scale (biggest plate drawn biggest), same shape you'd actually see looking down the end of a
  * loaded bar: the bar's own segment first, then one plate per entry already in largest-to-smallest
  * order. Both sides are identical, so this only ever needs to show one. */
+/** Quick, per-card override of which bar this set is actually on — a member alternating between a
+ * straight bar for bench and an EZ bar for curls within the SAME workout shouldn't have to go into
+ * Ajustes and back for each one. Local only (never written to profiles.default_bar_weight_kg,
+ * which just seeds the initial pick here) — kg always, regardless of the viewer's own weight_unit,
+ * since a "bar type" is a physical-object fact, not a display preference. */
+const BAR_WEIGHT_OPTIONS_KG: { kg: number; label: string }[] = [
+  { kg: 20, label: 'Estándar' },
+  { kg: 15, label: 'Corta' },
+  { kg: 10, label: 'EZ' },
+];
+
 function PlateHint({ targetWeight, barWeightKg, unit }: { targetWeight: number; barWeightKg: number; unit: WeightUnit }) {
-  const barWeight = kgToUnit(barWeightKg, unit);
+  const [selectedBarKg, setSelectedBarKg] = useState(barWeightKg);
+  const barWeight = kgToUnit(selectedBarKg, unit);
   const breakdown = calculatePlateBreakdown(targetWeight, barWeight, unit);
   const maxPlateWeight = MAX_PLATE_WEIGHT[unit];
 
@@ -81,6 +93,23 @@ function PlateHint({ targetWeight, barWeightKg, unit }: { targetWeight: number; 
           No se puede armar exacto con estos discos (sobran {breakdown.leftover} {unit} por lado)
         </Text>
       ) : null}
+      <View style={styles.barOptionRow}>
+        {BAR_WEIGHT_OPTIONS_KG.map((option) => {
+          const selected = option.kg === selectedBarKg;
+          return (
+            <Pressable
+              key={option.kg}
+              onPress={() => setSelectedBarKg(option.kg)}
+              style={[styles.barOptionChip, selected && styles.barOptionChipSelected]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.barOptionChipText, selected && styles.barOptionChipTextSelected]}>
+                {option.label} ({kgToUnit(option.kg, unit)}{unit})
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -756,8 +785,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(61, 220, 151, 0.35)',
     borderRadius: radii.md,
     gap: 6,
+    alignItems: 'center',
   },
-  plateRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  plateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, alignSelf: 'stretch' },
   plateBar: {
     width: 36,
     height: 20,
@@ -777,4 +807,15 @@ const styles = StyleSheet.create({
   plateDiscText: { color: colors.primaryText, fontSize: 11, fontWeight: '700' },
   plateHintText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   plateLeftoverText: { color: colors.warning, fontSize: 11 },
+  barOptionRow: { flexDirection: 'row', gap: 6, marginTop: 2 },
+  barOptionChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(61, 220, 151, 0.4)',
+  },
+  barOptionChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  barOptionChipText: { color: colors.primary, fontSize: 11, fontWeight: '600' },
+  barOptionChipTextSelected: { color: colors.primaryText },
 });
