@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -9,6 +10,7 @@ import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { LeaderboardCard } from '@/components/home/LeaderboardCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
+import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { useCheckins } from '@/hooks/useCheckins';
 import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
@@ -34,6 +36,7 @@ const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export default function HomeScreen() {
   const { session } = useAuth();
+  const { session: activeWorkoutSession } = useWorkoutSession();
   const { group, membership, isLoading: groupLoading, refresh: refreshGroup } = useActiveGroup();
   const timezone = group?.timezone ?? 'America/Bogota';
   const [weekOffset, setWeekOffset] = useState(0);
@@ -348,6 +351,21 @@ export default function HomeScreen() {
               🗳️ Tienes {pendingVoteCount} votación{pendingVoteCount === 1 ? '' : 'es'} pendiente
               {pendingVoteCount === 1 ? '' : 's'} — toca para ir a votar
             </Text>
+          </Card>
+        </Pressable>
+      ) : null}
+
+      {activeWorkoutSession ? (
+        <Pressable onPress={() => router.push('/profile/workout-session')} accessibilityRole="button">
+          <Card style={styles.activeWorkoutBanner}>
+            <Ionicons name="barbell" size={20} color={colors.primaryText} />
+            <View style={styles.flex}>
+              <Text style={styles.activeWorkoutBannerTitle}>Entreno en curso</Text>
+              <Text style={styles.activeWorkoutBannerSubtitle} numberOfLines={1}>
+                {activeWorkoutSession.routine_name_snapshot ?? 'Entreno libre'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.primaryText} />
           </Card>
         </Pressable>
       ) : null}
@@ -776,6 +794,16 @@ const styles = StyleSheet.create({
   inviteCode: { color: colors.textMuted, marginTop: 2 },
   voteBanner: { backgroundColor: colors.primary },
   voteBannerText: { color: colors.primaryText, fontWeight: '700', fontSize: 13 },
+  flex: { flex: 1 },
+  activeWorkoutBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  activeWorkoutBannerTitle: { color: colors.primaryText, fontWeight: '700', fontSize: 15 },
+  activeWorkoutBannerSubtitle: { color: colors.primaryText, fontSize: 13 },
   statusCard: { gap: spacing.sm },
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   balanceLabel: { color: colors.textMuted },
