@@ -103,14 +103,31 @@ export function useWorkoutLiveActivity() {
     await syncWorkoutLiveActivity(checkoutProps ? { kind: 'checkout', ...checkoutProps } : null);
   }, [userId]);
 
-  // Mount and returning to the foreground: run right away — both are infrequent, and a member
-  // opening the app (or switching back to it) should see the Live Activity settle immediately.
+  // Mount: run right away, nothing to wait for. Returning to the foreground is different — a
+  // second device crash (identical signature: ObjCTurboModule::performVoidMethodInvocation ->
+  // uncaught native exception -> abort) happened at the exact moment the app was still mid scene
+  // transition (the main thread's own stack showed UIKeyboard/AutoLayout work for
+  // _sendWillEnterForegroundCallbacks still running). expo-widgets' Live Activity calls are
+  // ActivityKit under the hood, and touching it while the app/scene hasn't finished settling back
+  // in is a plausible way to catch it in whatever transitional state that other crash's debounce
+  // fix doesn't help with (that one is about rapid-fire calls during an active routine, not a single
+  // call landing at a bad moment). A short delay here gives the foreground transition room to
+  // finish first.
   useEffect(() => {
     reconcile();
+  }, [reconcile]);
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') reconcile();
+      if (state !== 'active') return;
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(reconcile, 500);
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      if (timeout) clearTimeout(timeout);
+    };
   }, [reconcile]);
 
   // requestWorkoutActivitySync() bumps syncVersion on every set logged, exercise added/removed,
