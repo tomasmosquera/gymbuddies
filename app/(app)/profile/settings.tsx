@@ -34,6 +34,8 @@ export default function SettingsScreen() {
   const [healthConnectSdkStatus, setHealthConnectSdkStatus] = useState<number | null>(null);
   const [bodyWeightText, setBodyWeightText] = useState('');
   const [isSavingBodyWeight, setIsSavingBodyWeight] = useState(false);
+  const [barWeightText, setBarWeightText] = useState('');
+  const [isSavingBarWeight, setIsSavingBarWeight] = useState(false);
 
   // Synced from the profile whenever it (or the display unit) changes —
   // local state in between so the field behaves like every other weight
@@ -43,6 +45,12 @@ export default function SettingsScreen() {
       setBodyWeightText(String(kgToUnit(profile.body_weight_kg, profile.weight_unit)));
     }
   }, [profile?.body_weight_kg, profile?.weight_unit]);
+
+  useEffect(() => {
+    if (profile?.default_bar_weight_kg != null) {
+      setBarWeightText(String(kgToUnit(profile.default_bar_weight_kg, profile.weight_unit)));
+    }
+  }, [profile?.default_bar_weight_kg, profile?.weight_unit]);
 
   const refreshPermissionStatus = useCallback(async () => {
     const fg = await Location.getForegroundPermissionsAsync();
@@ -138,6 +146,24 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSaveBarWeight = async () => {
+    const kg = unitToKg(Number(barWeightText) || 0, profile.weight_unit);
+    if (!barWeightText || kg < 0 || kg > 50) {
+      Alert.alert('Valor inválido', `Ingresa un peso de barra válido, entre 0 y ${Math.round(kgToUnit(50, profile.weight_unit))} ${profile.weight_unit}.`);
+      return;
+    }
+    setIsSavingBarWeight(true);
+    try {
+      const { error } = await supabase.rpc('set_default_bar_weight_kg', { p_kg: kg });
+      if (error) throw error;
+      await refreshProfile();
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      setIsSavingBarWeight(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Card style={styles.section}>
@@ -176,6 +202,24 @@ export default function SettingsScreen() {
           placeholder="70"
         />
         <Button label="Guardar" variant="secondary" onPress={handleSaveBodyWeight} loading={isSavingBodyWeight} />
+      </Card>
+
+      <Card style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Peso de tu barra</Text>
+        </View>
+        <Text style={styles.hint}>
+          Para calcular cuántos discos van de cada lado en los ejercicios con barra. Una olímpica estándar pesa 20kg,
+          pero una barra corta, EZ, o de mujer pesan menos — poné la tuya.
+        </Text>
+        <TextField
+          label={`Peso de la barra (${profile.weight_unit})`}
+          value={barWeightText}
+          onChangeText={(t) => setBarWeightText(sanitizeWeightInput(t))}
+          keyboardType="decimal-pad"
+          placeholder="20"
+        />
+        <Button label="Guardar" variant="secondary" onPress={handleSaveBarWeight} loading={isSavingBarWeight} />
       </Card>
 
       <Card style={styles.section}>

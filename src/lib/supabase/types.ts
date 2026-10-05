@@ -46,6 +46,8 @@ export type Profile = {
   checkout_geofence_radius_meters: number;
   /** On/off switch for the on-device-only reminders (checkout photo pending, arrived-at-the-gym check-in nudge, workout milestones) — see set_local_reminders_enabled and reminderPreference.ts. Deliberately NOT the same thing as group_members.notification_preferences.reminders, which stays per-group and only gates the server-pushed daily check-in reminder + buddy nudges. */
   local_reminders_enabled: boolean;
+  /** Weight of the member's own barbell (a standard Olympic bar is 20kg; a short bar, EZ-curl bar, or women's bar weigh less) — see set_default_bar_weight_kg. Used only to work out the plate breakdown for a barbell-equipment exercise's target weight (src/lib/domain/plateCalculator.ts); canonical kg, global per user, 0-50, default 20. */
+  default_bar_weight_kg: number;
   /** Grants the ability to create/mark groups public — set once via a one-off migration, not client-settable. See list_public_groups/create_group/admin_set_group_public. */
   is_platform_admin: boolean;
   /** Consumed by create_group (1 per group), free to start (default 1, including a one-time backfill for every pre-existing profile). The platform admin never spends this. See admin_grant_group_creation_credits for the platform admin's manual top-up tool — in-app purchase isn't built yet. */
@@ -989,6 +991,7 @@ export type Database = {
       set_checkout_reminder_minutes: { Args: { p_minutes: number }; Returns: void };
       set_checkout_geofence_radius_meters: { Args: { p_meters: number }; Returns: void };
       set_local_reminders_enabled: { Args: { p_enabled: boolean }; Returns: void };
+      set_default_bar_weight_kg: { Args: { p_kg: number }; Returns: void };
       admin_find_user_by_email: {
         Args: { p_email: string };
         Returns: { id: string; full_name: string; group_creation_credits: number }[];

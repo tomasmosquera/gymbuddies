@@ -23,6 +23,7 @@ import {
   type PendingSetRow,
 } from '@/lib/domain/workoutSession';
 import { formatWeightUnit, kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { calculatePlateBreakdown, formatPlateBreakdown } from '@/lib/domain/plateCalculator';
 import { replaceThenCrossTabNavigate } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
@@ -38,6 +39,52 @@ function repRangeLabel(target: WorkoutSessionSetTarget): string {
   return `${target.target_reps_min}-${target.target_reps_max}`;
 }
 
+/** The biggest plate in each unit's own denomination list (see plateCalculator.ts) — a disc's size
+ * on screen is its own weight relative to this, so a 20kg plate always draws at full size
+ * regardless of whether the member next does an lbs exercise where 45 is the biggest. */
+const MAX_PLATE_WEIGHT: Record<WeightUnit, number> = { kg: 20, lbs: 45 };
+
+/** Bar + plates for the set a member is about to do, for a barbell-equipment exercise — drawn to
+ * scale (biggest plate drawn biggest), same shape you'd actually see looking down the end of a
+ * loaded bar: the bar's own segment first, then one plate per entry already in largest-to-smallest
+ * order. Both sides are identical, so this only ever needs to show one. */
+function PlateHint({ targetWeight, barWeightKg, unit }: { targetWeight: number; barWeightKg: number; unit: WeightUnit }) {
+  const barWeight = kgToUnit(barWeightKg, unit);
+  const breakdown = calculatePlateBreakdown(targetWeight, barWeight, unit);
+  const maxPlateWeight = MAX_PLATE_WEIGHT[unit];
+
+  return (
+    <View style={styles.plateHint}>
+      <View style={styles.plateRow}>
+        <View style={styles.plateBar}>
+          <Text style={styles.plateBarText} numberOfLines={1}>
+            {barWeight}
+          </Text>
+        </View>
+        {breakdown.plates.map((plateWeight, i) => {
+          const ratio = plateWeight / maxPlateWeight;
+          return (
+            <View
+              key={i}
+              style={[styles.plateDisc, { height: 24 + ratio * 30, width: 22 + ratio * 14 }]}
+            >
+              <Text style={styles.plateDiscText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                {plateWeight}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+      <Text style={styles.plateHintText}>{formatPlateBreakdown(breakdown, unit)}</Text>
+      {breakdown.leftover > 0 ? (
+        <Text style={styles.plateLeftoverText}>
+          No se puede armar exacto con estos discos (sobran {breakdown.leftover} {unit} por lado)
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** One exercise card: progressive-overload reference, completed sets (from the DB), and pending/editable rows (local until confirmed). */
 function ExerciseCard({
   sessionExercise,
@@ -47,6 +94,7 @@ function ExerciseCard({
   onDeleteSet,
   onRemoveExercise,
   defaultUnit,
+  barWeightKg,
 }: {
   sessionExercise: WorkoutSessionExerciseWithDetails;
   sessionId: string;
@@ -55,6 +103,7 @@ function ExerciseCard({
   onDeleteSet: (setId: string) => void;
   onRemoveExercise: (sessionExerciseId: string) => void;
   defaultUnit: WeightUnit;
+  barWeightKg: number;
 }) {
   const [unit, setUnit] = useState<WeightUnit>(defaultUnit);
   const [pending, setPending] = useState<PendingSetRow[]>(() =>
@@ -324,37 +373,47 @@ function ExerciseCard({
         );
       })}
 
-      {pending.map((row, index) => (
-        <View key={index} style={styles.setRow}>
-          <View style={[styles.setColumn, styles.setBadge, row.isFailureTarget && styles.setBadgeFailure]}>
-            <Text style={[styles.setBadgeText, row.isFailureTarget && styles.setBadgeTextFailure]}>
-              {row.isFailureTarget ? 'F' : allSets.length + index + 1}
-            </Text>
+      {pending.map((row, index) => {
+        // Only the very next set to do, not every pending row — showing it under each one would
+        // just repeat an almost-identical breakdown when there's more than one still ahead.
+        const pendingWeight = index === 0 ? effectivePendingWeight(row) : undefined;
+        return (
+          <View key={index}>
+            <View style={styles.setRow}>
+              <View style={[styles.setColumn, styles.setBadge, row.isFailureTarget && styles.setBadgeFailure]}>
+                <Text style={[styles.setBadgeText, row.isFailureTarget && styles.setBadgeTextFailure]}>
+                  {row.isFailureTarget ? 'F' : allSets.length + index + 1}
+                </Text>
+              </View>
+              <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
+                {row.previousWeight && row.previousReps ? `${row.previousWeight} ${unit} × ${row.previousReps}` : '—'}
+              </Text>
+              <TextInput
+                style={[styles.setInput, styles.weightColumn, row.isProgressiveOverloadSuggestion && styles.setInputOverload]}
+                value={row.targetWeight}
+                onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
+                keyboardType="decimal-pad"
+                placeholder={row.suggestedWeight || '—'}
+                placeholderTextColor={row.isProgressiveOverloadSuggestion ? colors.success : colors.textMuted}
+              />
+              <TextInput
+                style={[styles.setInput, styles.repsColumn]}
+                value={row.targetReps}
+                onChangeText={(t) => updatePending(index, { targetReps: t.replace(/[^0-9]/g, '') })}
+                keyboardType="numeric"
+                placeholder={row.suggestedReps || '0'}
+                placeholderTextColor={colors.textMuted}
+              />
+              <Pressable onPress={() => confirm(index)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
+                <Ionicons name="checkmark-circle-outline" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            {sessionExercise.exercise.equipment === 'barbell' && pendingWeight !== undefined ? (
+              <PlateHint targetWeight={pendingWeight} barWeightKg={barWeightKg} unit={unit} />
+            ) : null}
           </View>
-          <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
-            {row.previousWeight && row.previousReps ? `${row.previousWeight} ${unit} × ${row.previousReps}` : '—'}
-          </Text>
-          <TextInput
-            style={[styles.setInput, styles.weightColumn, row.isProgressiveOverloadSuggestion && styles.setInputOverload]}
-            value={row.targetWeight}
-            onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
-            keyboardType="decimal-pad"
-            placeholder={row.suggestedWeight || '—'}
-            placeholderTextColor={row.isProgressiveOverloadSuggestion ? colors.success : colors.textMuted}
-          />
-          <TextInput
-            style={[styles.setInput, styles.repsColumn]}
-            value={row.targetReps}
-            onChangeText={(t) => updatePending(index, { targetReps: t.replace(/[^0-9]/g, '') })}
-            keyboardType="numeric"
-            placeholder={row.suggestedReps || '0'}
-            placeholderTextColor={colors.textMuted}
-          />
-          <Pressable onPress={() => confirm(index)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
-            <Ionicons name="checkmark-circle-outline" size={22} color={colors.textMuted} />
-          </Pressable>
-        </View>
-      ))}
+        );
+      })}
 
       <Button label="+ Agregar serie" variant="secondary" onPress={addPending} />
     </Card>
@@ -571,6 +630,7 @@ export default function WorkoutSessionScreen() {
             onDeleteSet={deleteLoggedSet}
             onRemoveExercise={handleRemoveExercise}
             defaultUnit={unit}
+            barWeightKg={profile?.default_bar_weight_kg ?? 20}
           />
         ))}
         <Button label="+ Agregar ejercicio" onPress={() => setIsPickerOpen(true)} />
@@ -687,4 +747,34 @@ const styles = StyleSheet.create({
   // `color` here would tint whatever the member actually types too, which
   // should look like a normal typed number, not still "the PO suggestion".
   setInputOverload: { borderColor: colors.success, borderWidth: 2 },
+  plateHint: {
+    marginTop: 2,
+    marginBottom: spacing.xs,
+    padding: spacing.sm,
+    backgroundColor: 'rgba(61, 220, 151, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(61, 220, 151, 0.35)',
+    borderRadius: radii.md,
+    gap: 6,
+  },
+  plateRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  plateBar: {
+    width: 36,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: '#5B6472',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plateBarText: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  plateDisc: {
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  plateDiscText: { color: colors.primaryText, fontSize: 11, fontWeight: '700' },
+  plateHintText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  plateLeftoverText: { color: colors.warning, fontSize: 11 },
 });
