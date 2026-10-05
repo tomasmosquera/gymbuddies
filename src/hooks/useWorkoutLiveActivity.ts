@@ -103,53 +103,42 @@ export function useWorkoutLiveActivity() {
     await syncWorkoutLiveActivity(checkoutProps ? { kind: 'checkout', ...checkoutProps } : null);
   }, [userId]);
 
-  // Mount: run right away, nothing to wait for. Returning to the foreground is different — a
-  // second device crash (identical signature: ObjCTurboModule::performVoidMethodInvocation ->
-  // uncaught native exception -> abort) happened at the exact moment the app was still mid scene
-  // transition (the main thread's own stack showed UIKeyboard/AutoLayout work for
-  // _sendWillEnterForegroundCallbacks still running). expo-widgets' Live Activity calls are
-  // ActivityKit under the hood, and touching it while the app/scene hasn't finished settling back
-  // in is a plausible way to catch it in whatever transitional state that other crash's debounce
-  // fix doesn't help with (that one is about rapid-fire calls during an active routine, not a single
-  // call landing at a bad moment). A short delay here gives the foreground transition room to
-  // finish first.
-  useEffect(() => {
-    reconcile();
-  }, [reconcile]);
-
-  useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(reconcile, 500);
-    });
-    return () => {
-      subscription.remove();
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [reconcile]);
-
-  // requestWorkoutActivitySync() bumps syncVersion on every set logged, exercise added/removed,
-  // and rest-timer start/skip — several of those can fire within a second or two of each other
-  // during an active routine. A device crash confirmed expo-widgets' native update() call is a
-  // fire-and-forget bridge method (performVoidMethodInvocation in the backtrace): our own await on
-  // it resolves immediately while the real ActivityKit work keeps running detached on the native
-  // side, so workoutLiveActivity.ts's JS-side queue can't actually stop two of them from running
-  // concurrently there — only how OFTEN we even attempt one is in our control. Debouncing collapses
-  // a burst of rapid actions into one sync of the final state, cutting how often that native call
-  // fires back-to-back instead of chasing the exact native race. syncVersion starts at 0 and the
-  // mount effect above already covers that initial state, so this only engages from the first real
-  // bump onward.
-  useEffect(() => {
-    if (syncVersion === 0) return;
+  // Every trigger — mount, returning to the foreground, and a routine/check-in change via
+  // requestWorkoutActivitySync() — goes through this same debounce, not just the high-frequency
+  // one. Three device crashes (identical signature: ObjCTurboModule::performVoidMethodInvocation
+  // -> uncaught native exception -> abort, in expo-widgets' Live Activity bridge) turned up in
+  // three different circumstances: mid a burst of routine actions, right as the app returned to
+  // the foreground (process role "Foreground", main thread still mid scene transition), and ~48s
+  // after a "Role: unknown"/"Non UI" launch with the main thread sitting idle — that last one, and
+  // the first one (also "Role: Non UI"), are consistent with iOS launching the app in the
+  // background to run the checkout geofence task, which boots this hook's mount the same as a
+  // normal launch, well before any real UI/scene exists. The common thread across all three isn't
+  // WHICH trigger fired, it's that none of them guaranteed the app/scene had actually settled
+  // before touching ActivityKit — so every trigger gets the same delay rather than special-casing
+  // each circumstance as it turns up.
+  const scheduleReconcile = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       reconcile();
     }, 600);
+  }, [reconcile]);
+
+  useEffect(() => {
+    scheduleReconcile();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') scheduleReconcile();
+    });
     return () => {
+      subscription.remove();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [syncVersion, reconcile]);
+  }, [scheduleReconcile]);
+
+  // syncVersion starts at 0 and the mount effect above already covers that initial state, so this
+  // only engages from the first real bump onward.
+  useEffect(() => {
+    if (syncVersion === 0) return;
+    scheduleReconcile();
+  }, [syncVersion, scheduleReconcile]);
 }
