@@ -138,6 +138,10 @@ function ExerciseCard({
   const [pending, setPending] = useState<PendingSetRow[]>(() =>
     initialPendingRows(sessionExercise.target_sets_snapshot, sessionExercise.sets.length, defaultUnit)
   );
+  // Which pending row's weight field has focus, if any — the plate hint (barbell exercises only)
+  // shows for that one row while it's focused and nothing else, so it appears/disappears with the
+  // keyboard instead of depending on whether a weight has been typed yet.
+  const [focusedWeightIndex, setFocusedWeightIndex] = useState<number | null>(null);
   // Shown as completed the instant the member taps the checkmark, before the
   // log_set RPC even resolves — the fix for the set briefly disappearing
   // then popping back in "already checked" (that gap was two round trips:
@@ -402,47 +406,44 @@ function ExerciseCard({
         );
       })}
 
-      {pending.map((row, index) => {
-        // Only the very next set to do, not every pending row — showing it under each one would
-        // just repeat an almost-identical breakdown when there's more than one still ahead.
-        const pendingWeight = index === 0 ? effectivePendingWeight(row) : undefined;
-        return (
-          <View key={index}>
-            <View style={styles.setRow}>
-              <View style={[styles.setColumn, styles.setBadge, row.isFailureTarget && styles.setBadgeFailure]}>
-                <Text style={[styles.setBadgeText, row.isFailureTarget && styles.setBadgeTextFailure]}>
-                  {row.isFailureTarget ? 'F' : allSets.length + index + 1}
-                </Text>
-              </View>
-              <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
-                {row.previousWeight && row.previousReps ? `${row.previousWeight} ${unit} × ${row.previousReps}` : '—'}
+      {pending.map((row, index) => (
+        <View key={index}>
+          <View style={styles.setRow}>
+            <View style={[styles.setColumn, styles.setBadge, row.isFailureTarget && styles.setBadgeFailure]}>
+              <Text style={[styles.setBadgeText, row.isFailureTarget && styles.setBadgeTextFailure]}>
+                {row.isFailureTarget ? 'F' : allSets.length + index + 1}
               </Text>
-              <TextInput
-                style={[styles.setInput, styles.weightColumn, row.isProgressiveOverloadSuggestion && styles.setInputOverload]}
-                value={row.targetWeight}
-                onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
-                keyboardType="decimal-pad"
-                placeholder={row.suggestedWeight || '—'}
-                placeholderTextColor={row.isProgressiveOverloadSuggestion ? colors.success : colors.textMuted}
-              />
-              <TextInput
-                style={[styles.setInput, styles.repsColumn]}
-                value={row.targetReps}
-                onChangeText={(t) => updatePending(index, { targetReps: t.replace(/[^0-9]/g, '') })}
-                keyboardType="numeric"
-                placeholder={row.suggestedReps || '0'}
-                placeholderTextColor={colors.textMuted}
-              />
-              <Pressable onPress={() => confirm(index)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
-                <Ionicons name="checkmark-circle-outline" size={22} color={colors.textMuted} />
-              </Pressable>
             </View>
-            {sessionExercise.exercise.equipment === 'barbell' && pendingWeight !== undefined ? (
-              <PlateHint targetWeight={pendingWeight} barWeightKg={barWeightKg} unit={unit} />
-            ) : null}
+            <Text style={[styles.previousValue, styles.previousColumn]} numberOfLines={1}>
+              {row.previousWeight && row.previousReps ? `${row.previousWeight} ${unit} × ${row.previousReps}` : '—'}
+            </Text>
+            <TextInput
+              style={[styles.setInput, styles.weightColumn, row.isProgressiveOverloadSuggestion && styles.setInputOverload]}
+              value={row.targetWeight}
+              onChangeText={(t) => updatePending(index, { targetWeight: sanitizeWeightInput(t) })}
+              onFocus={() => setFocusedWeightIndex(index)}
+              onBlur={() => setFocusedWeightIndex((current) => (current === index ? null : current))}
+              keyboardType="decimal-pad"
+              placeholder={row.suggestedWeight || '—'}
+              placeholderTextColor={row.isProgressiveOverloadSuggestion ? colors.success : colors.textMuted}
+            />
+            <TextInput
+              style={[styles.setInput, styles.repsColumn]}
+              value={row.targetReps}
+              onChangeText={(t) => updatePending(index, { targetReps: t.replace(/[^0-9]/g, '') })}
+              keyboardType="numeric"
+              placeholder={row.suggestedReps || '0'}
+              placeholderTextColor={colors.textMuted}
+            />
+            <Pressable onPress={() => confirm(index)} hitSlop={8} style={styles.actionColumn} accessibilityRole="button">
+              <Ionicons name="checkmark-circle-outline" size={22} color={colors.textMuted} />
+            </Pressable>
           </View>
-        );
-      })}
+          {sessionExercise.exercise.equipment === 'barbell' && focusedWeightIndex === index ? (
+            <PlateHint targetWeight={effectivePendingWeight(row) ?? 0} barWeightKg={barWeightKg} unit={unit} />
+          ) : null}
+        </View>
+      ))}
 
       <Button label="+ Agregar serie" variant="secondary" onPress={addPending} />
     </Card>
