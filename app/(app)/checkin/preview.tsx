@@ -297,7 +297,6 @@ export default function CheckinPreviewScreen() {
           }).catch(() => {});
         }
 
-        requestWorkoutActivitySync();
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
@@ -323,6 +322,19 @@ export default function CheckinPreviewScreen() {
                 setTimeout(() => {
                   setDraft(null);
                   router.dismissTo('/home');
+                  // requestWorkoutActivitySync() used to fire synchronously right on submit
+                  // success, well before this — meaning the Live Activity's native reconcile
+                  // (ActivityKit end/update, which re-evaluates WorkoutActivity.tsx's whole
+                  // SwiftUI description in a native JSContext) could land its own, separately
+                  // heavy native work in the exact same window as this screen's own alert-
+                  // dismiss/navigation race. syncWorkoutLiveActivity's queue is a single
+                  // module-scope promise chain for the whole app session — if that native call
+                  // ever hangs instead of throwing, every future call to it hangs too, forever,
+                  // until the app is force-quit (restarting the module). Deferring it well past
+                  // the point navigation has already committed means that, even if it does hang,
+                  // it can no longer be mistaken for (or contribute to) this screen failing to
+                  // leave "Confirmar".
+                  setTimeout(() => requestWorkoutActivitySync(), 800);
                 }, 350);
               },
             },
@@ -434,7 +446,6 @@ export default function CheckinPreviewScreen() {
       }
       const buddyLine = buddyPartnerName ? `\n\n🫱🏼‍🫲🏻 Entrenaste junto a ${buddyPartnerName} — +3 XP bonus.` : '';
 
-      requestWorkoutActivitySync();
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       Alert.alert(
         draft.existingCheckinId ? 'Foto actualizada 💪' : '¡Check-in registrado! 💪',
@@ -456,6 +467,10 @@ export default function CheckinPreviewScreen() {
               setTimeout(() => {
                 setDraft(null);
                 router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } });
+                // Deferred well past navigation — see the checkout branch's onPress comment
+                // above for why requestWorkoutActivitySync() no longer fires right on submit
+                // success.
+                setTimeout(() => requestWorkoutActivitySync(), 800);
               }, 350);
             },
           },
