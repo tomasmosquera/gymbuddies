@@ -23,7 +23,14 @@ import {
   type PendingSetRow,
 } from '@/lib/domain/workoutSession';
 import { formatWeightUnit, kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
-import { calculatePlateBreakdown, formatPlateBreakdown } from '@/lib/domain/plateCalculator';
+import {
+  BAR_WEIGHT_PRESETS,
+  KG_PLATES,
+  LBS_PLATES,
+  barWeightInUnit,
+  calculatePlateBreakdown,
+  formatPlateBreakdown,
+} from '@/lib/domain/plateCalculator';
 import { replaceThenCrossTabNavigate } from '@/lib/navigation';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
@@ -48,68 +55,149 @@ const MAX_PLATE_WEIGHT: Record<WeightUnit, number> = { kg: 20, lbs: 45 };
  * scale (biggest plate drawn biggest), same shape you'd actually see looking down the end of a
  * loaded bar: the bar's own segment first, then one plate per entry already in largest-to-smallest
  * order. Both sides are identical, so this only ever needs to show one. */
+/** The bar + one plate per entry, largest-to-smallest, drawn to scale (biggest plate drawn
+ * biggest) — the shape you'd actually see looking down the end of a loaded bar. Shared by the
+ * picker (below, tappable to remove) and the breakdown view (read-only). */
+function BarAndPlatesRow({
+  barWeight,
+  plates,
+  maxPlateWeight,
+  onRemoveAt,
+}: {
+  barWeight: number;
+  plates: readonly number[];
+  maxPlateWeight: number;
+  onRemoveAt?: (index: number) => void;
+}) {
+  return (
+    <View style={styles.plateRow}>
+      <View style={styles.plateBar}>
+        <Text style={styles.plateBarText} numberOfLines={1}>
+          {barWeight}
+        </Text>
+      </View>
+      {plates.map((plateWeight, i) => {
+        const ratio = plateWeight / maxPlateWeight;
+        const disc = (
+          <View style={[styles.plateDisc, { height: 24 + ratio * 30, width: 22 + ratio * 14 }]}>
+            <Text style={styles.plateDiscText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {plateWeight}
+            </Text>
+          </View>
+        );
+        return onRemoveAt ? (
+          <Pressable key={i} onPress={() => onRemoveAt(i)} accessibilityRole="button" accessibilityLabel={`Quitar disco de ${plateWeight}`}>
+            {disc}
+          </Pressable>
+        ) : (
+          <View key={i}>{disc}</View>
+        );
+      })}
+    </View>
+  );
+}
+
 /** Quick, per-card override of which bar this set is actually on — a member alternating between a
  * straight bar for bench and an EZ bar for curls within the SAME workout shouldn't have to go into
  * Ajustes and back for each one. Local only (never written to profiles.default_bar_weight_kg,
- * which just seeds the initial pick here) — kg always, regardless of the viewer's own weight_unit,
- * since a "bar type" is a physical-object fact, not a display preference. */
-const BAR_WEIGHT_OPTIONS_KG: { kg: number; label: string }[] = [
-  { kg: 20, label: 'Estándar' },
-  { kg: 15, label: 'Corta' },
-  { kg: 10, label: 'EZ' },
-];
+ * which just seeds the initial pick here) — the kg side is the physical-object fact; the label
+ * shown next to it is barWeightInUnit's marketed lbs number for lbs members, not a plain
+ * conversion (see that function's doc comment). */
+function BarTypeChips({ selectedBarKg, onSelect, unit }: { selectedBarKg: number; onSelect: (kg: number) => void; unit: WeightUnit }) {
+  return (
+    <View style={styles.barOptionRow}>
+      {BAR_WEIGHT_PRESETS.map((option) => {
+        const selected = option.kg === selectedBarKg;
+        return (
+          <Pressable
+            key={option.kg}
+            onPress={() => onSelect(option.kg)}
+            style={[styles.barOptionChip, selected && styles.barOptionChipSelected]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.barOptionChipText, selected && styles.barOptionChipTextSelected]}>
+              {option.label} ({barWeightInUnit(option.kg, unit)}{unit})
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
-function PlateHint({ targetWeight, barWeightKg, unit }: { targetWeight: number; barWeightKg: number; unit: WeightUnit }) {
+/**
+ * Two modes, decided once per focus session (this only ever mounts while its row's weight field
+ * is focused, and unmounts on blur — see its call site): the field was empty when focused, so
+ * picking plates is how the member builds up a weight (forward: plates -> total, written into the
+ * field as they tap); or it already had something typed, so this instead shows what that number
+ * breaks down into (reverse: total -> plates, read-only, the original behavior). Deciding once
+ * rather than reactively on every change matters — the forward picker's own first tap fills the
+ * field, and re-deciding then would immediately yank the picker away after a single plate.
+ */
+function PlateHint({
+  row,
+  onPickWeight,
+  barWeightKg,
+  unit,
+}: {
+  row: PendingSetRow;
+  onPickWeight: (weight: number) => void;
+  barWeightKg: number;
+  unit: WeightUnit;
+}) {
   const [selectedBarKg, setSelectedBarKg] = useState(barWeightKg);
-  const barWeight = kgToUnit(selectedBarKg, unit);
-  const breakdown = calculatePlateBreakdown(targetWeight, barWeight, unit);
+  const barWeight = barWeightInUnit(selectedBarKg, unit);
   const maxPlateWeight = MAX_PLATE_WEIGHT[unit];
+  const [usingPicker] = useState(() => row.targetWeight.trim() === '');
+  const [pickedPlates, setPickedPlates] = useState<readonly number[]>([]);
 
+  if (usingPicker) {
+    const denominations = unit === 'kg' ? KG_PLATES : LBS_PLATES;
+    const applyPick = (plates: readonly number[]) => {
+      setPickedPlates(plates);
+      onPickWeight(barWeight + 2 * plates.reduce((sum, p) => sum + p, 0));
+    };
+    const total = barWeight + 2 * pickedPlates.reduce((sum, p) => sum + p, 0);
+
+    return (
+      <View style={styles.plateHint}>
+        <BarAndPlatesRow
+          barWeight={barWeight}
+          plates={pickedPlates}
+          maxPlateWeight={maxPlateWeight}
+          onRemoveAt={(i) => applyPick(pickedPlates.filter((_, idx) => idx !== i))}
+        />
+        <Text style={styles.plateHintText}>
+          {pickedPlates.length === 0 ? 'Toca los discos que vas a poner por lado' : `= ${total} ${unit} · toca un disco para quitarlo`}
+        </Text>
+        <View style={styles.pickerPlateRow}>
+          {denominations.map((plate) => (
+            <Pressable
+              key={plate}
+              onPress={() => applyPick([...pickedPlates, plate].sort((a, b) => b - a))}
+              style={styles.pickerPlateChip}
+              accessibilityRole="button"
+            >
+              <Text style={styles.pickerPlateChipText}>+{plate}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <BarTypeChips selectedBarKg={selectedBarKg} onSelect={setSelectedBarKg} unit={unit} />
+      </View>
+    );
+  }
+
+  const breakdown = calculatePlateBreakdown(effectivePendingWeight(row) ?? 0, barWeight, unit);
   return (
     <View style={styles.plateHint}>
-      <View style={styles.plateRow}>
-        <View style={styles.plateBar}>
-          <Text style={styles.plateBarText} numberOfLines={1}>
-            {barWeight}
-          </Text>
-        </View>
-        {breakdown.plates.map((plateWeight, i) => {
-          const ratio = plateWeight / maxPlateWeight;
-          return (
-            <View
-              key={i}
-              style={[styles.plateDisc, { height: 24 + ratio * 30, width: 22 + ratio * 14 }]}
-            >
-              <Text style={styles.plateDiscText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                {plateWeight}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      <BarAndPlatesRow barWeight={barWeight} plates={breakdown.plates} maxPlateWeight={maxPlateWeight} />
       <Text style={styles.plateHintText}>{formatPlateBreakdown(breakdown, unit)}</Text>
       {breakdown.leftover > 0 ? (
         <Text style={styles.plateLeftoverText}>
           No se puede armar exacto con estos discos (sobran {breakdown.leftover} {unit} por lado)
         </Text>
       ) : null}
-      <View style={styles.barOptionRow}>
-        {BAR_WEIGHT_OPTIONS_KG.map((option) => {
-          const selected = option.kg === selectedBarKg;
-          return (
-            <Pressable
-              key={option.kg}
-              onPress={() => setSelectedBarKg(option.kg)}
-              style={[styles.barOptionChip, selected && styles.barOptionChipSelected]}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.barOptionChipText, selected && styles.barOptionChipTextSelected]}>
-                {option.label} ({kgToUnit(option.kg, unit)}{unit})
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <BarTypeChips selectedBarKg={selectedBarKg} onSelect={setSelectedBarKg} unit={unit} />
     </View>
   );
 }
@@ -440,7 +528,12 @@ function ExerciseCard({
             </Pressable>
           </View>
           {sessionExercise.exercise.equipment === 'barbell' && focusedWeightIndex === index ? (
-            <PlateHint targetWeight={effectivePendingWeight(row) ?? 0} barWeightKg={barWeightKg} unit={unit} />
+            <PlateHint
+              row={row}
+              onPickWeight={(w) => updatePending(index, { targetWeight: String(w) })}
+              barWeightKg={barWeightKg}
+              unit={unit}
+            />
           ) : null}
         </View>
       ))}
@@ -808,6 +901,16 @@ const styles = StyleSheet.create({
   plateDiscText: { color: colors.primaryText, fontSize: 11, fontWeight: '700' },
   plateHintText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   plateLeftoverText: { color: colors.warning, fontSize: 11 },
+  pickerPlateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
+  pickerPlateChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  pickerPlateChipText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   barOptionRow: { flexDirection: 'row', gap: 6, marginTop: 2 },
   barOptionChip: {
     paddingHorizontal: spacing.sm,

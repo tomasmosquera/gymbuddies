@@ -1,9 +1,34 @@
-import type { WeightUnit } from '@/lib/domain/workoutUnits';
+import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
 
 /** Standard gym plate denominations, largest first — same order the greedy breakdown below fills
  * from, which also happens to match how you'd actually load a bar (biggest plates closest in). */
 export const KG_PLATES: readonly number[] = [20, 15, 10, 5, 2.5, 1.25];
 export const LBS_PLATES: readonly number[] = [45, 35, 25, 10, 5, 2.5];
+
+export interface BarWeightPreset {
+  kg: number;
+  /** The marketed lbs equivalent — a 20kg bar is sold/labeled as "44 lb", not the
+   * physics-precise 44.1 a plain kg->lbs conversion gives (same for the 15kg "33 lb" short bar).
+   * The 10kg EZ bar needs no override: it already rounds cleanly to 22.0. */
+  lbs: number;
+  label: string;
+}
+
+export const BAR_WEIGHT_PRESETS: readonly BarWeightPreset[] = [
+  { kg: 20, lbs: 44, label: 'Estándar' },
+  { kg: 15, lbs: 33, label: 'Corta' },
+  { kg: 10, lbs: 22, label: 'EZ' },
+];
+
+/** The bar weight to actually use for plate math/display, in `unit` — looks up the marketed lbs
+ * value for a standard preset (see BAR_WEIGHT_PRESETS) instead of a plain conversion, since gym
+ * bars are bought and labeled by that nicer number, not the precise metric equivalent. Any other
+ * (custom) bar weight has no such marketed equivalent, so it falls back to a plain conversion. */
+export function barWeightInUnit(barKg: number, unit: WeightUnit): number {
+  if (unit === 'kg') return barKg;
+  const preset = BAR_WEIGHT_PRESETS.find((p) => p.kg === barKg);
+  return preset ? preset.lbs : kgToUnit(barKg, unit);
+}
 
 export interface PlateBreakdown {
   /** One entry per plate needed on ONE side, largest first — both sides are identical, so the UI

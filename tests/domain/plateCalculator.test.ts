@@ -1,4 +1,4 @@
-import { calculatePlateBreakdown, formatPlateBreakdown } from '@/lib/domain/plateCalculator';
+import { barWeightInUnit, calculatePlateBreakdown, formatPlateBreakdown } from '@/lib/domain/plateCalculator';
 
 describe('calculatePlateBreakdown', () => {
   it('splits an exact target into the fewest standard plates, largest first', () => {
@@ -31,6 +31,26 @@ describe('calculatePlateBreakdown', () => {
 
   it('a target below zero perSide (bar heavier than the target) never goes negative', () => {
     expect(calculatePlateBreakdown(0, 20, 'kg').perSide).toBe(0);
+  });
+});
+
+describe('barWeightInUnit', () => {
+  it('kg passes the bar weight through unchanged', () => {
+    expect(barWeightInUnit(20, 'kg')).toBe(20);
+    expect(barWeightInUnit(15, 'kg')).toBe(15);
+  });
+
+  it('uses the marketed lbs equivalent for the standard and short bar presets, not a plain conversion', () => {
+    expect(barWeightInUnit(20, 'lbs')).toBe(44);
+    expect(barWeightInUnit(15, 'lbs')).toBe(33);
+  });
+
+  it('the EZ bar preset already rounds cleanly, with or without the override', () => {
+    expect(barWeightInUnit(10, 'lbs')).toBe(22);
+  });
+
+  it('falls back to a plain conversion for a custom bar weight with no marketed equivalent', () => {
+    expect(barWeightInUnit(12, 'lbs')).toBeCloseTo(26.5, 1);
   });
 });
 
