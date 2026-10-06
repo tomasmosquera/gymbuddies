@@ -297,7 +297,6 @@ export default function CheckinPreviewScreen() {
           }).catch(() => {});
         }
 
-        setDraft(null);
         requestWorkoutActivitySync();
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         const minutes = data.workout_minutes ?? 0;
@@ -308,18 +307,29 @@ export default function CheckinPreviewScreen() {
           [
             {
               text: 'OK',
-              // Navigating only on OK (not right after showing the alert) — replacing the screen
-              // underneath while the native alert is still up raced its own transition against
-              // the alert's, rendering as a stretched, mostly-empty sheet instead of a normal
-              // alert. dismissTo, not replace: this screen is a fullScreenModal (checkin/
-              // _layout.tsx), and a plain cross-tab replace() doesn't know it needs to unwind that
-              // presentation first — reported stuck on Home's own loading spinner forever
+              // setDraft(null) happens HERE, not right after the RPC succeeds: draft is read via
+              // a reactive Zustand selector, and this screen's own render gate
+              // (`if (!draft || !group || !session) return <ActivityIndicator/>`) fires on every
+              // render — clearing the draft earlier flips this still-mounted screen into that bare
+              // spinner while the alert is still up (invisible behind it normally, but if the
+              // alert is ever slow to present — e.g. the JS thread busy with the Live Activity
+              // sync kicked off by requestWorkoutActivitySync — the user sees the spinner for
+              // real, with no effect left to navigate away from it, since the mount effect below
+              // only redirects once, on mount). Reported as "pegado en la visual de CONFIRMAR, con
+              // la pantalla en negro y el loader infinito". Clearing the draft in the same tick as
+              // the navigation call means this screen never has a reason to render that fallback
+              // while it's still the one on screen.
+              //
+              // dismissTo, not replace: this screen is a fullScreenModal (checkin/_layout.tsx),
+              // and a plain cross-tab replace() doesn't know it needs to unwind that presentation
+              // first — previously reported stuck on Home's own loading spinner forever
               // (useFocusEffect's refreshes never firing) until the app was force-quit and
-              // reopened, consistent with the modal dismissal and the tab switch never properly
-              // resolving into a real focus event for the destination. dismissTo is the API
-              // expo-router documents for "leave this modal, land on X", including unwinding the
-              // modal presentation as part of it.
-              onPress: () => router.dismissTo('/home'),
+              // reopened. dismissTo is the API expo-router documents for "leave this modal, land
+              // on X", including unwinding the modal presentation as part of it.
+              onPress: () => {
+                setDraft(null);
+                router.dismissTo('/home');
+              },
             },
           ]
         );
@@ -429,7 +439,6 @@ export default function CheckinPreviewScreen() {
       }
       const buddyLine = buddyPartnerName ? `\n\n🫱🏼‍🫲🏻 Entrenaste junto a ${buddyPartnerName} — +3 XP bonus.` : '';
 
-      setDraft(null);
       requestWorkoutActivitySync();
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       Alert.alert(
@@ -441,11 +450,19 @@ export default function CheckinPreviewScreen() {
           {
             text: 'OK',
             // Fase 3: the "¿qué rutina quieres hacer?" step — never for a checkout, only right
-            // after a fresh check-in (see routine-choice.tsx's own doc). Navigating only from here
-            // (not right after showing the alert) matters: replacing the screen underneath while
-            // the native alert is still up raced its own transition against the alert's, rendering
-            // as a stretched, mostly-empty sheet instead of a normal alert.
-            onPress: () => router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } }),
+            // after a fresh check-in (see routine-choice.tsx's own doc).
+            //
+            // setDraft(null) happens HERE, in the same tick as the navigation — not right after
+            // the RPC succeeds — for the same reason as the checkout branch above: clearing it
+            // earlier flips this still-mounted screen's own render gate
+            // (`if (!draft || ...) return <ActivityIndicator/>`) into its bare spinner while the
+            // alert is still up, which is only invisible as long as the alert itself presents
+            // instantly. See the checkout branch's onPress comment for the full "pegado en
+            // CONFIRMAR" symptom this was causing.
+            onPress: () => {
+              setDraft(null);
+              router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } });
+            },
           },
         ]
       );
