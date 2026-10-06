@@ -22,6 +22,7 @@ import { useGroupDayAttendance, type MemberAttendance } from '@/hooks/useGroupDa
 import { supabase } from '@/lib/supabase/client';
 import type { GroupCheckinWithProfile } from '@/hooks/useGroupWeekCheckins';
 import { useArrivalReminderSync } from '@/hooks/useArrivalReminderSync';
+import { logBreadcrumb } from '@/lib/debugBreadcrumb';
 import { useRuleProposal } from '@/hooks/useRuleProposal';
 import { useExcuseVote } from '@/hooks/useExcuseVote';
 import { usePhotoChallenges } from '@/hooks/usePhotoChallenges';
@@ -36,6 +37,14 @@ const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export default function HomeScreen() {
   const { session } = useAuth();
+  // Temporary diagnostic for the checkin/checkout "stuck on Confirmar" hang — see
+  // debugBreadcrumb.ts's doc comment. preview.tsx's own breadcrumbs prove router.dismissTo('/home')
+  // gets called and returns; this tells us whether this screen's JS ever actually runs afterward
+  // (a native-transition-level stall) or whether it does and something here is what hangs instead.
+  useEffect(() => {
+    if (session) logBreadcrumb(session.user.id, 'home:mounted');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { session: activeWorkoutSession, refresh: refreshWorkoutSession } = useWorkoutSession();
   const { group, membership, isLoading: groupLoading, refresh: refreshGroup } = useActiveGroup();
   const timezone = group?.timezone ?? 'America/Bogota';
@@ -145,6 +154,12 @@ export default function HomeScreen() {
   // pull-to-refresh.
   useFocusEffect(
     useCallback(() => {
+      // Temporary diagnostic for the checkin/checkout "stuck on Confirmar" hang — tabs stay
+      // mounted (see comment above), so the mount-only breadcrumb near the top of this component
+      // only ever fires once per app launch. THIS is what actually fires every time Home gains
+      // focus again — including right after router.dismissTo('/home') from preview.tsx — so its
+      // presence or absence tells us whether Home's JS ever reacts to that at all.
+      if (session) logBreadcrumb(session.user.id, 'home:focused');
       refreshGroup();
       refreshCheckins();
       refreshOverrides();
@@ -156,6 +171,7 @@ export default function HomeScreen() {
       refreshKothClaims();
       refreshWorkoutSession();
     }, [
+      session,
       refreshGroup,
       refreshCheckins,
       refreshOverrides,
@@ -307,6 +323,16 @@ export default function HomeScreen() {
       ? todayCheckin.captured_at
       : null;
   const elapsedSeconds = useElapsedSeconds(awaitingCheckoutSince);
+
+  // Temporary diagnostic for the checkin/checkout "stuck on Confirmar" hang — useActiveGroup's
+  // own doc comment already describes this exact historical symptom ("full black screen right
+  // after finishing a workout + checkout") for a different cause it already guards against; this
+  // confirms whether THIS gate is (still) the one actually stuck, and which of the three is null.
+  useEffect(() => {
+    if (session && (groupLoading || !group || !membership)) {
+      logBreadcrumb(session.user.id, 'home:render_fallback', { groupLoading, groupNull: !group, membershipNull: !membership });
+    }
+  }, [session, groupLoading, group, membership]);
 
   if (groupLoading || !group || !membership) {
     return (
