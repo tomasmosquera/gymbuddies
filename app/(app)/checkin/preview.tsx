@@ -305,10 +305,23 @@ export default function CheckinPreviewScreen() {
         Alert.alert(
           'Foto final registrada 🏁',
           `Entrenaste ${minutes} minuto(s).${isShort ? ` No alcanzaste el mínimo de ${group.min_workout_minutes} minutos.` : ''}`,
-          // Navigating only on OK (not right after showing the alert) — replacing the screen
-          // underneath while the native alert is still up raced its own transition against the
-          // alert's, rendering as a stretched, mostly-empty sheet instead of a normal alert.
-          [{ text: 'OK', onPress: () => router.replace('/home') }]
+          [
+            {
+              text: 'OK',
+              // Navigating only on OK (not right after showing the alert) — replacing the screen
+              // underneath while the native alert is still up raced its own transition against
+              // the alert's, rendering as a stretched, mostly-empty sheet instead of a normal
+              // alert. dismissTo, not replace: this screen is a fullScreenModal (checkin/
+              // _layout.tsx), and a plain cross-tab replace() doesn't know it needs to unwind that
+              // presentation first — reported stuck on Home's own loading spinner forever
+              // (useFocusEffect's refreshes never firing) until the app was force-quit and
+              // reopened, consistent with the modal dismissal and the tab switch never properly
+              // resolving into a real focus event for the destination. dismissTo is the API
+              // expo-router documents for "leave this modal, land on X", including unwinding the
+              // modal presentation as part of it.
+              onPress: () => router.dismissTo('/home'),
+            },
+          ]
         );
         return;
       }
