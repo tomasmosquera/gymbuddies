@@ -338,6 +338,16 @@ export type ExcuseVote = {
   voted_at: string;
 };
 
+/** Temporary diagnostic table for the checkin/checkout "stuck on Confirmar" hang — see
+ * migration 0159's doc comment. Drop this type along with the table once that's resolved. */
+export type DebugBreadcrumb = {
+  id: string;
+  user_id: string;
+  step: string;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type PhotoChallengeStatus = 'pending' | 'invalid' | 'valid';
 
 export type PhotoChallenge = {
@@ -710,6 +720,11 @@ export type Database = {
       excuse_requests: { Row: ExcuseRequest; Insert: never; Update: never } & NoRelationships;
       excuse_dates: { Row: ExcuseDate; Insert: never; Update: never } & NoRelationships;
       excuse_votes: { Row: ExcuseVote; Insert: never; Update: never } & NoRelationships;
+      debug_breadcrumbs: {
+        Row: DebugBreadcrumb;
+        Insert: Pick<DebugBreadcrumb, 'user_id' | 'step'> & Partial<Pick<DebugBreadcrumb, 'meta'>>;
+        Update: never;
+      } & NoRelationships;
       weekly_evaluation_runs: { Row: WeeklyEvaluationRun; Insert: never; Update: never } & NoRelationships;
       weekly_evaluation_results: { Row: WeeklyEvaluationResult; Insert: never; Update: never } & NoRelationships;
       attendance_overrides: { Row: AttendanceOverride; Insert: never; Update: never } & NoRelationships;

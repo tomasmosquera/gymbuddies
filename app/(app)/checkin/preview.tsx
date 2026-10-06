@@ -18,6 +18,7 @@ import { setLastCheckinDateCache } from '@/lib/notifications/checkinArrivalCache
 import { todayLocalDateString } from '@/lib/domain/checkinReminders';
 import { getActiveEnergyBurnedKcal } from '@/lib/health';
 import { findBuddyPartner } from '@/lib/domain/geo';
+import { logBreadcrumb } from '@/lib/debugBreadcrumb';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
 interface FanOutParams {
@@ -179,6 +180,12 @@ export default function CheckinPreviewScreen() {
   const [address, setAddress] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const viewShotRef = useRef<ComponentRef<typeof ViewShot>>(null);
+  // Kept around purely so the diagnostic logging below can still attribute a breadcrumb to
+  // someone once session itself has already gone null — see the fallback-render effect.
+  const lastKnownUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (session) lastKnownUserIdRef.current = session.user.id;
+  }, [session]);
 
   // Mount-only (draft deliberately NOT in the dependency array): this
   // effect's job is "bail out if this screen was somehow entered with no
@@ -210,6 +217,18 @@ export default function CheckinPreviewScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Temporary diagnostic for the "stuck on Confirmar" hang — see debugBreadcrumb.ts's doc
+  // comment. Confirms (or rules out) whether the user is actually stuck staring at THIS
+  // fallback, and which of the three ever goes null to cause it.
+  useEffect(() => {
+    if (!draft || !group || !session) {
+      const userId = lastKnownUserIdRef.current;
+      if (userId) {
+        logBreadcrumb(userId, 'confirm:render_fallback', { draftNull: !draft, groupNull: !group, sessionNull: !session });
+      }
+    }
+  }, [draft, group, session]);
+
   if (!draft || !group || !session) {
     return (
       <View style={styles.center}>
@@ -235,14 +254,17 @@ export default function CheckinPreviewScreen() {
   const handleConfirm = async () => {
     if (!viewShotRef.current) return;
     setIsSubmitting(true);
+    logBreadcrumb(session.user.id, 'confirm:start', { mode: draft.mode });
     try {
       const flattenedUri = await captureRef(viewShotRef, { format: 'jpg', quality: 0.85 });
+      logBreadcrumb(session.user.id, 'confirm:captured');
       const checkinDate = toZonedDateString(capturedAtDate, group.timezone);
 
       if (draft.mode === 'checkout') {
         if (!draft.existingCheckinId) throw new Error('No se encontró el check-in de hoy');
         const path = checkoutPhotoPath(group.id, session.user.id, checkinDate);
         await uploadImage('checkins', path, flattenedUri);
+        logBreadcrumb(session.user.id, 'confirm:checkout_uploaded');
 
         const { data, error } = await supabase.rpc('submit_workout_checkout', {
           p_checkin_id: draft.existingCheckinId,
@@ -254,8 +276,10 @@ export default function CheckinPreviewScreen() {
           p_location_mocked: draft.locationMocked,
         });
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
+        logBreadcrumb(session.user.id, 'confirm:checkout_rpc_done');
 
         await cancelCheckoutReminders();
+        logBreadcrumb(session.user.id, 'confirm:checkout_reminders_cancelled');
 
         // Fire-and-forget — never awaited before navigating away. Also
         // retried on every future app foreground (useAppleHealthForegroundSync)
@@ -296,10 +320,12 @@ export default function CheckinPreviewScreen() {
             locationMocked: draft.locationMocked,
           }).catch(() => {});
         }
+        logBreadcrumb(session.user.id, 'confirm:checkout_fanout_done');
 
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
         const minutes = data.workout_minutes ?? 0;
         const isShort = group.require_checkout_photo && minutes < group.min_workout_minutes;
+        logBreadcrumb(session.user.id, 'confirm:checkout_alert_about_to_show');
         Alert.alert(
           'Foto final registrada 🏁',
           `Entrenaste ${minutes} minuto(s).${isShort ? ` No alcanzaste el mínimo de ${group.min_workout_minutes} minutos.` : ''}`,
@@ -319,9 +345,12 @@ export default function CheckinPreviewScreen() {
               // enough; this needs to outlast the ~300ms native animation) is what actually fixes
               // it — not which API closes the modal.
               onPress: () => {
+                logBreadcrumb(session.user.id, 'confirm:checkout_ok_pressed');
                 setTimeout(() => {
+                  logBreadcrumb(session.user.id, 'confirm:checkout_navigating');
                   setDraft(null);
                   router.dismissTo('/home');
+                  logBreadcrumb(session.user.id, 'confirm:checkout_navigate_called');
                   // requestWorkoutActivitySync() used to fire synchronously right on submit
                   // success, well before this — meaning the Live Activity's native reconcile
                   // (ActivityKit end/update, which re-evaluates WorkoutActivity.tsx's whole
@@ -345,6 +374,7 @@ export default function CheckinPreviewScreen() {
 
       const path = checkinPhotoPath(group.id, session.user.id, checkinDate);
       await uploadImage('checkins', path, flattenedUri);
+      logBreadcrumb(session.user.id, 'confirm:checkin_uploaded');
 
       // submit_checkin upserts on (group_id, user_id, checkin_date) server-side
       // (SECURITY DEFINER, bypassing the client role's column grants): a plain
@@ -363,6 +393,7 @@ export default function CheckinPreviewScreen() {
         p_location_mocked: draft.locationMocked,
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
+      logBreadcrumb(session.user.id, 'confirm:checkin_rpc_done');
 
       // Fast path for the arrival-reminder geofence (checkinArrivalReminders.ts):
       // marks "already checked in today" immediately, without waiting for the
@@ -445,6 +476,7 @@ export default function CheckinPreviewScreen() {
         // Best-effort only — see comment above.
       }
       const buddyLine = buddyPartnerName ? `\n\n🫱🏼‍🫲🏻 Entrenaste junto a ${buddyPartnerName} — +3 XP bonus.` : '';
+      logBreadcrumb(session.user.id, 'confirm:checkin_alert_about_to_show');
 
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       Alert.alert(
@@ -464,9 +496,12 @@ export default function CheckinPreviewScreen() {
             // This path doesn't cross tabs like the checkout one does, but it's the same race on
             // the same alert API, so it gets the same guard rather than waiting for its own report.
             onPress: () => {
+              logBreadcrumb(session.user.id, 'confirm:checkin_ok_pressed');
               setTimeout(() => {
+                logBreadcrumb(session.user.id, 'confirm:checkin_navigating');
                 setDraft(null);
                 router.replace({ pathname: '/checkin/routine-choice', params: { checkinId: checkinRow.id } });
+                logBreadcrumb(session.user.id, 'confirm:checkin_navigate_called');
                 // Deferred well past navigation — see the checkout branch's onPress comment
                 // above for why requestWorkoutActivitySync() no longer fires right on submit
                 // success.
@@ -477,11 +512,13 @@ export default function CheckinPreviewScreen() {
         ]
       );
     } catch (err) {
+      logBreadcrumb(session.user.id, 'confirm:error', { message: err instanceof Error ? err.message : String(err) });
       Alert.alert(
         draft.mode === 'checkout' ? 'No se pudo registrar la foto final' : 'No se pudo registrar el check-in',
         err instanceof Error ? err.message : 'Intenta de nuevo'
       );
     } finally {
+      logBreadcrumb(session.user.id, 'confirm:finally');
       setIsSubmitting(false);
     }
   };
