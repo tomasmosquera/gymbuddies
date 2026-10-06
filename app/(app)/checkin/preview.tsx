@@ -14,6 +14,7 @@ import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
 import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
+import { usePostConfirmRedirectStore } from '@/state/postConfirmRedirectStore';
 import { setLastCheckinDateCache } from '@/lib/notifications/checkinArrivalCache';
 import { todayLocalDateString } from '@/lib/domain/checkinReminders';
 import { getActiveEnergyBurnedKcal } from '@/lib/health';
@@ -332,24 +333,31 @@ export default function CheckinPreviewScreen() {
           [
             {
               text: 'OK',
-              // Still stuck on this exact screen even after moving setDraft(null) here (see the
-              // removed comment in git history) — because the real race was never about WHICH
-              // navigation call to use, it's about WHEN it runs. onPress fires essentially
-              // synchronously with the user's tap, while UIAlertController is still mid its own
-              // dismiss animation; asking UIKit to perform ANOTHER view-controller transition
-              // (dismissing the fullScreenModal + switching tabs) while one is already animating
-              // is a well-known iOS pitfall — it doesn't error, it just silently drops the second
-              // transition, leaving this modal never actually dismissed. Every navigation API
-              // tried so far (replace, navigate, dismissTo) raced the exact same animation the
-              // exact same way. Letting the alert's own dismissal finish first (one tick is not
-              // enough; this needs to outlast the ~300ms native animation) is what actually fixes
-              // it — not which API closes the modal.
+              // Breadcrumb data from real repros (debug_breadcrumbs — see debugBreadcrumb.ts)
+              // proved router.dismissTo('/home') gets called and returns with no error, yet
+              // Home's own focus effect never fires afterward — the exact same breadcrumb fires
+              // fine for a plain manual tab tap, so this isn't a JS hang or a React state issue,
+              // it's dismissTo itself never completing its navigation. Root cause, confirmed by
+              // reading expo-router's own source (SDK 57 dropped @react-navigation/native
+              // entirely for a bespoke queue+ref implementation — see
+              // node_modules/expo-router/build/global-state/routingQueue.js): imperative calls
+              // are queued, then drained in an effect via `ref.current.dispatch(action)` — that
+              // file's own TODO literally says "actions are silently dropped" when the ref isn't
+              // ready. dismissTo's action (type 'POP_TO', resolved through getNavigateAction's
+              // cross-navigator "divergent state" search) is structurally the most complex kind of
+              // action this mechanism supports — dismissing a fullScreenModal AND jumping tabs in
+              // one dispatch. Splitting it into two simple steps instead: router.dismiss() here
+              // (a plain stack POP, no href resolution, no cross-navigator target search — just
+              // closes this modal, landing back on checkin/index in the SAME tab), then a pending
+              // flag that checkin/index's own focus effect reads to do the tab switch separately,
+              // from a context that isn't itself the thing being torn down.
               onPress: () => {
                 logBreadcrumb(session.user.id, 'confirm:checkout_ok_pressed');
                 setTimeout(() => {
                   logBreadcrumb(session.user.id, 'confirm:checkout_navigating');
                   setDraft(null);
-                  router.dismissTo('/home');
+                  usePostConfirmRedirectStore.getState().setPendingHref('/home');
+                  router.dismiss();
                   logBreadcrumb(session.user.id, 'confirm:checkout_navigate_called');
                   // requestWorkoutActivitySync() used to fire synchronously right on submit
                   // success, well before this — meaning the Live Activity's native reconcile

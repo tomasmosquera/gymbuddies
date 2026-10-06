@@ -16,6 +16,8 @@ import { useCheckinDraftStore } from '@/state/checkinDraftStore';
 import { cancelCheckoutReminders, stopCheckoutGeofence } from '@/lib/notifications/checkoutReminders';
 import { supabase } from '@/lib/supabase/client';
 import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
+import { usePostConfirmRedirectStore } from '@/state/postConfirmRedirectStore';
+import { logBreadcrumb } from '@/lib/debugBreadcrumb';
 import { formatZonedTime12h, formatElapsedClock, toZonedDateString } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -72,6 +74,27 @@ export default function CheckinCameraScreen() {
       refreshCheckins();
       refreshOverrides();
     }, [refreshCheckins, refreshOverrides])
+  );
+
+  // The other half of preview.tsx's checkout onPress — see its own comment for why closing the
+  // modal (router.dismiss()) and jumping to another tab are now two separate steps instead of one
+  // compound router.dismissTo() call. This fires once this screen (same tab as the now-dismissed
+  // modal) actually regains focus, and does the tab switch from here instead — a context that
+  // isn't itself mid-teardown. Also doubles as a diagnostic: if 'checkin_index:focused' never logs
+  // after a checkout, even router.dismiss()'s plain POP isn't completing; if it logs but
+  // 'checkin_index:redirect_called' is never followed by Home actually gaining focus, the tab-jump
+  // itself is still the part that's unreliable.
+  useFocusEffect(
+    useCallback(() => {
+      if (session) logBreadcrumb(session.user.id, 'checkin_index:focused');
+      const pendingHref = usePostConfirmRedirectStore.getState().pendingHref;
+      if (pendingHref) {
+        usePostConfirmRedirectStore.getState().setPendingHref(null);
+        if (session) logBreadcrumb(session.user.id, 'checkin_index:consuming_pending_redirect', { pendingHref });
+        router.replace(pendingHref);
+        if (session) logBreadcrumb(session.user.id, 'checkin_index:redirect_called');
+      }
+    }, [session])
   );
 
   // Same "stays mounted" issue applies to location: a lock taken the last
