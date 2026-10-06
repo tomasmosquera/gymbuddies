@@ -1,4 +1,4 @@
-import { compareVersions, isVersionOlderThan } from '@/lib/domain/version';
+import { compareVersions, formatDeployDateDDMMYY, isVersionOlderThan } from '@/lib/domain/version';
 
 describe('compareVersions', () => {
   it('compares numerically, not lexicographically — 1.0.10 is newer than 1.0.9', () => {
@@ -32,5 +32,16 @@ describe('isVersionOlderThan', () => {
 
   it('is false when current is newer than a stale/out-of-sync "latest" value — the exact bug this guards against', () => {
     expect(isVersionOlderThan('1.0.3', '1.0.2')).toBe(false);
+  });
+});
+
+describe('formatDeployDateDDMMYY', () => {
+  it('pads day, month and 2-digit year', () => {
+    expect(formatDeployDateDDMMYY(new Date(2026, 9, 6))).toBe('061026');
+    expect(formatDeployDateDDMMYY(new Date(2026, 0, 1))).toBe('010126');
+  });
+
+  it('falls back to "?" when there is no update metadata (dev mode, or expo-updates disabled)', () => {
+    expect(formatDeployDateDDMMYY(null)).toBe('?');
   });
 });

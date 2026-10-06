@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -17,7 +18,8 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-import { APP_BUILD_NUMBER, APP_LAST_UPDATED_DDMMYY } from '@/constants/appVersionInfo';
+import { APP_BUILD_NUMBER } from '@/constants/appVersionInfo';
+import { formatDeployDateDDMMYY } from '@/lib/domain/version';
 
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -373,7 +375,7 @@ export default function ProfileScreen() {
       <Button label="Cerrar sesión" variant="secondary" onPress={signOut} />
 
       <Text style={styles.versionText}>
-        Versión {Constants.expoConfig?.version ?? '?'}.{APP_BUILD_NUMBER}.{APP_LAST_UPDATED_DDMMYY}
+        Versión {Constants.expoConfig?.version ?? '?'}.{APP_BUILD_NUMBER}.{formatDeployDateDDMMYY(Updates.createdAt)}
       </Text>
     </ScrollView>
   );
