@@ -126,13 +126,13 @@ function BarTypeChips({ selectedBarKg, onSelect, unit }: { selectedBarKg: number
 }
 
 /**
- * Two modes, decided once per focus session (this only ever mounts while its row's weight field
- * is focused, and unmounts on blur — see its call site): the field was empty when focused, so
- * picking plates is how the member builds up a weight (forward: plates -> total, written into the
- * field as they tap); or it already had something typed, so this instead shows what that number
- * breaks down into (reverse: total -> plates, read-only, the original behavior). Deciding once
- * rather than reactively on every change matters — the forward picker's own first tap fills the
- * field, and re-deciding then would immediately yank the picker away after a single plate.
+ * Typing a weight and picking plates are just two ways of arriving at the same number, so this
+ * always shows both at once instead of switching between them: the current effective weight
+ * (typed, suggested, or built up by tapping) is always broken down into plates via the same
+ * greedy breakdown, each one tappable to remove (subtracting it back out of the field); the
+ * "+plate" row below is always there too, to keep adding more regardless of how the weight so far
+ * was reached. Both directions go through the same onPickWeight, which just writes a new total
+ * into the field — typing and tapping are never tracked as separate states to stay in sync.
  */
 function PlateHint({
   row,
@@ -148,55 +148,36 @@ function PlateHint({
   const [selectedBarKg, setSelectedBarKg] = useState(barWeightKg);
   const barWeight = barWeightInUnit(selectedBarKg, unit);
   const maxPlateWeight = MAX_PLATE_WEIGHT[unit];
-  const [usingPicker] = useState(() => row.targetWeight.trim() === '');
-  const [pickedPlates, setPickedPlates] = useState<readonly number[]>([]);
+  const denominations = unit === 'kg' ? KG_PLATES : LBS_PLATES;
+  const targetWeight = effectivePendingWeight(row) ?? 0;
+  const breakdown = calculatePlateBreakdown(targetWeight, barWeight, unit);
 
-  if (usingPicker) {
-    const denominations = unit === 'kg' ? KG_PLATES : LBS_PLATES;
-    const applyPick = (plates: readonly number[]) => {
-      setPickedPlates(plates);
-      onPickWeight(barWeight + 2 * plates.reduce((sum, p) => sum + p, 0));
-    };
-    const total = barWeight + 2 * pickedPlates.reduce((sum, p) => sum + p, 0);
-
-    return (
-      <View style={styles.plateHint}>
-        <BarAndPlatesRow
-          barWeight={barWeight}
-          plates={pickedPlates}
-          maxPlateWeight={maxPlateWeight}
-          onRemoveAt={(i) => applyPick(pickedPlates.filter((_, idx) => idx !== i))}
-        />
-        <Text style={styles.plateHintText}>
-          {pickedPlates.length === 0 ? 'Toca los discos que vas a poner por lado' : `= ${total} ${unit} · toca un disco para quitarlo`}
-        </Text>
-        <View style={styles.pickerPlateRow}>
-          {denominations.map((plate) => (
-            <Pressable
-              key={plate}
-              onPress={() => applyPick([...pickedPlates, plate].sort((a, b) => b - a))}
-              style={styles.pickerPlateChip}
-              accessibilityRole="button"
-            >
-              <Text style={styles.pickerPlateChipText}>+{plate}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <BarTypeChips selectedBarKg={selectedBarKg} onSelect={setSelectedBarKg} unit={unit} />
-      </View>
-    );
-  }
-
-  const breakdown = calculatePlateBreakdown(effectivePendingWeight(row) ?? 0, barWeight, unit);
   return (
     <View style={styles.plateHint}>
-      <BarAndPlatesRow barWeight={barWeight} plates={breakdown.plates} maxPlateWeight={maxPlateWeight} />
+      <BarAndPlatesRow
+        barWeight={barWeight}
+        plates={breakdown.plates}
+        maxPlateWeight={maxPlateWeight}
+        onRemoveAt={(i) => onPickWeight(Math.max(barWeight, targetWeight - 2 * breakdown.plates[i]))}
+      />
       <Text style={styles.plateHintText}>{formatPlateBreakdown(breakdown, unit)}</Text>
       {breakdown.leftover > 0 ? (
         <Text style={styles.plateLeftoverText}>
           No se puede armar exacto con estos discos (sobran {breakdown.leftover} {unit} por lado)
         </Text>
       ) : null}
+      <View style={styles.pickerPlateRow}>
+        {denominations.map((plate) => (
+          <Pressable
+            key={plate}
+            onPress={() => onPickWeight(targetWeight + 2 * plate)}
+            style={styles.pickerPlateChip}
+            accessibilityRole="button"
+          >
+            <Text style={styles.pickerPlateChipText}>+{plate}</Text>
+          </Pressable>
+        ))}
+      </View>
       <BarTypeChips selectedBarKg={selectedBarKg} onSelect={setSelectedBarKg} unit={unit} />
     </View>
   );
