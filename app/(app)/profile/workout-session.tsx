@@ -191,6 +191,7 @@ function ExerciseCard({
   onUpdateSet,
   onDeleteSet,
   onRemoveExercise,
+  onReplaceExercise,
   defaultUnit,
   barWeightKg,
 }: {
@@ -200,6 +201,7 @@ function ExerciseCard({
   onUpdateSet: (setId: string, reps: number, weight: number | undefined, unit: WeightUnit) => void;
   onDeleteSet: (setId: string) => void;
   onRemoveExercise: (sessionExerciseId: string) => void;
+  onReplaceExercise: (sessionExerciseId: string) => void;
   defaultUnit: WeightUnit;
   barWeightKg: number;
 }) {
@@ -371,6 +373,14 @@ function ExerciseCard({
         <Pressable onPress={toggleUnit} style={styles.unitPill} accessibilityRole="button">
           <Text style={styles.unitPillText}>{unit.toUpperCase()}</Text>
         </Pressable>
+        <Pressable
+          onPress={() => onReplaceExercise(sessionExercise.id)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Reemplazar ${sessionExercise.exercise.name} en este entreno`}
+        >
+          <Ionicons name="swap-horizontal-outline" size={18} color={colors.textMuted} />
+        </Pressable>
         <Pressable onPress={confirmRemoveExercise} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Quitar ${sessionExercise.exercise.name} de este entreno`}>
           <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
         </Pressable>
@@ -532,8 +542,15 @@ function ExerciseCard({
  */
 export default function WorkoutSessionScreen() {
   const { profile } = useAuth();
-  const { session, isLoading, addExercise, removeExercise, logSet, updateLoggedSet, deleteLoggedSet, finish, discard } = useWorkoutSession();
+  const { session, isLoading, addExercise, removeExercise, replaceExercise, logSet, updateLoggedSet, deleteLoggedSet, finish, discard } =
+    useWorkoutSession();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  // Which row's "Reemplazar" was tapped, if any — set while its own picker is open, read once a
+  // substitute is actually chosen (see handleReplaceExercise), null the rest of the time. A
+  // second, independent trigger for the SAME ExercisePickerModal instance as "+ Agregar
+  // ejercicio" below, rather than a second modal — picking an exercise means two different things
+  // depending on which trigger opened it.
+  const [replacingSessionExerciseId, setReplacingSessionExerciseId] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
   const restTimer = useRestTimer();
   const insets = useSafeAreaInsets();
@@ -620,6 +637,36 @@ export default function WorkoutSessionScreen() {
     } catch (err) {
       Alert.alert('No se pudo quitar el ejercicio', friendlyErrorMessage(err));
     }
+  };
+
+  // Mirrors confirmRemoveExercise's own two-tier warning (ExerciseCard, above) — same session-only
+  // guarantee, same "nothing to lose" vs "this discards logged sets" distinction — but the
+  // confirmation can only happen here, once a substitute has actually been picked from the
+  // ExercisePickerModal, not before: warning about losing sets before the member has even chosen
+  // what they're switching to would be confusing.
+  const handleReplaceExercise = (exercise: Exercise) => {
+    if (!replacingSessionExerciseId || !session) return;
+    const sessionExerciseId = replacingSessionExerciseId;
+    const current = session.exercises.find((e) => e.id === sessionExerciseId);
+    if (!current) return;
+    const hasLoggedSets = current.sets.length > 0;
+    const doReplace = async () => {
+      try {
+        await replaceExercise(sessionExerciseId, exercise.id);
+      } catch (err) {
+        Alert.alert('No se pudo reemplazar el ejercicio', friendlyErrorMessage(err));
+      }
+    };
+    Alert.alert(
+      `Reemplazar ${current.exercise.name} por ${exercise.name}`,
+      hasLoggedSets
+        ? 'Esto borra las series que ya registraste hoy para este ejercicio. La rutina no cambia — la próxima vez que la hagas, va a aparecer de nuevo.'
+        : 'Se reemplaza solo en este entreno. La rutina no cambia — la próxima vez que la hagas, va a aparecer de nuevo.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Reemplazar', style: hasLoggedSets ? 'destructive' : 'default', onPress: doReplace },
+      ]
+    );
   };
 
   const handleFinish = () => {
@@ -733,6 +780,7 @@ export default function WorkoutSessionScreen() {
             onUpdateSet={handleUpdateSet}
             onDeleteSet={deleteLoggedSet}
             onRemoveExercise={handleRemoveExercise}
+            onReplaceExercise={setReplacingSessionExerciseId}
             defaultUnit={unit}
             barWeightKg={profile?.default_bar_weight_kg ?? 20}
           />
@@ -741,9 +789,12 @@ export default function WorkoutSessionScreen() {
       </KeyboardAwareScrollView>
 
       <ExercisePickerModal
-        visible={isPickerOpen}
-        onClose={() => setIsPickerOpen(false)}
-        onSelect={handleAddExercise}
+        visible={isPickerOpen || replacingSessionExerciseId !== null}
+        onClose={() => {
+          setIsPickerOpen(false);
+          setReplacingSessionExerciseId(null);
+        }}
+        onSelect={replacingSessionExerciseId ? handleReplaceExercise : handleAddExercise}
         excludeIds={session.exercises.map((e) => e.exercise_id)}
       />
     </View>

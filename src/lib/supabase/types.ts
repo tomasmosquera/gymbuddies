@@ -954,6 +954,7 @@ export type Database = {
       };
       add_session_exercise: { Args: { p_session_id: string; p_exercise_id: string }; Returns: WorkoutSessionExercise };
       remove_session_exercise: { Args: { p_session_exercise_id: string }; Returns: void };
+      replace_session_exercise: { Args: { p_session_exercise_id: string; p_new_exercise_id: string }; Returns: WorkoutSessionExercise };
       log_set: {
         Args: { p_session_exercise_id: string; p_reps: number; p_weight?: number | null; p_unit?: 'kg' | 'lbs'; p_is_warmup?: boolean };
         Returns: WorkoutSet;

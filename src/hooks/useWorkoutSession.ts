@@ -110,6 +110,27 @@ export function useWorkoutSession() {
     [refresh]
   );
 
+  // Session-scoped only, same as removeExercise above — swaps which exercise this row of THIS
+  // session is for (the gym's bench was taken, so dumbbell press instead), never touches the
+  // routine. The substitute gets no plan of its own (same as a freeform addExercise) and also
+  // cascades away any sets already logged under the exercise being replaced (see migration 0160)
+  // — workout-session.tsx confirms destructively before calling this whenever there's something
+  // to lose, same warning as removeExercise's.
+  const replaceExercise = useCallback(
+    async (sessionExerciseId: string, newExerciseId: string) => {
+      await retryOnTransientNetworkError(async () => {
+        const { error } = await supabase.rpc('replace_session_exercise', {
+          p_session_exercise_id: sessionExerciseId,
+          p_new_exercise_id: newExerciseId,
+        });
+        if (error) throw new Error(error.message);
+      });
+      await refresh();
+      requestWorkoutActivitySync();
+    },
+    [refresh]
+  );
+
   // Both log_set and update_set already return the persisted row — splicing
   // it straight into local state means the newly-completed set appears the
   // moment this one RPC resolves, instead of waiting on a second round trip
@@ -244,6 +265,7 @@ export function useWorkoutSession() {
     startFreeform,
     addExercise,
     removeExercise,
+    replaceExercise,
     logSet,
     updateLoggedSet,
     deleteLoggedSet,
