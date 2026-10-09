@@ -22,11 +22,12 @@ export function isVersionOlderThan(current: string, latest: string): boolean {
 
 /**
  * "DDMMYY" in the device's local time — e.g. 2026-10-06 -> "061026". Used for the date segment of
- * the version string on Perfil (appVersionInfo.ts), fed from expo-updates' own `Updates.createdAt`
- * (the actual publish time of whichever update — build or OTA — is currently running) instead of a
- * hand-maintained constant, which went stale repeatedly since nothing forced it to be edited on
- * every single deploy. `null` (dev mode, or expo-updates disabled) renders as '?', same fallback
- * style as the version number beside it.
+ * the version string on Perfil (app/(app)/profile/index.tsx), fed from expo-updates' own
+ * `Updates.createdAt` (the actual publish time of whichever update — build or OTA — is currently
+ * running) instead of a hand-maintained constant, which went stale repeatedly since nothing forced
+ * it to be edited on every single deploy — same reason that screen's build-number segment now
+ * reads Constants.platform live instead of its own former hand-maintained constant. `null` (dev
+ * mode, or expo-updates disabled) renders as '?', same fallback style as the rest of the string.
  */
 export function formatDeployDateDDMMYY(date: Date | null): string {
   if (!date) return '?';

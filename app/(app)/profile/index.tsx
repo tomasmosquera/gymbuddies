@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -18,7 +18,6 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { computeCooperativeShare } from '@/lib/domain/leaguePayouts';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
-import { APP_BUILD_NUMBER } from '@/constants/appVersionInfo';
 import { formatDeployDateDDMMYY } from '@/lib/domain/version';
 
 function getInitials(fullName: string): string {
@@ -26,6 +25,24 @@ function getInitials(fullName: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/**
+ * The native build number EAS actually embedded in this binary (CFBundleVersion on iOS,
+ * versionCode on Android) — read live from expo-constants instead of a hand-maintained constant,
+ * which went stale (showed 22 when the real build was 34) since nothing forced it to be edited on
+ * every build. This project's eas.json has `appVersionSource: "remote"`, so this number only
+ * exists on the native side (never in app.json/expoConfig) — Constants.platform is the one place
+ * that still exposes it without adding a new native module (expo-application), which would need
+ * its own build before it could run at all. null only in environments with no such binary (Expo
+ * Go, web) — the version text already falls back to '?' the same way it does for the semver part.
+ */
+function nativeBuildNumber(): string | null {
+  if (Platform.OS === 'android') {
+    const versionCode = Constants.platform?.android?.versionCode;
+    return versionCode != null ? String(versionCode) : null;
+  }
+  return Constants.platform?.ios?.buildNumber ?? null;
 }
 
 function SectionLabel({ children }: { children: string }) {
@@ -375,7 +392,7 @@ export default function ProfileScreen() {
       <Button label="Cerrar sesión" variant="secondary" onPress={signOut} />
 
       <Text style={styles.versionText}>
-        Versión {Constants.expoConfig?.version ?? '?'}.{APP_BUILD_NUMBER}.{formatDeployDateDDMMYY(Updates.createdAt)}
+        Versión {Constants.expoConfig?.version ?? '?'}.{nativeBuildNumber() ?? '?'}.{formatDeployDateDDMMYY(Updates.createdAt)}
       </Text>
     </ScrollView>
   );
