@@ -28,6 +28,22 @@ async function getFileSizeBytes(uri: string): Promise<number | null> {
   return info.exists ? info.size : null;
 }
 
+/**
+ * The actual player, split out so useVideoPlayer only ever runs while there's a real video to
+ * show — mirrors the same fix in KothVideoModal.tsx (see its doc comment for the full story: two
+ * crash logs showed a background thread deep in native AVPlayer/remote-player creation long after
+ * a video had supposedly stopped being used, traced to a player object kept alive for as long as
+ * its host component stayed mounted, source or no source). This screen is a normal stack route
+ * (not a tab), so it does unmount on navigation unlike that one — but calling useVideoPlayer
+ * unconditionally here, before any video is even picked, is the same anti-pattern, and a third
+ * crash landed in this exact file's call to it. Isolating it to mount only once `video` is set
+ * removes any window for a stale/empty player to exist at all.
+ */
+function ClaimVideoPreview({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri);
+  return <VideoView player={player} style={styles.videoPreview} nativeControls />;
+}
+
 export default function KingOfTheHillClaimScreen() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const { session } = useAuth();
@@ -50,8 +66,6 @@ export default function KingOfTheHillClaimScreen() {
   // separate from isProcessingVideo so the hint text can say specifically
   // "compressing" with a percentage instead of a generic "processing".
   const [compressionProgress, setCompressionProgress] = useState<number | null>(null);
-
-  const player = useVideoPlayer(video?.uri ?? null);
 
   if (groupLoading || catalogLoading || claimsLoading || !group || !session) {
     return (
@@ -253,7 +267,7 @@ export default function KingOfTheHillClaimScreen() {
               </Text>
             </View>
           ) : video ? (
-            <VideoView player={player} style={styles.videoPreview} nativeControls />
+            <ClaimVideoPreview uri={video.uri} />
           ) : (
             <Text style={styles.videoHint}>
               Sube un video donde se vea claramente que lograste esta marca — máx. {VIDEO_MAX_DURATION_SECONDS}s si lo
