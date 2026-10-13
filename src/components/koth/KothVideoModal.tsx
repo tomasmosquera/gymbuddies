@@ -18,8 +18,19 @@ export function KothVideoModal({ visible, videoPath, onClose }: KothVideoModalPr
   const [status, setStatus] = useState<'loading' | 'ready' | 'expired'>('loading');
   const player = useVideoPlayer(signedUrl ?? null);
 
+  // Clearing signedUrl back to null on close matters, not just pausing (see the effect below) —
+  // this screen is a tab, which never unmounts, so this component (and the player useVideoPlayer
+  // creates for it) stays alive for the rest of the app session after the very first video anyone
+  // ever opens here. Leaving a real source loaded in that player indefinitely, long after the
+  // modal closed, is suspected to be what a real crash log caught: the main thread mid native
+  // AVPlayer setup during an unrelated background app-launch, on a build with no other video code
+  // running. Dropping the source back to null on close is the cheapest way to actually let that
+  // native resource go, without restructuring how this modal gets mounted.
   useEffect(() => {
-    if (!visible || !videoPath) return;
+    if (!visible || !videoPath) {
+      setSignedUrl(null);
+      return;
+    }
     setStatus('loading');
     setSignedUrl(null);
     getSignedUrl('koth-videos', videoPath)
