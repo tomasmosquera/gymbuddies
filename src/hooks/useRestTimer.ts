@@ -47,6 +47,7 @@ export function useRestTimer() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endAtRef = useRef<number | null>(null);
+  const foregroundTickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cancels the scheduled local notification (see restTimer.ts) every time,
   // not just on skip()/unmount — start() calls this right before scheduling
@@ -110,11 +111,25 @@ export function useRestTimer() {
     requestWorkoutActivitySync();
   };
 
+  // Debounced, not an immediate call — confirmed by a real crash + a precise repro (log a set,
+  // background the app during the rest period, let it run out, unlock): tick()'s own "ran out"
+  // branch creates and plays an audio player (playRestTimerDoneSound) the INSTANT the app
+  // reactivates. expo-audio's player is a real AVPlayer under the hood
+  // (node_modules/expo-audio/ios/AudioPlayer.swift: `class AudioPlayer: SharedRef<AVPlayer>`), so
+  // this is the exact same class of crash already fixed for the Live Activity's own ActivityKit
+  // calls (useWorkoutLiveActivity.ts) — touching AVFoundation before the app/scene has settled
+  // after an AppState transition, not anything specific to video. Same fix: delay it instead of
+  // special-casing which native call inside tick() is the risky one.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') tick();
+      if (state !== 'active') return;
+      if (foregroundTickTimeoutRef.current) clearTimeout(foregroundTickTimeoutRef.current);
+      foregroundTickTimeoutRef.current = setTimeout(tick, 600);
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      if (foregroundTickTimeoutRef.current) clearTimeout(foregroundTickTimeoutRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
