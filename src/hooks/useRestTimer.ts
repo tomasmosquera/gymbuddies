@@ -69,17 +69,26 @@ export function useRestTimer() {
     void cancelRestTimerNotification();
   };
 
-  const tick = () => {
+  // isForegroundCatchUp: true only when this tick is the one firing right after an AppState
+  // 'active' transition (see that effect below) — i.e. the rest period actually ran out while the
+  // app was backgrounded, and this is just catching the state up now, not a countdown the member
+  // was watching reach zero. The sound/haptic are for the latter only; the scheduled local
+  // notification (start(), above) is what already reached the member for the former, and playing
+  // them again here, right as the app reactivates, was also a real crash — their audio player is a
+  // real AVPlayer under the hood (expo-audio/ios/AudioPlayer.swift), and creating one at the exact
+  // moment the app/scene is reactivating, before it's settled, is the same class of crash already
+  // fixed for the Live Activity's own ActivityKit calls. Debouncing that call (an earlier attempt)
+  // cut it down but didn't eliminate it; simply never making it on this path does.
+  const tick = (isForegroundCatchUp = false) => {
     if (endAtRef.current === null) return;
     const remaining = Math.ceil((endAtRef.current - Date.now()) / 1000);
     if (remaining <= 0) {
       clear();
       setRemainingSeconds(null);
-      // Only when the countdown genuinely runs out on its own — skip() below
-      // has its own path and never reaches this, since the member already
-      // knows they're ending the rest early.
-      playRestTimerDoneSound();
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      if (!isForegroundCatchUp) {
+        playRestTimerDoneSound();
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
       requestWorkoutActivitySync();
       return;
     }
@@ -111,20 +120,16 @@ export function useRestTimer() {
     requestWorkoutActivitySync();
   };
 
-  // Debounced, not an immediate call — confirmed by a real crash + a precise repro (log a set,
-  // background the app during the rest period, let it run out, unlock): tick()'s own "ran out"
-  // branch creates and plays an audio player (playRestTimerDoneSound) the INSTANT the app
-  // reactivates. expo-audio's player is a real AVPlayer under the hood
-  // (node_modules/expo-audio/ios/AudioPlayer.swift: `class AudioPlayer: SharedRef<AVPlayer>`), so
-  // this is the exact same class of crash already fixed for the Live Activity's own ActivityKit
-  // calls (useWorkoutLiveActivity.ts) — touching AVFoundation before the app/scene has settled
-  // after an AppState transition, not anything specific to video. Same fix: delay it instead of
-  // special-casing which native call inside tick() is the risky one.
+  // Marked as a catch-up tick (see tick()'s own doc comment above) — a first attempt just delayed
+  // this call 600ms, which cut the crash down but didn't eliminate it (confirmed against a real
+  // repro: log a set, background during the rest period, let it run out, unlock — still crashed
+  // with the delay in place). Still delayed here too, since there's no reason not to, but the real
+  // fix is tick() itself never touching the audio player on this path at all.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
       if (foregroundTickTimeoutRef.current) clearTimeout(foregroundTickTimeoutRef.current);
-      foregroundTickTimeoutRef.current = setTimeout(tick, 600);
+      foregroundTickTimeoutRef.current = setTimeout(() => tick(true), 600);
     });
     return () => {
       subscription.remove();
