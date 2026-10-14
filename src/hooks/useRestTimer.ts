@@ -5,6 +5,8 @@ import * as Haptics from 'expo-haptics';
 import { cancelRestTimerNotification, scheduleRestTimerNotification } from '@/lib/notifications/restTimer';
 import { setRestTimerEndAt } from '@/state/restTimerStore';
 import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
+import { useAuth } from '@/hooks/useAuth';
+import { logBreadcrumb } from '@/lib/debugBreadcrumb';
 
 const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
 
@@ -44,6 +46,11 @@ function playRestTimerDoneSound() {
  * real workout only ever has one "resting" clock regardless of exercise.
  */
 export function useRestTimer() {
+  const { session } = useAuth();
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    userIdRef.current = session?.user.id ?? null;
+  }, [session]);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endAtRef = useRef<number | null>(null);
@@ -83,10 +90,13 @@ export function useRestTimer() {
     if (endAtRef.current === null) return;
     const remaining = Math.ceil((endAtRef.current - Date.now()) / 1000);
     if (remaining <= 0) {
+      const userId = userIdRef.current;
+      if (userId) logBreadcrumb(userId, 'resttimer:ran_out', { isForegroundCatchUp });
       clear();
       setRemainingSeconds(null);
       if (!isForegroundCatchUp) playRestTimerDoneSound();
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      if (userId) logBreadcrumb(userId, 'resttimer:ran_out_sync_requested', { isForegroundCatchUp });
       requestWorkoutActivitySync();
       return;
     }
@@ -109,12 +119,14 @@ export function useRestTimer() {
     // screen by the time the rest period ends.
     void scheduleRestTimerNotification(new Date(endAtRef.current));
     setRestTimerEndAt(endAtRef.current);
+    if (userIdRef.current) logBreadcrumb(userIdRef.current, 'resttimer:start', { seconds });
     requestWorkoutActivitySync();
   };
 
   const skip = () => {
     clear();
     setRemainingSeconds(null);
+    if (userIdRef.current) logBreadcrumb(userIdRef.current, 'resttimer:skip');
     requestWorkoutActivitySync();
   };
 
@@ -123,11 +135,21 @@ export function useRestTimer() {
   // repro: log a set, background during the rest period, let it run out, unlock — still crashed
   // with the delay in place). Still delayed here too, since there's no reason not to, but the real
   // fix is tick() itself never touching the audio player on this path at all.
+  //
+  // Temporary diagnostic for that still-unexplained crash (see debugBreadcrumb.ts's doc comment):
+  // logs both when the AppState transition is actually seen and when the debounced tick it
+  // schedules actually fires, so a real repro tells us whether the crash lands inside that window
+  // or somewhere else entirely (e.g. useWorkoutLiveActivity's own reconcile, triggered separately
+  // by the same AppState transition).
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
+      if (userIdRef.current) logBreadcrumb(userIdRef.current, 'resttimer:appstate_active');
       if (foregroundTickTimeoutRef.current) clearTimeout(foregroundTickTimeoutRef.current);
-      foregroundTickTimeoutRef.current = setTimeout(() => tick(true), 600);
+      foregroundTickTimeoutRef.current = setTimeout(() => {
+        if (userIdRef.current) logBreadcrumb(userIdRef.current, 'resttimer:foreground_tick_firing');
+        tick(true);
+      }, 600);
     });
     return () => {
       subscription.remove();

@@ -9,6 +9,7 @@ import { syncWorkoutLiveActivity } from '@/lib/liveActivity/workoutLiveActivity'
 import { syncWorkoutMilestoneNotifications } from '@/lib/notifications/workoutMilestones';
 import { useWorkoutActivitySyncStore } from '@/state/workoutActivitySyncStore';
 import { useRestTimerStore } from '@/state/restTimerStore';
+import { logBreadcrumb } from '@/lib/debugBreadcrumb';
 
 interface MembershipRow {
   group_id: string;
@@ -41,6 +42,7 @@ export function useWorkoutLiveActivity() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reconcile = useCallback(async () => {
+    logBreadcrumb(userId ?? 'anonymous', 'liveactivity:reconcile_start');
     if (!userId) {
       await syncWorkoutLiveActivity(null);
       await syncWorkoutMilestoneNotifications(null);
@@ -54,7 +56,11 @@ export function useWorkoutLiveActivity() {
       .eq('user_id', userId)
       .in('status', ['pending_deposit', 'active', 'needs_recharge']);
     // A failed read must never end a workout that is really still going.
-    if (membershipsError || !memberships) return;
+    if (membershipsError || !memberships) {
+      logBreadcrumb(userId, 'liveactivity:memberships_error', { message: membershipsError?.message });
+      return;
+    }
+    logBreadcrumb(userId, 'liveactivity:memberships_fetched', { count: memberships.length });
 
     const groups = (memberships as unknown as MembershipRow[]).flatMap((m) => (m.group ? [m.group] : []));
     const trackable = groups.filter((g) => g.require_checkout_photo);
@@ -69,7 +75,10 @@ export function useWorkoutLiveActivity() {
         .eq('user_id', userId)
         .in('group_id', trackable.map((g) => g.id))
         .in('checkin_date', dates);
-      if (checkinsError || !checkins) return;
+      if (checkinsError || !checkins) {
+        logBreadcrumb(userId, 'liveactivity:checkins_error', { message: checkinsError?.message });
+        return;
+      }
       states = trackable.map((g) => ({
         name: g.name,
         requireCheckoutPhoto: g.require_checkout_photo,
@@ -81,6 +90,7 @@ export function useWorkoutLiveActivity() {
 
     const checkoutProps = workoutActivityForGroups({ groups: states, now });
     await syncWorkoutMilestoneNotifications(checkoutProps, now);
+    logBreadcrumb(userId, 'liveactivity:milestones_synced');
 
     // An in-progress routine takes over the widget's display, regardless of whether a checkout
     // timer is also running for some group — they're independent concerns that happen to share one
@@ -93,14 +103,20 @@ export function useWorkoutLiveActivity() {
       .eq('status', 'in_progress')
       .maybeSingle();
 
+    logBreadcrumb(userId, 'liveactivity:session_fetched', { hasActiveSession: !sessionError && !!activeSession });
+
     if (!sessionError && activeSession) {
       const restEndAt = useRestTimerStore.getState().endAt;
       const routineProps = routineActivityForSession(activeSession as unknown as RoutineSessionLike, restEndAt);
+      logBreadcrumb(userId, 'liveactivity:sync_about_to_call', { kind: 'routine' });
       await syncWorkoutLiveActivity({ kind: 'routine', ...routineProps });
+      logBreadcrumb(userId, 'liveactivity:sync_call_resolved', { kind: 'routine' });
       return;
     }
 
+    logBreadcrumb(userId, 'liveactivity:sync_about_to_call', { kind: checkoutProps ? 'checkout' : 'none' });
     await syncWorkoutLiveActivity(checkoutProps ? { kind: 'checkout', ...checkoutProps } : null);
+    logBreadcrumb(userId, 'liveactivity:sync_call_resolved', { kind: checkoutProps ? 'checkout' : 'none' });
   }, [userId]);
 
   // Every trigger — mount, returning to the foreground, and a routine/check-in change via
@@ -116,18 +132,27 @@ export function useWorkoutLiveActivity() {
   // WHICH trigger fired, it's that none of them guaranteed the app/scene had actually settled
   // before touching ActivityKit — so every trigger gets the same delay rather than special-casing
   // each circumstance as it turns up.
-  const scheduleReconcile = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      reconcile();
-    }, 600);
-  }, [reconcile]);
+  // reason is diagnostic only (see debugBreadcrumb.ts's doc comment) — logs which of the three
+  // triggers actually scheduled this reconcile, and separately when the debounced call actually
+  // fires, so a real repro shows whether the eventual crash lands inside reconcile() itself or
+  // this hook never even gets that far.
+  const scheduleReconcile = useCallback(
+    (reason: 'mount' | 'foreground' | 'syncVersion') => {
+      if (userId) logBreadcrumb(userId, 'liveactivity:schedule_reconcile', { reason });
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        if (userId) logBreadcrumb(userId, 'liveactivity:reconcile_debounce_fired', { reason });
+        reconcile();
+      }, 600);
+    },
+    [reconcile, userId]
+  );
 
   useEffect(() => {
-    scheduleReconcile();
+    scheduleReconcile('mount');
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') scheduleReconcile();
+      if (state === 'active') scheduleReconcile('foreground');
     });
     return () => {
       subscription.remove();
@@ -139,6 +164,6 @@ export function useWorkoutLiveActivity() {
   // only engages from the first real bump onward.
   useEffect(() => {
     if (syncVersion === 0) return;
-    scheduleReconcile();
+    scheduleReconcile('syncVersion');
   }, [syncVersion, scheduleReconcile]);
 }
