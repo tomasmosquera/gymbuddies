@@ -1,31 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { cancelRestTimerNotification, scheduleRestTimerNotification } from '@/lib/notifications/restTimer';
 import { setRestTimerEndAt } from '@/state/restTimerStore';
 import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
 import { useAuth } from '@/hooks/useAuth';
 import { logBreadcrumb } from '@/lib/debugBreadcrumb';
-
-const REST_TIMER_DONE_SOUND = require('../../assets/sounds/rest-timer-done.wav');
-
-/**
- * A fresh player per play — NOT a single instance reused across rest
- * periods via seekTo(0)+play(). That was flaky (reported: 1st rest period
- * played fine, 2nd silently didn't, 3rd did again) — most likely a race
- * between the seek and play commands landing on the native side, since
- * seekTo()'s promise was never awaited before calling play(). A brand new
- * player is already at position 0 with nothing to race, so it sidesteps
- * the bug entirely instead of chasing the exact native timing issue.
- * createAudioPlayer (unlike the useAudioPlayer hook) doesn't auto-release,
- * so this disposes it itself once the ~0.5s clip has had time to finish.
- */
-function playRestTimerDoneSound() {
-  const player = createAudioPlayer(REST_TIMER_DONE_SOUND);
-  player.play();
-  setTimeout(() => player.remove(), 1500);
-}
 
 /**
  * The in-app rest countdown between sets — no Live Activity/background
@@ -56,36 +36,31 @@ export function useRestTimer() {
   const endAtRef = useRef<number | null>(null);
   const foregroundTickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cancels the scheduled local notification (see restTimer.ts) every time,
-  // not just on skip()/unmount — start() calls this right before scheduling
-  // the NEW rest period's own notification, and the countdown ending on its
-  // own (tick(), below) already alerted in-app, so the scheduled one would
-  // just be a redundant late alert if the app happened to be foregrounded
-  // right at the boundary. Fire-and-forget: nothing here needs to block on
-  // it actually finishing. Also clears the shared rest-timer store (see
-  // restTimerStore.ts) so the routine Live Activity — which reads it when
-  // reconciling — never has a stale end time to show; the sync itself is
-  // triggered separately by whichever caller actually wants one (start(),
-  // skip(), and tick()'s own "ran out" branch), since start() calling clear()
-  // first would otherwise fire two syncs back to back for one state change.
   const clear = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
     endAtRef.current = null;
     setRestTimerEndAt(null);
-    void cancelRestTimerNotification();
   };
 
   // isForegroundCatchUp: true only when this tick is the one firing right after an AppState
   // 'active' transition (see that effect below) — i.e. the rest period actually ran out while the
   // app was backgrounded, and this is just catching the state up now, not a countdown the member
-  // was watching reach zero. The SOUND is for the latter only, same reasoning as before: its
-  // player is a real AVPlayer under the hood (expo-audio/ios/AudioPlayer.swift), and a confirmed
-  // crash still happened with this flag already live (proven by the sound genuinely not playing)
-  // — so whatever that crash actually was, it wasn't this call, but there's no reason to take the
-  // AVPlayer risk back just because it turned out not to be the (sole) culprit here. Haptics stays
-  // unconditional — it never touches AVFoundation, and the member missing ANY cue that their rest
-  // ended (the local notification can be easy to miss/dismiss) was a real, reported regression.
+  // was watching reach zero. Used to matter for whether the in-app sound played — it no longer
+  // does (see below), so this flag is now only a diagnostic label, kept for the breadcrumbs.
+  //
+  // There used to be a custom in-app "done" sound here, played via expo-audio's
+  // createAudioPlayer(). Real breadcrumb data from a repro (log a set with a 15s rest, watch it
+  // run out in the foreground — no backgrounding at all) showed the crash landing exactly at the
+  // moment this branch would have played that sound, proving it wasn't only the backgrounded
+  // catch-up case (already removed) that was unsafe — the plain, everyday "watched it hit zero"
+  // case crashed too. createAudioPlayer's player is a real AVPlayer under the hood
+  // (expo-audio/ios/AudioPlayer.swift), and on this device/iOS version (27.0.1) that's apparently
+  // unsafe to create at all, not just at risky transition moments. Removed entirely rather than
+  // chased further — the scheduled local notification (start(), below) already covers the audible
+  // alert: this app's notification handler (app/_layout.tsx) sets shouldShowBanner/shouldPlaySound
+  // to true, so it shows and plays its own (OS-driven, not AVPlayer-based) sound even while the
+  // app is in the foreground. Haptics stays — it never touches AVFoundation.
   const tick = (isForegroundCatchUp = false) => {
     if (endAtRef.current === null) return;
     const remaining = Math.ceil((endAtRef.current - Date.now()) / 1000);
@@ -94,7 +69,6 @@ export function useRestTimer() {
       if (userId) logBreadcrumb(userId, 'resttimer:ran_out', { isForegroundCatchUp });
       clear();
       setRemainingSeconds(null);
-      if (!isForegroundCatchUp) playRestTimerDoneSound();
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       if (userId) logBreadcrumb(userId, 'resttimer:ran_out_sync_requested', { isForegroundCatchUp });
       requestWorkoutActivitySync();
@@ -112,11 +86,9 @@ export function useRestTimer() {
     endAtRef.current = Date.now() + seconds * 1000;
     setRemainingSeconds(seconds);
     intervalRef.current = setInterval(tick, 1000);
-    // The in-app sound/haptic (tick(), above) only fire while this screen is
-    // mounted and the JS interval is actually able to run — both platforms
-    // throttle it within seconds of backgrounding. This is the half that
-    // still reaches the member if they've switched apps or locked the
-    // screen by the time the rest period ends.
+    // The ONLY audible/visible "done" alert now (see tick()'s doc comment above) — scheduling
+    // again with this fixed identifier (restTimer.ts) replaces whatever was still pending from a
+    // previous rest period, so there's never a stale one left to also fire later.
     void scheduleRestTimerNotification(new Date(endAtRef.current));
     setRestTimerEndAt(endAtRef.current);
     if (userIdRef.current) logBreadcrumb(userIdRef.current, 'resttimer:start', { seconds });
@@ -126,17 +98,20 @@ export function useRestTimer() {
   const skip = () => {
     clear();
     setRemainingSeconds(null);
+    // Ending early, on purpose — nothing left to alert about, and the local notification must not
+    // be left pending to fire later for a rest period that's already over.
+    void cancelRestTimerNotification();
     if (userIdRef.current) logBreadcrumb(userIdRef.current, 'resttimer:skip');
     requestWorkoutActivitySync();
   };
 
-  // Marked as a catch-up tick (see tick()'s own doc comment above) — a first attempt just delayed
-  // this call 600ms, which cut the crash down but didn't eliminate it (confirmed against a real
-  // repro: log a set, background during the rest period, let it run out, unlock — still crashed
-  // with the delay in place). Still delayed here too, since there's no reason not to, but the real
-  // fix is tick() itself never touching the audio player on this path at all.
+  // Marked as a catch-up tick (see tick()'s own doc comment above) — delayed 600ms so whatever
+  // this triggers doesn't land in the exact instant the app/scene is reactivating. Still kept even
+  // though the specific call it was originally protecting (the in-app sound) is gone — there's no
+  // reason to remove a harmless precaution, and requestWorkoutActivitySync()'s own debounced
+  // reconcile (useWorkoutLiveActivity.ts) still benefits from not firing in that exact instant.
   //
-  // Temporary diagnostic for that still-unexplained crash (see debugBreadcrumb.ts's doc comment):
+  // Temporary diagnostic for the still-unexplained crash (see debugBreadcrumb.ts's doc comment):
   // logs both when the AppState transition is actually seen and when the debounced tick it
   // schedules actually fires, so a real repro tells us whether the crash lands inside that window
   // or somewhere else entirely (e.g. useWorkoutLiveActivity's own reconcile, triggered separately
