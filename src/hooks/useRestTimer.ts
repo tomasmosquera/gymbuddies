@@ -72,23 +72,21 @@ export function useRestTimer() {
   // isForegroundCatchUp: true only when this tick is the one firing right after an AppState
   // 'active' transition (see that effect below) — i.e. the rest period actually ran out while the
   // app was backgrounded, and this is just catching the state up now, not a countdown the member
-  // was watching reach zero. The sound/haptic are for the latter only; the scheduled local
-  // notification (start(), above) is what already reached the member for the former, and playing
-  // them again here, right as the app reactivates, was also a real crash — their audio player is a
-  // real AVPlayer under the hood (expo-audio/ios/AudioPlayer.swift), and creating one at the exact
-  // moment the app/scene is reactivating, before it's settled, is the same class of crash already
-  // fixed for the Live Activity's own ActivityKit calls. Debouncing that call (an earlier attempt)
-  // cut it down but didn't eliminate it; simply never making it on this path does.
+  // was watching reach zero. The SOUND is for the latter only, same reasoning as before: its
+  // player is a real AVPlayer under the hood (expo-audio/ios/AudioPlayer.swift), and a confirmed
+  // crash still happened with this flag already live (proven by the sound genuinely not playing)
+  // — so whatever that crash actually was, it wasn't this call, but there's no reason to take the
+  // AVPlayer risk back just because it turned out not to be the (sole) culprit here. Haptics stays
+  // unconditional — it never touches AVFoundation, and the member missing ANY cue that their rest
+  // ended (the local notification can be easy to miss/dismiss) was a real, reported regression.
   const tick = (isForegroundCatchUp = false) => {
     if (endAtRef.current === null) return;
     const remaining = Math.ceil((endAtRef.current - Date.now()) / 1000);
     if (remaining <= 0) {
       clear();
       setRemainingSeconds(null);
-      if (!isForegroundCatchUp) {
-        playRestTimerDoneSound();
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      }
+      if (!isForegroundCatchUp) playRestTimerDoneSound();
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       requestWorkoutActivitySync();
       return;
     }
