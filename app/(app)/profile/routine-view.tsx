@@ -68,7 +68,12 @@ export default function RoutineViewScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>{routine.name}</Text>
 
-      <MuscleDiagram muscleGroups={routine.exercises.map((e) => e.exercise.muscle_group)} />
+      <MuscleDiagram
+        exercises={routine.exercises.map((e) => ({
+          muscleGroup: e.exercise.muscle_group,
+          secondaryMuscles: e.exercise.secondary_muscles,
+        }))}
+      />
 
       <Card style={styles.exercisesCard}>
         {routine.exercises.map((exercise, i) => (

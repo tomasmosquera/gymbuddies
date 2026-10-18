@@ -329,7 +329,7 @@ export default function ExerciseDetailScreen() {
         {exercise.secondary_muscles.length > 0 ? `  ·  Secundario: ${exercise.secondary_muscles.join(', ')}` : ''}
       </Text>
 
-      <MuscleDiagram muscleGroups={[exercise.muscle_group]} />
+      <MuscleDiagram exercises={[{ muscleGroup: exercise.muscle_group, secondaryMuscles: exercise.secondary_muscles }]} />
 
       <SegmentedControl
         options={[

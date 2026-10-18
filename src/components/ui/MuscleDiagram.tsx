@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { bodyPartsToHighlight, type MuscleMapBodyPart } from '@/lib/domain/muscleBodyParts';
+import { bodyPartsToHighlight, type MuscleBodyHighlight, type MuscleMapBodyPart } from '@/lib/domain/muscleBodyParts';
 import { collectRoutineMuscleGroups } from '@/lib/domain/routineMuscles';
 import { MALE_BACK, MALE_FRONT, type MuscleBodyView } from '@/components/ui/muscleMapBodyPaths';
 import { MUSCLE_GROUP_LABELS } from '@/constants/muscleGroups';
@@ -12,22 +12,35 @@ const DIAGRAM_HEIGHT = 220;
 // app's dark blue theme — a lighter, visibly gray fill so the body itself reads clearly even
 // where nothing is highlighted.
 const INACTIVE_FILL = '#5A6472';
+// Secondary muscles render at half intensity (fillOpacity, over the transparent SVG canvas) —
+// the same 100%/50% primary/secondary weighting muscleDistribution.ts already uses elsewhere.
+const SECONDARY_OPACITY = 0.45;
 
-function BodyView({ view, highlighted }: { view: MuscleBodyView; highlighted: ReadonlySet<MuscleMapBodyPart> }) {
+export interface MuscleDiagramExercise {
+  muscleGroup: MuscleGroup;
+  secondaryMuscles?: readonly string[];
+}
+
+function BodyView({ view, highlight }: { view: MuscleBodyView; highlight: MuscleBodyHighlight }) {
   const [, , vbWidth, vbHeight] = view.viewBox.split(' ').map(Number);
   const width = (DIAGRAM_HEIGHT * vbWidth) / vbHeight;
   return (
     <Svg width={width} height={DIAGRAM_HEIGHT} viewBox={view.viewBox}>
       {Object.entries(view.parts).map(([part, paths]) =>
-        paths.map((d, i) => (
-          <Path
-            key={`${part}-${i}`}
-            d={d}
-            fill={highlighted.has(part as MuscleMapBodyPart) ? colors.primary : INACTIVE_FILL}
-            stroke={colors.surface}
-            strokeWidth={3}
-          />
-        ))
+        paths.map((d, i) => {
+          const isPrimary = highlight.primary.has(part as MuscleMapBodyPart);
+          const isSecondary = !isPrimary && highlight.secondary.has(part as MuscleMapBodyPart);
+          return (
+            <Path
+              key={`${part}-${i}`}
+              d={d}
+              fill={isPrimary || isSecondary ? colors.primary : INACTIVE_FILL}
+              fillOpacity={isSecondary ? SECONDARY_OPACITY : 1}
+              stroke={colors.surface}
+              strokeWidth={3}
+            />
+          );
+        })
       )}
     </Svg>
   );
@@ -35,22 +48,22 @@ function BodyView({ view, highlighted }: { view: MuscleBodyView; highlighted: Re
 
 /**
  * "Qué músculos trabaja" — a front+back body diagram (real anatomy, not a stylized
- * placeholder — geometry from MuscleMap, see muscleMapBodyPaths.ts) with each trained
- * muscle group highlighted, plus a chip list underneath (including 'cardio'/'full_body',
- * which have no body region of their own to light up — see muscleBodyParts.ts). Used both
- * for a single exercise (one group) and a whole routine (the union across every exercise
- * in it, via collectRoutineMuscleGroups upstream).
+ * placeholder — geometry from MuscleMap, see muscleMapBodyPaths.ts). Each exercise's own
+ * primary muscle_group lights up at full intensity, its secondary_muscles at half (see
+ * bodyPartsToHighlight), plus a chip list underneath for the primary groups only (including
+ * 'cardio'/'full_body', which have no body region of their own to light up). Used both for a
+ * single exercise (one-element array) and a whole routine (every exercise in it).
  */
-export function MuscleDiagram({ muscleGroups }: { muscleGroups: readonly MuscleGroup[] }) {
-  const chips = collectRoutineMuscleGroups(muscleGroups);
-  const highlighted = bodyPartsToHighlight(muscleGroups);
+export function MuscleDiagram({ exercises }: { exercises: readonly MuscleDiagramExercise[] }) {
+  const chips = collectRoutineMuscleGroups(exercises.map((e) => e.muscleGroup));
+  const highlight = bodyPartsToHighlight(exercises);
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Qué músculos trabaja</Text>
       <View style={styles.diagramRow}>
-        <BodyView view={MALE_FRONT} highlighted={highlighted} />
-        <BodyView view={MALE_BACK} highlighted={highlighted} />
+        <BodyView view={MALE_FRONT} highlight={highlight} />
+        <BodyView view={MALE_BACK} highlight={highlight} />
       </View>
       <View style={styles.chipRow}>
         {chips.map((group) => (
