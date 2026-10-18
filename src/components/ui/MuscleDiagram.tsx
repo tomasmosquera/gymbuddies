@@ -8,6 +8,10 @@ import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { MuscleGroup } from '@/lib/supabase/types';
 
 const DIAGRAM_HEIGHT = 220;
+// colors.surfaceAlt (the card's own tone) made untrained muscles nearly invisible against the
+// app's dark blue theme — a lighter, visibly gray fill so the body itself reads clearly even
+// where nothing is highlighted.
+const INACTIVE_FILL = '#5A6472';
 
 function BodyView({ view, highlighted }: { view: MuscleBodyView; highlighted: ReadonlySet<MuscleMapBodyPart> }) {
   const [, , vbWidth, vbHeight] = view.viewBox.split(' ').map(Number);
@@ -19,7 +23,7 @@ function BodyView({ view, highlighted }: { view: MuscleBodyView; highlighted: Re
           <Path
             key={`${part}-${i}`}
             d={d}
-            fill={highlighted.has(part as MuscleMapBodyPart) ? colors.primary : colors.surfaceAlt}
+            fill={highlighted.has(part as MuscleMapBodyPart) ? colors.primary : INACTIVE_FILL}
             stroke={colors.surface}
             strokeWidth={3}
           />
