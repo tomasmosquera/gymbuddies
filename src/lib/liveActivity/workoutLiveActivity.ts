@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { WORKOUT_ACTIVITY_URL } from '@/lib/domain/workoutActivity';
 import type { LiveActivityContent } from '@/lib/domain/liveActivityContent';
@@ -35,6 +36,19 @@ function loadFactory(): ActivityFactory | null {
 // can never both see "no activity yet" and start two of them.
 let queue: Promise<void> = Promise.resolve();
 
+// Which `kind` the currently-running activity (if any) was actually STARTED with — not just what
+// its last-pushed content says. Persisted (not a plain module variable) so it survives the app
+// being killed and relaunched while a Live Activity is still running on the Lock Screen; without
+// that, every relaunch would misread "no record of it" as a kind change and restart the activity
+// for nothing. See apply() below for why this matters: LiveActivityFactory.start()'s own `url`
+// param (what "tap anywhere on the activity" opens — WorkoutActivity.tsx's individual Link buttons
+// are separate and always correct) can only be set once, at creation; LiveActivity.update() takes
+// only props + staleDate (confirmed against expo-widgets' own source), with no way to change it.
+// Going from a checkout-pending activity to a routine one (or back) via update() alone would keep
+// the OLD tap-anywhere destination forever, even though the visible content — and its own button —
+// already correctly switched.
+export const ACTIVE_KIND_CACHE_KEY = 'gymbuddies:live-activity-kind';
+
 async function apply(content: LiveActivityContent | null): Promise<void> {
   const factory = loadFactory();
   if (!factory) return;
@@ -43,10 +57,19 @@ async function apply(content: LiveActivityContent | null): Promise<void> {
     await Promise.all(extra.map((instance) => instance.end('immediate')));
     if (!content) {
       if (current) await current.end('immediate');
+      await AsyncStorage.removeItem(ACTIVE_KIND_CACHE_KEY);
       return;
     }
-    if (current) await current.update(content);
-    else factory.start(content, content.kind === 'routine' ? content.openUrl : WORKOUT_ACTIVITY_URL);
+    const startedKind = current ? await AsyncStorage.getItem(ACTIVE_KIND_CACHE_KEY) : null;
+    if (current && startedKind === content.kind) {
+      await current.update(content);
+    } else {
+      // No activity yet, or one exists but was started for the OTHER kind — a fresh instance is
+      // the only way to also fix its tap-anywhere URL, not just its visible content.
+      if (current) await current.end('immediate');
+      factory.start(content, content.kind === 'routine' ? content.openUrl : WORKOUT_ACTIVITY_URL);
+      await AsyncStorage.setItem(ACTIVE_KIND_CACHE_KEY, content.kind);
+    }
   } catch (error) {
     // Live Activities can be switched off in iOS Settings, or refused by the system —
     // never let that get in the way of the check-in itself.
