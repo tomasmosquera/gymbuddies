@@ -103,6 +103,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="routines" options={{ title: 'Rutinas de entreno' }} />
       <Stack.Screen name="routine-browse" options={{ title: 'Explorar rutinas' }} />
       <Stack.Screen name="routine-preview" options={{ title: 'Detalle de la rutina' }} />
+      <Stack.Screen name="routine-view" options={{ title: 'Rutina' }} />
       <Stack.Screen name="routine-create" options={{ title: 'Crear rutina' }} />
       <Stack.Screen name="routine-edit" options={{ title: 'Editar rutina' }} />
       <Stack.Screen name="workout-session" options={{ title: 'Entreno', headerShown: false }} />

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
 import { ComparisonMetric } from '@/components/ui/ComparisonMetric';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { MuscleDiagram } from '@/components/ui/MuscleDiagram';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { LineChart } from '@/components/stats/LineChart';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
@@ -327,6 +328,8 @@ export default function ExerciseDetailScreen() {
         Primario: {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
         {exercise.secondary_muscles.length > 0 ? `  ·  Secundario: ${exercise.secondary_muscles.join(', ')}` : ''}
       </Text>
+
+      <MuscleDiagram muscleGroups={[exercise.muscle_group]} />
 
       <SegmentedControl
         options={[

@@ -12,7 +12,7 @@ import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { supabase } from '@/lib/supabase/client';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
-/** Same shape as Hevy's own routine card: name + "•••" (edit/copiar/borrar) up top, exercise summary, one full-width "Empezar". No card-body tap — editing only lives behind the "•••" now. */
+/** Same shape as Hevy's own routine card: name + "•••" (edit/copiar/borrar) up top, exercise summary, one full-width "Empezar". The card body (name/summary, outside those two zones) opens the read-only routine-view instead. */
 function RoutineCard({
   routine,
   groupName,
@@ -21,6 +21,7 @@ function RoutineCard({
   isDeleting,
   isCopying,
   copyLabel,
+  onPress,
   onStart,
   onEdit,
   onCopy,
@@ -34,6 +35,7 @@ function RoutineCard({
   isCopying: boolean;
   /** null when there's nowhere to copy this routine to (personal routine, no active group) — hides the option instead of offering a no-op. */
   copyLabel: string | null;
+  onPress: () => void;
   onStart: () => void;
   onEdit: () => void;
   onCopy: () => void;
@@ -51,7 +53,7 @@ function RoutineCard({
   return (
     <Card style={styles.routineCard}>
       <View style={styles.routineHeader}>
-        <View style={styles.routineTitleWrap}>
+        <Pressable onPress={onPress} style={styles.routineTitleWrap} accessibilityRole="button">
           <Text style={styles.routineName} numberOfLines={1}>
             {routine.name}
           </Text>
@@ -63,15 +65,17 @@ function RoutineCard({
               </Text>
             </View>
           ) : null}
-        </View>
+        </Pressable>
         <Pressable onPress={openMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Opciones de la rutina">
           <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
         </Pressable>
       </View>
 
-      <Text style={styles.exercisesSummary} numberOfLines={2}>
-        {routine.exercises.map((e) => e.exercise.name).join(', ') || 'Sin ejercicios'}
-      </Text>
+      <Pressable onPress={onPress} accessibilityRole="button">
+        <Text style={styles.exercisesSummary} numberOfLines={2}>
+          {routine.exercises.map((e) => e.exercise.name).join(', ') || 'Sin ejercicios'}
+        </Text>
+      </Pressable>
 
       {canStart ? <Button label="Empezar" onPress={onStart} loading={isStarting} /> : null}
       {isDeleting || isCopying ? <ActivityIndicator color={isDeleting ? colors.danger : colors.primary} /> : null}
@@ -188,6 +192,7 @@ export default function RoutinesScreen() {
         isDeleting={isDeleting === routine.id}
         isCopying={isCopying === routine.id}
         copyLabel={copyTarget ? `Copiar a ${copyTarget.label}` : null}
+        onPress={() => router.push({ pathname: '/profile/routine-view', params: { routineId: routine.id } })}
         onStart={() => handleStart(() => startFromRoutine(routine.id), routine.id)}
         onEdit={() => router.push({ pathname: '/profile/routine-edit', params: { routineId: routine.id } })}
         onCopy={() => copyTarget && handleCopy(routine, copyTarget.groupId, copyTarget.label)}
