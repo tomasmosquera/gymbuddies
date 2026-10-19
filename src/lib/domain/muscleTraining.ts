@@ -1,4 +1,3 @@
-import { getWeekBoundsForDateString } from './dateUtils';
 import { ALL_DRAWABLE_BODY_PARTS, MUSCLE_GROUP_TO_BODY_PARTS, SECONDARY_MUSCLE_TO_BODY_PARTS, type MuscleMapBodyPart } from './muscleBodyParts';
 import type { MuscleGroup } from '@/lib/supabase/types';
 
@@ -98,12 +97,13 @@ export function dateDaysAgo(todayString: string, days: number): string {
 export type MuscleVolumeWindow = 'week' | '30d' | '90d' | 'all';
 
 /** The inclusive lower-bound date (YYYY-MM-DD) computeMuscleVolume should use for a given Stats
- * screen window selector — 'week' is the current Mon-Sun week (not a rolling 7 days), matching
- * computeWeekStreak's own week definition; 'all' has no lower bound. */
+ * screen window selector — 'week' is a rolling last 7 days (not the Mon-Sun calendar week; it
+ * used to be, but that meant this could read "sin series registradas" right after a real workout
+ * just because it fell before the calendar week's own Monday), matching the same rolling window
+ * WeeklyMuscleBalanceCard's compact diagram always uses. 'all' has no lower bound. */
 export function windowSinceDate(window: MuscleVolumeWindow, todayString: string): string | null {
   if (window === 'all') return null;
-  if (window === 'week') return getWeekBoundsForDateString(todayString).weekStart;
-  return dateDaysAgo(todayString, window === '30d' ? 30 : 90);
+  return dateDaysAgo(todayString, window === 'week' ? 7 : window === '30d' ? 30 : 90);
 }
 
 export type FatigueState = 'fatigued' | 'recovering' | 'ready';

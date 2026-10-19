@@ -85,8 +85,8 @@ describe('windowSinceDate', () => {
   it('"all" has no lower bound', () => {
     expect(windowSinceDate('all', '2026-10-16')).toBeNull();
   });
-  it('"week" is the current Mon-Sun week start', () => {
-    expect(windowSinceDate('week', '2026-10-16')).toBe('2026-10-12');
+  it('"week" is a rolling last 7 days, not the calendar week', () => {
+    expect(windowSinceDate('week', '2026-10-16')).toBe('2026-10-09');
   });
   it('"30d" and "90d" count back from today', () => {
     expect(windowSinceDate('30d', '2026-10-16')).toBe('2026-09-16');

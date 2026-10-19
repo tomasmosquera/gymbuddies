@@ -24,7 +24,7 @@ const TAB_OPTIONS: { key: Tab; label: string }[] = [
 ];
 
 const WINDOW_OPTIONS: { key: MuscleVolumeWindow; label: string }[] = [
-  { key: 'week', label: 'Semana' },
+  { key: 'week', label: '7d' },
   { key: '30d', label: '30d' },
   { key: '90d', label: '90d' },
   { key: 'all', label: 'Todo' },
