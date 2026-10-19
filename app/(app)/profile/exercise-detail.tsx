@@ -297,7 +297,11 @@ function SummaryTab({ exerciseId, unit }: { exerciseId: string; unit: 'kg' | 'lb
 }
 
 export default function ExerciseDetailScreen() {
-  const { exerciseId, canAddToRoutine } = useLocalSearchParams<{ exerciseId: string; canAddToRoutine?: string }>();
+  const { exerciseId, canAddToRoutine, canAddToSession } = useLocalSearchParams<{
+    exerciseId: string;
+    canAddToRoutine?: string;
+    canAddToSession?: string;
+  }>();
   const { profile, session: authSession } = useAuth();
   const { exercises, isLoading } = useExerciseCatalog();
   const [tab, setTab] = useState<DetailTab>('resumen');
@@ -312,12 +316,17 @@ export default function ExerciseDetailScreen() {
     );
   }
 
-  // Only set when reached via RoutineExerciseListEditor's "i" (info) icon — see
-  // exercisePickerDetourStore. Lets the member add straight from here instead of having to back
-  // out to the (already-closed) picker and tap the row there.
+  // Only set when reached via RoutineExerciseListEditor's or workout-session.tsx's own "i" (info)
+  // icon — see exercisePickerDetourStore. Lets the member add straight from here instead of
+  // having to back out to the (already-closed) picker and tap the row there.
   const handleAddToRoutine = () => {
     useExercisePickerDetourStore.getState().setReopenPicker(null);
     useExercisePickerDetourStore.getState().setAddToRoutine(exercise);
+    router.back();
+  };
+  const handleAddToSession = () => {
+    useExercisePickerDetourStore.getState().setReopenPicker(null);
+    useExercisePickerDetourStore.getState().setAddToSession(exercise);
     router.back();
   };
 
@@ -341,6 +350,7 @@ export default function ExerciseDetailScreen() {
       </Text>
 
       {canAddToRoutine === '1' ? <Button label="Agregar a la rutina" onPress={handleAddToRoutine} /> : null}
+      {canAddToSession === '1' ? <Button label="Agregar al entreno" onPress={handleAddToSession} /> : null}
 
       <MuscleDiagram exercises={[{ muscleGroup: exercise.muscle_group, secondaryMuscles: exercise.secondary_muscles }]} />
 

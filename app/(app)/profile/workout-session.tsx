@@ -602,30 +602,6 @@ export default function WorkoutSessionScreen() {
     }, [isLoading, session])
   );
 
-  // The picker's own info ("i") icon — see exercisePickerDetourStore for why "back" from
-  // exercise-detail needs this to land the member back in the (now-closed) picker instead of
-  // bare on this screen. Captures which of the two modes (add vs. "Reemplazar") was open before
-  // closing, since both share this one modal instance.
-  const handleInfoPress = (exercise: Exercise) => {
-    const wasReplacing = replacingSessionExerciseId;
-    useExercisePickerDetourStore.getState().setReopenPicker(() => {
-      if (wasReplacing) setReplacingSessionExerciseId(wasReplacing);
-      else setIsPickerOpen(true);
-    });
-    router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: exercise.id } });
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      const store = useExercisePickerDetourStore.getState();
-      const reopen = store.reopenPicker;
-      if (reopen) {
-        store.setReopenPicker(null);
-        reopen();
-      }
-    }, [])
-  );
-
   const handleLogSet = async (sessionExerciseId: string, reps: number, weight: number | undefined, setUnit: WeightUnit, restSeconds: number | null) => {
     try {
       await logSet(sessionExerciseId, reps, weight, setUnit);
@@ -647,14 +623,53 @@ export default function WorkoutSessionScreen() {
     }
   };
 
-  const handleAddExercise = async (exercise: Exercise) => {
-    if (!session) return;
-    try {
-      await addExercise(session.id, exercise.id);
-    } catch (err) {
-      Alert.alert('No se pudo agregar el ejercicio', friendlyErrorMessage(err));
-    }
+  const handleAddExercise = useCallback(
+    async (exercise: Exercise) => {
+      if (!session) return;
+      try {
+        await addExercise(session.id, exercise.id);
+      } catch (err) {
+        Alert.alert('No se pudo agregar el ejercicio', friendlyErrorMessage(err));
+      }
+    },
+    [session, addExercise]
+  );
+
+  // The picker's own info ("i") icon — see exercisePickerDetourStore for why "back" from
+  // exercise-detail needs this to land the member back in the (now-closed) picker instead of
+  // bare on this screen. Captures which of the two modes (add vs. "Reemplazar") was open before
+  // closing, since both share this one modal instance. canAddToSession (add mode only — a
+  // substitute still needs the confirmation above, which the detail screen can't offer) lets
+  // exercise-detail's own "Agregar al entreno" button add straight from there instead.
+  const handleInfoPress = (exercise: Exercise) => {
+    const wasReplacing = replacingSessionExerciseId;
+    useExercisePickerDetourStore.getState().setReopenPicker(() => {
+      if (wasReplacing) setReplacingSessionExerciseId(wasReplacing);
+      else setIsPickerOpen(true);
+    });
+    router.push({
+      pathname: '/profile/exercise-detail',
+      params: wasReplacing ? { exerciseId: exercise.id } : { exerciseId: exercise.id, canAddToSession: '1' },
+    });
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      const store = useExercisePickerDetourStore.getState();
+      const toAdd = store.addToSession;
+      if (toAdd) {
+        store.setAddToSession(null);
+        store.setReopenPicker(null);
+        handleAddExercise(toAdd);
+        return;
+      }
+      const reopen = store.reopenPicker;
+      if (reopen) {
+        store.setReopenPicker(null);
+        reopen();
+      }
+    }, [handleAddExercise])
+  );
 
   const handleRemoveExercise = async (sessionExerciseId: string) => {
     try {
