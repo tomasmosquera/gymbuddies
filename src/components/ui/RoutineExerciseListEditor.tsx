@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { ExercisePickerModal } from '@/components/ui/ExercisePickerModal';
+import { useExercisePickerDetourStore } from '@/state/exercisePickerDetourStore';
 import { colors, radii, spacing } from '@/constants/theme';
 import { kgToUnit, sanitizeWeightInput, unitToKg, type WeightUnit } from '@/lib/domain/workoutUnits';
 import type { Exercise } from '@/lib/supabase/types';
@@ -68,7 +69,37 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
     onChange(values.map((v, i) => (i === index ? { ...v, ...patch } : v)));
   };
   const removeExercise = (index: number) => onChange(values.filter((_, i) => i !== index));
-  const addExercise = (exercise: Exercise) => onChange([...values, exerciseToFormRow(exercise, defaultUnit)]);
+  const addExercise = useCallback(
+    (exercise: Exercise) => onChange([...values, exerciseToFormRow(exercise, defaultUnit)]),
+    [values, onChange, defaultUnit]
+  );
+
+  // The picker's own info ("i") icon — see exercisePickerDetourStore for why "back" from
+  // exercise-detail needs this to land the member back in the (now-closed) picker instead of
+  // bare on this screen. canAddToRoutine also lets that screen's own "Agregar a la rutina"
+  // button skip the picker entirely and add straight from there.
+  const handleInfoPress = (exercise: Exercise) => {
+    useExercisePickerDetourStore.getState().setReopenPicker(() => setIsPickerOpen(true));
+    router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: exercise.id, canAddToRoutine: '1' } });
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      const store = useExercisePickerDetourStore.getState();
+      const toAdd = store.addToRoutine;
+      if (toAdd) {
+        store.setAddToRoutine(null);
+        store.setReopenPicker(null);
+        addExercise(toAdd);
+        return;
+      }
+      const reopen = store.reopenPicker;
+      if (reopen) {
+        store.setReopenPicker(null);
+        reopen();
+      }
+    }, [addExercise])
+  );
   // Swaps with the adjacent row — a no-op past either end (the up arrow at
   // index 0, the down arrow at the last index) rather than wrapping around.
   const moveExercise = (index: number, direction: -1 | 1) => {
@@ -252,6 +283,7 @@ export function RoutineExerciseListEditor({ values, onChange, defaultUnit }: Rou
         visible={isPickerOpen}
         onClose={() => setIsPickerOpen(false)}
         onSelect={addExercise}
+        onInfoPress={handleInfoPress}
         excludeIds={values.map((v) => v.exerciseId)}
       />
     </View>

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ComparisonMetric } from '@/components/ui/ComparisonMetric';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,6 +27,7 @@ import {
   type RankedGroupLeaderboardMember,
 } from '@/lib/domain/exerciseRecords';
 import { kgToUnit, type WeightUnit } from '@/lib/domain/workoutUnits';
+import { useExercisePickerDetourStore } from '@/state/exercisePickerDetourStore';
 import { MUSCLE_GROUP_LABELS } from '@/constants/muscleGroups';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -295,7 +297,7 @@ function SummaryTab({ exerciseId, unit }: { exerciseId: string; unit: 'kg' | 'lb
 }
 
 export default function ExerciseDetailScreen() {
-  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
+  const { exerciseId, canAddToRoutine } = useLocalSearchParams<{ exerciseId: string; canAddToRoutine?: string }>();
   const { profile, session: authSession } = useAuth();
   const { exercises, isLoading } = useExerciseCatalog();
   const [tab, setTab] = useState<DetailTab>('resumen');
@@ -309,6 +311,15 @@ export default function ExerciseDetailScreen() {
       </View>
     );
   }
+
+  // Only set when reached via RoutineExerciseListEditor's "i" (info) icon — see
+  // exercisePickerDetourStore. Lets the member add straight from here instead of having to back
+  // out to the (already-closed) picker and tap the row there.
+  const handleAddToRoutine = () => {
+    useExercisePickerDetourStore.getState().setReopenPicker(null);
+    useExercisePickerDetourStore.getState().setAddToRoutine(exercise);
+    router.back();
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -328,6 +339,8 @@ export default function ExerciseDetailScreen() {
         Primario: {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
         {exercise.secondary_muscles.length > 0 ? `  ·  Secundario: ${exercise.secondary_muscles.join(', ')}` : ''}
       </Text>
+
+      {canAddToRoutine === '1' ? <Button label="Agregar a la rutina" onPress={handleAddToRoutine} /> : null}
 
       <MuscleDiagram exercises={[{ muscleGroup: exercise.muscle_group, secondaryMuscles: exercise.secondary_muscles }]} />
 

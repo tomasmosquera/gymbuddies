@@ -32,6 +32,7 @@ import {
   formatPlateBreakdown,
 } from '@/lib/domain/plateCalculator';
 import { replaceThenCrossTabNavigate } from '@/lib/navigation';
+import { useExercisePickerDetourStore } from '@/state/exercisePickerDetourStore';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
 
@@ -601,6 +602,30 @@ export default function WorkoutSessionScreen() {
     }, [isLoading, session])
   );
 
+  // The picker's own info ("i") icon — see exercisePickerDetourStore for why "back" from
+  // exercise-detail needs this to land the member back in the (now-closed) picker instead of
+  // bare on this screen. Captures which of the two modes (add vs. "Reemplazar") was open before
+  // closing, since both share this one modal instance.
+  const handleInfoPress = (exercise: Exercise) => {
+    const wasReplacing = replacingSessionExerciseId;
+    useExercisePickerDetourStore.getState().setReopenPicker(() => {
+      if (wasReplacing) setReplacingSessionExerciseId(wasReplacing);
+      else setIsPickerOpen(true);
+    });
+    router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: exercise.id } });
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      const store = useExercisePickerDetourStore.getState();
+      const reopen = store.reopenPicker;
+      if (reopen) {
+        store.setReopenPicker(null);
+        reopen();
+      }
+    }, [])
+  );
+
   const handleLogSet = async (sessionExerciseId: string, reps: number, weight: number | undefined, setUnit: WeightUnit, restSeconds: number | null) => {
     try {
       await logSet(sessionExerciseId, reps, weight, setUnit);
@@ -795,6 +820,7 @@ export default function WorkoutSessionScreen() {
           setReplacingSessionExerciseId(null);
         }}
         onSelect={replacingSessionExerciseId ? handleReplaceExercise : handleAddExercise}
+        onInfoPress={handleInfoPress}
         excludeIds={session.exercises.map((e) => e.exercise_id)}
       />
     </View>

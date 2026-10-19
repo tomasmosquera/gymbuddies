@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +19,12 @@ interface ExercisePickerModalProps {
   onSelect: (exercise: Exercise) => void;
   /** Exercises already in the list this picker is adding to — greyed out and unselectable, so the same exercise can't be added twice. */
   excludeIds?: string[];
+  /** Called when a row's info ("i") icon is tapped, after this modal has already closed itself
+   * (same as a plain dismiss — filters reset too). The host is responsible for the rest: remember
+   * how to reopen this exact picker (see exercisePickerDetourStore) and navigate to
+   * exercise-detail — without that, "back" from there would land on the host screen with the
+   * picker gone instead of back where the member actually was. */
+  onInfoPress: (exercise: Exercise) => void;
 }
 
 function FilterChip({ label, isActive, onPress }: { label: string; isActive: boolean; onPress: () => void }) {
@@ -31,7 +36,7 @@ function FilterChip({ label, isActive, onPress }: { label: string; isActive: boo
 }
 
 /** Searchable, filterable "pick one exercise from the ~100+ catalog" sheet — search by name, plus chip filters by muscle group and equipment, same shape as TimezonePicker. */
-export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [] }: ExercisePickerModalProps) {
+export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [], onInfoPress }: ExercisePickerModalProps) {
   const { exercises } = useExerciseCatalog();
   const [query, setQuery] = useState('');
   const [muscleFilter, setMuscleFilter] = useState<MuscleFilter>('all');
@@ -136,7 +141,7 @@ export function ExercisePickerModal({ visible, onClose, onSelect, excludeIds = [
                   <Pressable
                     onPress={() => {
                       close();
-                      router.push({ pathname: '/profile/exercise-detail', params: { exerciseId: item.id } });
+                      onInfoPress(item);
                     }}
                     hitSlop={8}
                     accessibilityRole="button"
