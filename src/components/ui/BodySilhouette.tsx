@@ -5,6 +5,28 @@ import { colors, spacing } from '@/constants/theme';
 
 const DEFAULT_HEIGHT = 220;
 
+/** The "nothing to show here" fill every body diagram in the app falls back to —
+ * colors.surfaceAlt (the card's own tone) nearly matched the app's dark background, so an
+ * untrained/neutral region needs its own lighter gray to still read as a body. */
+export const NEUTRAL_BODY_FILL = '#5A6472';
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Linear interpolation from NEUTRAL_BODY_FILL to colors.primary at `ratio` (0-1, clamped) — the
+ * shared "how much of this part's own busiest neighbor" gradient for any volume-based diagram
+ * (Stats' Balance muscular), so a lightly-trained muscle still reads as visibly lit, not just
+ * on/off. */
+export function mixBodyFill(ratio: number): string {
+  const [r1, g1, b1] = hexToRgb(NEUTRAL_BODY_FILL);
+  const [r2, g2, b2] = hexToRgb(colors.primary);
+  const t = Math.max(0, Math.min(1, ratio));
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`;
+}
+
 function SingleView({ view, height, colorFor }: { view: MuscleBodyView; height: number; colorFor: (part: string) => string }) {
   const [, , vbWidth, vbHeight] = view.viewBox.split(' ').map(Number);
   const width = (height * vbWidth) / vbHeight;

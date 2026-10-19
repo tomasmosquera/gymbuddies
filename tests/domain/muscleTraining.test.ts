@@ -1,4 +1,4 @@
-import { classifyFatigue, computeDaysSinceTrained, computeMuscleVolume, windowSinceDate, type MuscleTrainingEntry } from '@/lib/domain/muscleTraining';
+import { classifyFatigue, computeDaysSinceTrained, computeMuscleVolume, dateDaysAgo, windowSinceDate, type MuscleTrainingEntry } from '@/lib/domain/muscleTraining';
 
 function entry(partial: Partial<MuscleTrainingEntry>): MuscleTrainingEntry {
   return {
@@ -69,6 +69,15 @@ describe('computeDaysSinceTrained', () => {
   it('still counts a warmup-only entry (recency, not volume)', () => {
     const entries = [entry({ sets: [{ isWarmup: true }], startedAt: '2026-10-15' })];
     expect(computeDaysSinceTrained(entries, '2026-10-16').chest).toBe(1);
+  });
+});
+
+describe('dateDaysAgo', () => {
+  it('subtracts whole days', () => {
+    expect(dateDaysAgo('2026-10-16', 7)).toBe('2026-10-09');
+  });
+  it('crosses a month boundary', () => {
+    expect(dateDaysAgo('2026-10-03', 7)).toBe('2026-09-26');
   });
 });
 

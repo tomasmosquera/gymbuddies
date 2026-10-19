@@ -87,6 +87,14 @@ export function computeDaysSinceTrained(
   return days;
 }
 
+/** `todayString` minus `days` whole days (YYYY-MM-DD), inclusive of both ends when used as a
+ * lower bound — e.g. 7 days back spans 8 calendar dates (today and the 7 before it). */
+export function dateDaysAgo(todayString: string, days: number): string {
+  const [y, m, d] = todayString.split('-').map(Number);
+  const ms = Date.UTC(y, m - 1, d) - days * 24 * 60 * 60 * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 export type MuscleVolumeWindow = 'week' | '30d' | '90d' | 'all';
 
 /** The inclusive lower-bound date (YYYY-MM-DD) computeMuscleVolume should use for a given Stats
@@ -95,10 +103,7 @@ export type MuscleVolumeWindow = 'week' | '30d' | '90d' | 'all';
 export function windowSinceDate(window: MuscleVolumeWindow, todayString: string): string | null {
   if (window === 'all') return null;
   if (window === 'week') return getWeekBoundsForDateString(todayString).weekStart;
-  const days = window === '30d' ? 30 : 90;
-  const [y, m, d] = todayString.split('-').map(Number);
-  const ms = Date.UTC(y, m - 1, d) - days * 24 * 60 * 60 * 1000;
-  return new Date(ms).toISOString().slice(0, 10);
+  return dateDaysAgo(todayString, window === '30d' ? 30 : 90);
 }
 
 export type FatigueState = 'fatigued' | 'recovering' | 'ready';

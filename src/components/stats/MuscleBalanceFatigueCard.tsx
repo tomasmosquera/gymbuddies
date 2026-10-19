@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BarList } from '@/components/stats/BarList';
-import { BodySilhouettePair } from '@/components/ui/BodySilhouette';
+import { BodySilhouettePair, NEUTRAL_BODY_FILL, mixBodyFill } from '@/components/ui/BodySilhouette';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ALL_DRAWABLE_BODY_PARTS, type MuscleMapBodyPart } from '@/lib/domain/muscleBodyParts';
 import {
@@ -30,36 +30,16 @@ const WINDOW_OPTIONS: { key: MuscleVolumeWindow; label: string }[] = [
   { key: 'all', label: 'Todo' },
 ];
 
-// Shared with MuscleDiagram.tsx's own untrained-body fill, for the same reason (colors.surfaceAlt
-// nearly matched the app's dark background).
-const INACTIVE_FILL = '#5A6472';
-
 const FATIGUE_COLORS: Record<FatigueState, string> = {
   fatigued: colors.danger,
   recovering: colors.warning,
-  ready: INACTIVE_FILL,
+  ready: NEUTRAL_BODY_FILL,
 };
 const FATIGUE_LABELS: Record<FatigueState, string> = {
   fatigued: 'Fatigado',
   recovering: 'Recuperando',
   ready: 'Listo',
 };
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/** Linear interpolation from INACTIVE_FILL to colors.primary — the diagram's own "how much of
- * this muscle's own best" gradient, so a muscle trained less than the busiest one still reads as
- * visibly lit, not just on/off. */
-function volumeFill(ratio: number): string {
-  const [r1, g1, b1] = hexToRgb(INACTIVE_FILL);
-  const [r2, g2, b2] = hexToRgb(colors.primary);
-  const t = Math.max(0, Math.min(1, ratio));
-  const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
-  return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`;
-}
 
 /**
  * Stats screen's "Balance muscular" / "Fatiga" card — same body diagram geometry as
@@ -90,8 +70,8 @@ export function MuscleBalanceFatigueCard({ entries }: { entries: readonly Muscle
 
   const colorForBalance = (part: string) => {
     const value = volumeCounts[part as MuscleMapBodyPart] ?? 0;
-    if (value <= 0 || maxVolume <= 0) return INACTIVE_FILL;
-    return volumeFill(value / maxVolume);
+    if (value <= 0 || maxVolume <= 0) return NEUTRAL_BODY_FILL;
+    return mixBodyFill(value / maxVolume);
   };
   const colorForFatigue = (part: string) => FATIGUE_COLORS[classifyFatigue(daysSinceTrained[part as MuscleMapBodyPart])];
 

@@ -99,6 +99,7 @@ export default function ProfileStackLayout() {
       <Stack.Screen name="notification-preferences" options={{ title: 'Notificaciones' }} />
       <Stack.Screen name="badges" options={{ title: 'Logros' }} />
       <Stack.Screen name="stats" options={{ title: 'Estadísticas' }} />
+      <Stack.Screen name="exercise-stats" options={{ title: 'Rutinas y ejercicios' }} />
       <Stack.Screen name="platform-dashboard" options={{ title: 'Panel de la plataforma' }} />
       <Stack.Screen name="routines" options={{ title: 'Rutinas de entreno' }} />
       <Stack.Screen name="routine-browse" options={{ title: 'Explorar rutinas' }} />

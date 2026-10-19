@@ -7,11 +7,10 @@ import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { usePersonalStats } from '@/hooks/usePersonalStats';
 import { usePersonalStatsV2, type PersonalStatsV2 } from '@/hooks/usePersonalStatsV2';
 import { useMuscleTrainingHistory } from '@/hooks/useMuscleTrainingHistory';
-import { useWorkoutHistory, type WorkoutHistorySession } from '@/hooks/useWorkoutHistory';
+import { useWorkoutStatsSummary } from '@/hooks/useWorkoutStatsSummary';
 import { formatHour } from '@/lib/domain/personalStats';
 import { BADGES } from '@/lib/domain/badges';
 import { levelProgress } from '@/lib/domain/xp';
-import { computeWeekStreak } from '@/lib/domain/workoutStreak';
 import { formatCompactNumber, kgToUnit } from '@/lib/domain/workoutUnits';
 import type { MemberSummary } from '@/lib/domain/personalStatsV2';
 import { Card } from '@/components/ui/Card';
@@ -22,7 +21,7 @@ import { LineChart } from '@/components/stats/LineChart';
 import { Heatmap } from '@/components/stats/Heatmap';
 import { BarList } from '@/components/stats/BarList';
 import { VersusBar } from '@/components/stats/VersusBar';
-import { MuscleBalanceFatigueCard } from '@/components/stats/MuscleBalanceFatigueCard';
+import { WeeklyMuscleBalanceCard } from '@/components/stats/WeeklyMuscleBalanceCard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 
@@ -40,39 +39,6 @@ function formatShortDate(dateString: string): string {
 
 function formatWeekLabel(weekStart: string): string {
   return formatShortDate(weekStart);
-}
-
-/** "45 min" / "1h 12min" — same shape as workout-history.tsx's own formatter. null only for an
- * in_progress session, which never appears in completed-only history. */
-function formatSessionDuration(startedAt: string, finishedAt: string | null): string | null {
-  if (!finishedAt) return null;
-  const totalMinutes = Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 60000);
-  if (totalMinutes < 60) return `${totalMinutes} min`;
-  return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}min`;
-}
-
-function RecentWorkoutRow({ session }: { session: WorkoutHistorySession }) {
-  const duration = formatSessionDuration(session.startedAt, session.finishedAt);
-  return (
-    <Pressable
-      style={styles.recentRow}
-      onPress={() => router.push({ pathname: '/profile/workout-detail', params: { sessionId: session.id } })}
-      accessibilityRole="button"
-    >
-      <View style={styles.flex}>
-        <Text style={styles.recentLabel} numberOfLines={1}>
-          {session.label}
-        </Text>
-        <Text style={styles.recentMeta} numberOfLines={1}>
-          {formatShortDate(session.startedAt.slice(0, 10))}
-          {duration ? ` · ${duration}` : ''} · {session.totalSets} series
-          {session.totalKg > 0 ? ` · ${Math.round(session.totalKg).toLocaleString('es-CO')} kg` : ''}
-          {session.estimatedCalories !== null ? ` · ${session.estimatedCalories} kcal` : ''}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-    </Pressable>
-  );
 }
 
 function formatDayLabel(date: string): string {
@@ -164,7 +130,7 @@ export default function PersonalStatsScreen() {
   const [versusIndex, setVersusIndex] = useState(0);
   const [showAllVersus, setShowAllVersus] = useState(false);
   const { entries: muscleEntries } = useMuscleTrainingHistory();
-  const { sessions: workoutSessions } = useWorkoutHistory();
+  const workoutStats = useWorkoutStatsSummary();
 
   if (groupLoading || statsV2Loading || !statsV2 || (!isAdminOnly && (statsLoading || !stats))) {
     return (
@@ -236,15 +202,6 @@ export default function PersonalStatsScreen() {
   // Madrugada dropped from display only — checkinHourBuckets/averageCheckinHour
   // (the "Hora promedio" line above the bars) still see every check-in.
   const hourBuckets = stats.hourBuckets.filter((b) => b.label !== 'Madrugada');
-
-  const todayString = new Date().toISOString().slice(0, 10);
-  const totalWorkouts = workoutSessions.length;
-  const thisMonthWorkouts = workoutSessions.filter((s) => s.startedAt.slice(0, 7) === todayString.slice(0, 7)).length;
-  const workoutWeekStreak = computeWeekStreak(
-    workoutSessions.map((s) => s.startedAt.slice(0, 10)),
-    todayString
-  );
-  const recentWorkouts = workoutSessions.slice(0, 6);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -568,37 +525,16 @@ export default function PersonalStatsScreen() {
         <Button label="Ver King of the Hill" variant="secondary" onPress={() => router.push('/profile/king-of-the-hill')} />
       </View>
 
-      {/* --- Rutinas y ejercicios: resumen + entrenos recientes --- */}
+      {/* --- Rutinas y ejercicios --- */}
       <View>
         <SectionLabel icon="barbell-outline">RUTINAS Y EJERCICIOS</SectionLabel>
         <Card style={[styles.card, styles.tileRow]}>
-          <StatTile label="Entrenos" value={`${totalWorkouts}`} />
-          <StatTile label="Este mes" value={`${thisMonthWorkouts}`} />
-          <StatTile label="Racha semanal" value={`${workoutWeekStreak} 🔥`} />
+          <StatTile label="Entrenos" value={`${workoutStats.totalWorkouts}`} />
+          <StatTile label="Este mes" value={`${workoutStats.thisMonthWorkouts}`} />
+          <StatTile label="Racha semanal" value={`${workoutStats.weekStreak} 🔥`} />
         </Card>
-
-        {recentWorkouts.length > 0 ? (
-          <Card style={styles.recentCard}>
-            <View style={styles.recentHeader}>
-              <Text style={styles.recentTitle}>Entrenos recientes</Text>
-              <Pressable onPress={() => router.push('/profile/workout-history')} accessibilityRole="button">
-                <Text style={styles.recentSeeAll}>Ver todos{totalWorkouts > recentWorkouts.length ? ` (${totalWorkouts})` : ''}</Text>
-              </Pressable>
-            </View>
-            {recentWorkouts.map((session, i) => (
-              <View key={session.id}>
-                {i > 0 ? <View style={styles.recentDivider} /> : null}
-                <RecentWorkoutRow session={session} />
-              </View>
-            ))}
-          </Card>
-        ) : null}
-      </View>
-
-      {/* --- Balance muscular / Fatiga --- */}
-      <View>
-        <SectionLabel icon="body-outline">BALANCE MUSCULAR</SectionLabel>
-        <MuscleBalanceFatigueCard entries={muscleEntries} />
+        <WeeklyMuscleBalanceCard entries={muscleEntries} />
+        <Button label="Ver más información" variant="secondary" onPress={() => router.push('/profile/exercise-stats')} />
       </View>
     </ScrollView>
   );
@@ -743,21 +679,4 @@ const styles = StyleSheet.create({
   rankingStats: { flexDirection: 'row', gap: spacing.sm },
   rankingStat: { color: colors.primary, fontSize: 13, fontWeight: '700', minWidth: 40, textAlign: 'right' },
   rankingStatMuted: { color: colors.textMuted, fontSize: 12, minWidth: 36, textAlign: 'right' },
-
-  // Rutinas y ejercicios: entrenos recientes
-  flex: { flex: 1 },
-  recentCard: { gap: 0, padding: 0, overflow: 'hidden' },
-  recentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  recentTitle: { ...typography.heading, fontSize: 15, color: colors.text },
-  recentSeeAll: { color: colors.primary, fontSize: 13, fontWeight: '600' },
-  recentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  recentLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  recentMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  recentDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.md },
 });

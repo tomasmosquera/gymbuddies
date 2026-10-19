@@ -1,18 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { BodySilhouettePair } from '@/components/ui/BodySilhouette';
+import { BodySilhouettePair, NEUTRAL_BODY_FILL } from '@/components/ui/BodySilhouette';
 import { bodyPartsToHighlight, type MuscleMapBodyPart } from '@/lib/domain/muscleBodyParts';
 import { collectRoutineMuscleGroups } from '@/lib/domain/routineMuscles';
 import { MUSCLE_GROUP_LABELS } from '@/constants/muscleGroups';
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { MuscleGroup } from '@/lib/supabase/types';
 
-// colors.surfaceAlt (the card's own tone) made untrained muscles nearly invisible against the
-// app's dark blue theme — a lighter, visibly gray fill so the body itself reads clearly even
-// where nothing is highlighted.
-const INACTIVE_FILL = '#5A6472';
-// Secondary muscles render at half intensity (fillOpacity isn't an option here since colorFor
-// only returns a fill color, so this blends green toward INACTIVE_FILL instead) — the same
-// 100%/50% primary/secondary weighting muscleDistribution.ts already uses elsewhere.
+// Secondary muscles render at a flat, less saturated green rather than full intensity — the
+// same 100%/50% primary/secondary weighting muscleDistribution.ts already uses elsewhere.
 const SECONDARY_FILL = '#3A8E6C';
 
 export interface MuscleDiagramExercise {
@@ -34,7 +29,7 @@ export function MuscleDiagram({ exercises }: { exercises: readonly MuscleDiagram
   const colorFor = (part: string) => {
     if (highlight.primary.has(part as MuscleMapBodyPart)) return colors.primary;
     if (highlight.secondary.has(part as MuscleMapBodyPart)) return SECONDARY_FILL;
-    return INACTIVE_FILL;
+    return NEUTRAL_BODY_FILL;
   };
 
   return (
