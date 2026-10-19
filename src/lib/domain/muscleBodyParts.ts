@@ -17,7 +17,7 @@ export const ALL_DRAWABLE_BODY_PARTS = [
 
 export type MuscleMapBodyPart = (typeof ALL_DRAWABLE_BODY_PARTS)[number];
 
-const MUSCLE_GROUP_TO_BODY_PARTS: Partial<Record<MuscleGroup, readonly MuscleMapBodyPart[]>> = {
+export const MUSCLE_GROUP_TO_BODY_PARTS: Partial<Record<MuscleGroup, readonly MuscleMapBodyPart[]>> = {
   chest: ['chest', 'serratus'],
   back: ['trapezius', 'upper-back', 'lower-back'],
   shoulders: ['deltoids'],
@@ -41,7 +41,7 @@ const MUSCLE_GROUP_TO_BODY_PARTS: Partial<Record<MuscleGroup, readonly MuscleMap
  * Ankle Stabilizers, Cardiovascular System) are left unmapped on purpose, same as
  * muscleDistribution.ts's SECONDARY_TO_BUCKET does for its own 7-axis radar.
  */
-const SECONDARY_MUSCLE_TO_BODY_PARTS: Record<string, readonly MuscleMapBodyPart[]> = {
+export const SECONDARY_MUSCLE_TO_BODY_PARTS: Record<string, readonly MuscleMapBodyPart[]> = {
   Abs: ['abs'],
   Adductors: ['adductors'],
   Back: ['upper-back', 'lower-back'],

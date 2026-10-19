@@ -9,6 +9,9 @@ export interface WorkoutHistorySession {
   finishedAt: string | null;
   exerciseNames: string[];
   totalSets: number;
+  /** Non-warmup reps × weight, summed across every set — 0 for an all-bodyweight (no weight_kg) session, same convention as every other volume figure in this app. */
+  totalKg: number;
+  estimatedCalories: number | null;
 }
 
 interface SessionRow {
@@ -16,7 +19,8 @@ interface SessionRow {
   routine_name_snapshot: string | null;
   started_at: string;
   finished_at: string | null;
-  exercises: { exercise: { name: string } | null; sets: { id: string }[] }[];
+  estimated_calories: number | null;
+  exercises: { exercise: { name: string } | null; sets: { reps: number; weight_kg: number | null; is_warmup: boolean }[] }[];
 }
 
 /**
@@ -42,7 +46,7 @@ export function useWorkoutHistory() {
     const { data } = await supabase
       .from('workout_sessions')
       .select(
-        'id, routine_name_snapshot, started_at, finished_at, exercises:workout_session_exercises(exercise:exercises(name), sets:workout_sets(id))'
+        'id, routine_name_snapshot, started_at, finished_at, estimated_calories, exercises:workout_session_exercises(exercise:exercises(name), sets:workout_sets(reps, weight_kg, is_warmup))'
       )
       .eq('user_id', userId)
       .eq('status', 'completed')
@@ -56,6 +60,11 @@ export function useWorkoutHistory() {
         finishedAt: r.finished_at,
         exerciseNames: r.exercises.map((e) => e.exercise?.name ?? '—'),
         totalSets: r.exercises.reduce((sum, e) => sum + e.sets.length, 0),
+        totalKg: r.exercises.reduce(
+          (sum, e) => sum + e.sets.reduce((s, set) => s + (set.is_warmup ? 0 : set.reps * (set.weight_kg ?? 0)), 0),
+          0
+        ),
+        estimatedCalories: r.estimated_calories,
       }))
     );
     setIsLoading(false);
