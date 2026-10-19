@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
@@ -9,18 +9,14 @@ import { ComparisonMetric } from '@/components/ui/ComparisonMetric';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { MuscleDiagram } from '@/components/ui/MuscleDiagram';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { LineChart } from '@/components/stats/LineChart';
+import { ExerciseProgressCard } from '@/components/stats/ExerciseProgressCard';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useAuth } from '@/hooks/useAuth';
 import { useExerciseCatalog } from '@/hooks/useExerciseCatalog';
 import { useExerciseGroupLeaderboard } from '@/hooks/useExerciseGroupLeaderboard';
-import { useExerciseHistory } from '@/hooks/useExerciseHistory';
 import { useExerciseSessionHistory } from '@/hooks/useExerciseSessionHistory';
 import {
   annotateHistoryWithRecords,
-  chartValuesFor,
-  computeExerciseRecords,
-  dailyExerciseSeries,
   rankGroupLeaderboard,
   type AnnotatedHistorySet,
   type ExerciseChartMetric,
@@ -38,17 +34,6 @@ const METRIC_OPTIONS: { key: ExerciseChartMetric; label: string }[] = [
   { key: 'oneRepMax', label: 'One Rep Max' },
   { key: 'bestSetVolume', label: 'Mejor Vol. Set' },
 ];
-
-const RECORD_LABELS: Record<ExerciseChartMetric | 'sessionVolume', string> = {
-  heaviestWeight: 'Peso Máximo',
-  oneRepMax: 'Mejor 1RM',
-  bestSetVolume: 'Mejor Volumen de un Set',
-  sessionVolume: 'Mejor Volumen de Sesión',
-};
-
-function formatShortDate(iso: string): string {
-  return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' }).format(new Date(iso));
-}
 
 function formatFullDate(iso: string): string {
   return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(
@@ -224,78 +209,6 @@ function GroupTab({ exerciseId, unit, currentUserId }: { exerciseId: string; uni
   );
 }
 
-/** Resumen: demo image, a progress chart switchable between 3 metrics, and all-time Personal Records — same shape as the Hevy reference screenshot. */
-function SummaryTab({ exerciseId, unit }: { exerciseId: string; unit: 'kg' | 'lbs' }) {
-  const { entries, isLoading } = useExerciseHistory(exerciseId);
-  const [metric, setMetric] = useState<ExerciseChartMetric>('heaviestWeight');
-
-  const series = useMemo(() => dailyExerciseSeries(entries ?? []), [entries]);
-  const records = useMemo(() => computeExerciseRecords(entries ?? []), [entries]);
-
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-
-  const chartSeries = [
-    {
-      label: METRIC_OPTIONS.find((m) => m.key === metric)!.label,
-      color: colors.primary,
-      values: chartValuesFor(series, metric).map((v) => (v === null ? null : kgToUnit(v, unit))),
-    },
-  ];
-
-  const recordRows: { label: string; value: number | null }[] = [
-    { label: RECORD_LABELS.heaviestWeight, value: records.heaviestWeightKg },
-    { label: RECORD_LABELS.oneRepMax, value: records.best1RmKg },
-    { label: RECORD_LABELS.bestSetVolume, value: records.bestSetVolumeKg },
-    { label: RECORD_LABELS.sessionVolume, value: records.bestSessionVolumeKg },
-  ];
-
-  return (
-    <View style={styles.tabContent}>
-      <SegmentedControl options={METRIC_OPTIONS} value={metric} onChange={setMetric} />
-
-      <Card>
-        <LineChart xLabels={series.map((p) => formatShortDate(p.date))} series={chartSeries} unit={` ${unit}`} visiblePoints={8} />
-      </Card>
-
-      <Card style={styles.recordsCard}>
-        <View style={styles.recordsHeader}>
-          <Ionicons name="medal" size={18} color={colors.gold} />
-          <Text style={styles.recordsTitle}>Récords Personales</Text>
-        </View>
-        {recordRows.map((row) => (
-          <View key={row.label} style={styles.recordRow}>
-            <Text style={styles.recordLabel}>{row.label}</Text>
-            <Text style={styles.recordValue}>{row.value !== null ? `${kgToUnit(row.value, unit)} ${unit}` : '—'}</Text>
-          </View>
-        ))}
-
-        {records.setRecords.length > 0 ? (
-          <View style={styles.setRecordsSection}>
-            <View style={styles.setRecordsHeaderRow}>
-              <Text style={styles.setRecordsHeaderCell}>Reps</Text>
-              <Text style={styles.setRecordsHeaderCell}>Mejor Peso</Text>
-            </View>
-            {records.setRecords.map((r) => (
-              <View key={r.reps} style={styles.recordRow}>
-                <Text style={styles.recordLabel}>{r.reps}</Text>
-                <Text style={styles.recordValue}>
-                  {kgToUnit(r.weightKg, unit)} {unit}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </Card>
-    </View>
-  );
-}
-
 export default function ExerciseDetailScreen() {
   const { exerciseId, canAddToRoutine, canAddToSession } = useLocalSearchParams<{
     exerciseId: string;
@@ -365,7 +278,7 @@ export default function ExerciseDetailScreen() {
         onChange={setTab}
       />
 
-      {tab === 'resumen' ? <SummaryTab exerciseId={exercise.id} unit={unit} /> : null}
+      {tab === 'resumen' ? <ExerciseProgressCard exerciseId={exercise.id} unit={unit} /> : null}
       {tab === 'historico' ? <HistoryTab exerciseId={exercise.id} unit={unit} /> : null}
       {tab === 'grupo' ? <GroupTab exerciseId={exercise.id} unit={unit} currentUserId={authSession?.user.id ?? null} /> : null}
       {tab === 'explicacion' ? <ExplanationTab instructions={exercise.instructions} /> : null}
@@ -393,8 +306,6 @@ const styles = StyleSheet.create({
   name: { ...typography.heading, fontSize: 20, color: colors.text },
   muscleLine: { color: colors.textMuted, fontSize: 13 },
   tabContent: { gap: spacing.md },
-  recordsCard: { gap: spacing.xs },
-  recordsHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
   recordsTitle: { ...typography.heading, fontSize: 15, color: colors.text },
   recordRow: {
     flexDirection: 'row',
@@ -406,9 +317,6 @@ const styles = StyleSheet.create({
   },
   recordLabel: { color: colors.text, fontSize: 14 },
   recordValue: { color: colors.primary, fontSize: 14, fontWeight: '700' },
-  setRecordsSection: { marginTop: spacing.sm },
-  setRecordsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.sm },
-  setRecordsHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   setsTableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   tableHeaderCell: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
   historyCard: { gap: 2 },
