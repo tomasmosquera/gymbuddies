@@ -96,6 +96,8 @@ export default function ExerciseStatsScreen() {
         <StatTile label="Racha semanal" value={`${workoutStats.weekStreak} 🔥`} />
       </Card>
 
+      <MuscleBalanceFatigueCard entries={muscleEntries} />
+
       {selectedExercise ? (
         <Card style={styles.progressCard}>
           <Text style={styles.progressTitle}>Progreso de ejercicio</Text>
@@ -142,8 +144,6 @@ export default function ExerciseStatsScreen() {
           ))}
         </Card>
       ) : null}
-
-      <MuscleBalanceFatigueCard entries={muscleEntries} />
     </ScrollView>
   );
 }
