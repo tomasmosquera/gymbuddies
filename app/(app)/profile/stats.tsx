@@ -526,7 +526,7 @@ export default function PersonalStatsScreen() {
       </View>
 
       {/* --- Rutinas y ejercicios --- */}
-      <View>
+      <View style={styles.exerciseStatsSection}>
         <SectionLabel icon="barbell-outline">RUTINAS Y EJERCICIOS</SectionLabel>
         <Card style={[styles.card, styles.tileRow]}>
           <StatTile label="Entrenos" value={`${workoutStats.totalWorkouts}`} />
@@ -616,6 +616,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.background },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
+  // WeeklyMuscleBalanceCard is a plain card with no marginBottom of its own (unlike styles.card),
+  // so without this the "Ver más información" button right after it looked stuck to the diagram.
+  exerciseStatsSection: { gap: spacing.sm },
   trendToggle: { marginBottom: spacing.md },
   sectionLabel: { color: colors.text, fontSize: 20, fontWeight: '700', letterSpacing: 0.3 },
   card: { gap: spacing.sm, marginBottom: spacing.sm },
