@@ -84,15 +84,21 @@ export function MuscleBalanceFatigueCard({ entries }: { entries: readonly Muscle
           <SegmentedControl options={WINDOW_OPTIONS} value={volumeWindow} onChange={setVolumeWindow} />
           <BodySilhouettePair colorFor={colorForBalance} />
           {trainedParts.length > 0 ? (
-            <BarList
-              items={trainedParts.map((part) => ({
-                label: MUSCLE_BODY_PART_LABELS[part],
-                ratio: maxVolume > 0 ? (volumeCounts[part] ?? 0) / maxVolume : 0,
-                valueLabel: (volumeCounts[part] ?? 0).toFixed(1),
-                highlight: true,
-              }))}
-              color={colors.primary}
-            />
+            <>
+              <BarList
+                items={trainedParts.map((part) => ({
+                  label: MUSCLE_BODY_PART_LABELS[part],
+                  ratio: maxVolume > 0 ? (volumeCounts[part] ?? 0) / maxVolume : 0,
+                  valueLabel: (volumeCounts[part] ?? 0).toFixed(1),
+                  highlight: true,
+                }))}
+                color={colors.primary}
+              />
+              <Text style={styles.caption}>
+                El número es la cantidad de series en el período: cada serie cuenta 1 para el músculo principal del
+                ejercicio y 0.5 para cada secundario.
+              </Text>
+            </>
           ) : (
             <Text style={styles.emptyText}>Sin series registradas en este período.</Text>
           )}
