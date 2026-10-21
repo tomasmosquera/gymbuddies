@@ -171,11 +171,21 @@ export default function GroupSummaryScreen() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const filteredSummaries = summaries.filter((s) => {
-    if (roleFilter === 'all') return true;
-    const isAdminOnly = s.membership.status === 'admin_only';
-    return roleFilter === 'adminOnly' ? isAdminOnly : !isAdminOnly;
-  });
+  // Player groups first (A-Z), then admin_only ones (A-Z) — two alphabetical
+  // runs rather than one flat alphabetical list, so "where do I actually
+  // play" stays grouped together above "where I just administrate".
+  const filteredSummaries = summaries
+    .filter((s) => {
+      if (roleFilter === 'all') return true;
+      const isAdminOnly = s.membership.status === 'admin_only';
+      return roleFilter === 'adminOnly' ? isAdminOnly : !isAdminOnly;
+    })
+    .sort((a, b) => {
+      const aAdminOnly = a.membership.status === 'admin_only';
+      const bAdminOnly = b.membership.status === 'admin_only';
+      if (aAdminOnly !== bAdminOnly) return aAdminOnly ? 1 : -1;
+      return a.membership.group.name.localeCompare(b.membership.group.name, 'es');
+    });
 
   // A group switch elsewhere (Perfil, or picking a different group here)
   // shouldn't leave this screen showing stale numbers for whichever group

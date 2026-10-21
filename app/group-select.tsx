@@ -74,10 +74,19 @@ export default function GroupSelectScreen() {
     );
   }
 
+  // Player groups first (A-Z), then admin_only ones (A-Z) — same ordering as
+  // "Tus grupos" (home/group-summary.tsx).
+  const sortedMemberships = [...memberships].sort((a, b) => {
+    const aAdminOnly = a.status === 'admin_only';
+    const bAdminOnly = b.status === 'admin_only';
+    if (aAdminOnly !== bAdminOnly) return aAdminOnly ? 1 : -1;
+    return a.group.name.localeCompare(b.group.name, 'es');
+  });
+
   return (
     <FlatList
       contentContainerStyle={styles.container}
-      data={memberships}
+      data={sortedMemberships}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
         memberships.length === 0 ? (
