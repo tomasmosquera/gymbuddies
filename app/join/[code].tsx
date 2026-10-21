@@ -70,7 +70,9 @@ export default function JoinInviteScreen() {
       if (error || !data) throw new Error(error?.message ?? 'No se pudo unir al grupo');
       setPendingCode(null);
       setActiveGroupId(data.group_id);
-      router.replace('/deposit');
+      // A zero-deposit/zero-fee group (see 0161_zero_deposit_groups.sql) skips
+      // 'pending_deposit' entirely — nothing to ask for on /deposit then.
+      router.replace(data.status === 'pending_deposit' ? '/deposit' : '/home');
     } catch (err) {
       Alert.alert('No se pudo unir al grupo', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {

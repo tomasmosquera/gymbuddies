@@ -44,7 +44,9 @@ export default function JoinGroupScreen() {
       });
       if (rpcError || !data) throw new Error(rpcError?.message ?? 'No se pudo unir al grupo');
       setActiveGroupId(data.group_id);
-      router.replace('/deposit');
+      // A zero-deposit/zero-fee group (see 0161_zero_deposit_groups.sql) skips
+      // 'pending_deposit' entirely — nothing to ask for on /deposit then.
+      router.replace(data.status === 'pending_deposit' ? '/deposit' : '/home');
     } catch (err) {
       Alert.alert('No se pudo unir al grupo', err instanceof Error ? err.message : 'Intenta de nuevo');
     } finally {

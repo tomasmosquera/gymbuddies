@@ -48,7 +48,15 @@ export default function DepositScreen() {
     };
   }, [group, session]);
 
-  if (isLoading || isCheckingExisting || !group || !membership || !session) {
+  // Defense in depth for whoever lands here: a zero-deposit/zero-fee group
+  // (see 0161_zero_deposit_groups.sql) never puts a member in 'pending_deposit'
+  // in the first place, so there's nothing for this screen to ask for — bail
+  // out to /home instead of showing a $0 "send your receipt" form.
+  useEffect(() => {
+    if (membership && membership.status !== 'pending_deposit') router.replace('/home');
+  }, [membership]);
+
+  if (isLoading || isCheckingExisting || !group || !membership || !session || membership.status !== 'pending_deposit') {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
