@@ -51,10 +51,21 @@ describe('createGroupSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects a non-positive initial deposit', () => {
+  it('accepts a zero initial deposit — a group with nothing owed at join time', () => {
     const result = createGroupSchema.safeParse({
       name: 'Gym Buddies Bogotá',
       initialDepositAmount: 0,
+      minDaysPerWeek: 3,
+      penaltyAmount: 15000,
+      weeklyPenaltyCap: 300000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a negative initial deposit', () => {
+    const result = createGroupSchema.safeParse({
+      name: 'Gym Buddies Bogotá',
+      initialDepositAmount: -1,
       minDaysPerWeek: 3,
       penaltyAmount: 15000,
       weeklyPenaltyCap: 300000,

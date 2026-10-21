@@ -218,9 +218,17 @@ export default function CreateGroupScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canMakePublic = session?.user.email === PLATFORM_ADMIN_EMAIL;
-  const currentStep = STEPS[stepIndex];
+  // Nothing to collect at join time -> no "Datos de pago" step needed (there's
+  // no deposit or enrollment fee for members to ever transfer), and
+  // create_group itself skips 'pending_deposit' entirely for this group —
+  // see 0161_zero_deposit_groups.sql.
+  const nothingOwed =
+    numberOrDefault(initialDepositAmount, DEFAULTS.initialDepositAmount) === 0 &&
+    numberOrDefault(enrollmentFeeAmount, DEFAULTS.enrollmentFeeAmount) === 0;
+  const visibleSteps = nothingOwed ? STEPS.filter((s) => s.key !== 'payment') : STEPS;
+  const currentStep = visibleSteps[Math.min(stepIndex, visibleSteps.length - 1)];
   const isFirstStep = stepIndex === 0;
-  const isLastStep = stepIndex === STEPS.length - 1;
+  const isLastStep = stepIndex === visibleSteps.length - 1;
 
   const goNext = () => {
     if (currentStep.key === 'basic') {
@@ -234,10 +242,10 @@ export default function CreateGroupScreen() {
         return rest;
       });
     }
-    setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+    setStepIndex((i) => Math.min(i + 1, visibleSteps.length - 1));
   };
   const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
-  const jumpTo = (key: StepKey) => setStepIndex(STEPS.findIndex((s) => s.key === key));
+  const jumpTo = (key: StepKey) => setStepIndex(Math.max(visibleSteps.findIndex((s) => s.key === key), 0));
 
   const handleSubmit = async () => {
     const result = createGroupSchema.safeParse({
@@ -267,7 +275,7 @@ export default function CreateGroupScreen() {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) fieldErrors[String(issue.path[0])] = issue.message;
       setErrors(fieldErrors);
-      const erroredStepKey = STEPS.find((s) => Object.keys(fieldErrors).some((f) => STEP_FOR_FIELD[f] === s.key))?.key;
+      const erroredStepKey = visibleSteps.find((s) => Object.keys(fieldErrors).some((f) => STEP_FOR_FIELD[f] === s.key))?.key;
       if (erroredStepKey) jumpTo(erroredStepKey);
       return;
     }
@@ -305,8 +313,12 @@ export default function CreateGroupScreen() {
       refreshProfile().catch(() => {});
 
       // An admin who chose not to participate was created directly as
-      // 'admin_only' — no deposit to confirm, nothing to fall back to.
-      if (adminParticipates === 'no') {
+      // 'admin_only' — no deposit to confirm, nothing to fall back to. Same
+      // destination for a zero-deposit/zero-fee group: create_group already
+      // made this membership 'active' directly (see 0161_zero_deposit_groups.sql),
+      // so there's no pending deposit for admin_confirm_deposit_without_receipt
+      // to confirm — calling it would just fail and misroute to /deposit.
+      if (adminParticipates === 'no' || nothingOwed) {
         router.replace('/profile/invite');
         return;
       }
@@ -353,9 +365,9 @@ export default function CreateGroupScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.progressWrap}>
-        <StepProgress total={STEPS.length} currentIndex={stepIndex} />
+        <StepProgress total={visibleSteps.length} currentIndex={stepIndex} />
         <Text style={styles.progressText}>
-          Paso {stepIndex + 1} de {STEPS.length}
+          Paso {stepIndex + 1} de {visibleSteps.length}
         </Text>
       </View>
 
@@ -672,9 +684,11 @@ export default function CreateGroupScreen() {
               <ReviewRow label="Días de aviso para salir gratis" value={String(effectiveExitNoticeDays)} />
             </ReviewSection>
 
-            <ReviewSection title="Datos de pago" onEdit={() => jumpTo('payment')}>
-              <ReviewRow label="Datos de pago" value={adminPaymentInfo.trim() || 'No especificado'} />
-            </ReviewSection>
+            {!nothingOwed ? (
+              <ReviewSection title="Datos de pago" onEdit={() => jumpTo('payment')}>
+                <ReviewRow label="Datos de pago" value={adminPaymentInfo.trim() || 'No especificado'} />
+              </ReviewSection>
+            ) : null}
           </>
         ) : null}
       </ScrollView>

@@ -34,7 +34,7 @@ export const changePasswordSchema = z
 
 export const createGroupSchema = z.object({
   name: z.string().trim().min(3, 'El nombre debe tener al menos 3 caracteres').max(60),
-  initialDepositAmount: z.number().positive('El monto debe ser mayor a 0'),
+  initialDepositAmount: z.number().nonnegative('El monto no puede ser negativo'),
   minDaysPerWeek: z.number().int().min(0).max(7),
   penaltyAmount: z.number().min(0),
   weeklyPenaltyCap: z.number().min(0),
