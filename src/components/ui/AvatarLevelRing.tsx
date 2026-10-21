@@ -12,6 +12,10 @@ interface AvatarLevelRingProps {
   ringWidth?: number;
   /** The member this avatar belongs to. When they won the previous Liga cycle (1st place, ties included) a crown replaces the initials — omit to always show initials. */
   userId?: string;
+  /** False hides the level badge (and, since there's then nothing to show progress toward, the
+   * progress ring itself) entirely — for someone who genuinely has no level in this context
+   * (e.g. an admin_only membership, which never plays), rather than showing a misleading "0". */
+  showLevel?: boolean;
 }
 
 /**
@@ -20,7 +24,7 @@ interface AvatarLevelRingProps {
  * that needs to show a member's level at a glance (e.g. "Tus grupos") uses
  * the exact same visual, just at a different size.
  */
-export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4, userId }: AvatarLevelRingProps) {
+export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4, userId, showLevel = true }: AvatarLevelRingProps) {
   const isChampion = useIsLeagueChampion(userId);
   const radius = (size - ringWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -30,19 +34,21 @@ export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4, use
     <View style={{ width: size, height: size }}>
       <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
         <Circle cx={size / 2} cy={size / 2} r={radius} stroke={colors.border} strokeWidth={ringWidth} fill="none" />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={colors.primary}
-          strokeWidth={ringWidth}
-          fill="none"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          rotation="-90"
-          origin={`${size / 2}, ${size / 2}`}
-        />
+        {showLevel ? (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={colors.primary}
+            strokeWidth={ringWidth}
+            fill="none"
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation="-90"
+            origin={`${size / 2}, ${size / 2}`}
+          />
+        ) : null}
       </Svg>
       <View style={[styles.avatarInner, { top: ringWidth + 3, left: ringWidth + 3, right: ringWidth + 3, bottom: ringWidth + 3 }]}>
         {isChampion ? (
@@ -51,9 +57,11 @@ export function AvatarLevelRing({ initials, level, size = 80, ringWidth = 4, use
           <Text style={[styles.avatarText, { fontSize: size * 0.3 }]}>{initials}</Text>
         )}
       </View>
-      <View style={styles.levelBadge}>
-        <Text style={styles.levelBadgeText}>{level?.level ?? 0}</Text>
-      </View>
+      {showLevel ? (
+        <View style={styles.levelBadge}>
+          <Text style={styles.levelBadgeText}>{level?.level ?? 0}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -16,16 +16,23 @@ import type { LevelProgress } from '@/lib/domain/xp';
 // reusing that one.
 export type SummaryPeriod = 'week' | 'month' | 'total';
 
+export interface MemberPeriodBreakdown {
+  userId: string;
+  fullName: string;
+  completedCount: number;
+  failedCount: number;
+}
+
 export interface GroupPeriodStat {
   completedDays: number;
   failedDays: number;
   consistencyPercent: number | null;
   gbScore: number | null;
   activeMemberCount: number;
-  /** How many members had zero failed days in this period — an admin_only membership (they
-   * don't play, see MyGroupSummary's own doc comment) shows this instead of "my" numbers above,
-   * which are always 0/null for them. */
-  membersOnTrackCount: number;
+  /** Per-member completed/failed for this period — an admin_only membership (they don't play,
+   * see MyGroupSummary's own doc comment) shows this instead of "my" numbers above, which are
+   * always 0/null for them. */
+  memberBreakdown: MemberPeriodBreakdown[];
 }
 
 export interface MyGroupSummary {
@@ -85,7 +92,7 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
     const perMember = records.map((m) => {
       const statuses = m.days.filter((d) => d.date >= rangeStart && d.date <= rangeEnd).map((d) => d.status);
       const tally = tallyAttendance(statuses);
-      return { userId: m.userId, completedCount: tally.completedCount, failedCount: tally.failedCount };
+      return { userId: m.userId, fullName: m.fullName, completedCount: tally.completedCount, failedCount: tally.failedCount };
     });
     const mine = perMember.find((m) => m.userId === userId);
     return {
@@ -94,7 +101,7 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
       consistencyPercent: mine ? consistencyPercent(mine.completedCount, mine.failedCount) : null,
       gbScore: mine ? gbScore(mine.completedCount, mine.failedCount) : null,
       activeMemberCount: perMember.length,
-      membersOnTrackCount: perMember.filter((m) => m.failedCount === 0).length,
+      memberBreakdown: perMember,
     };
   };
 

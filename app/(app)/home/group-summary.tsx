@@ -7,9 +7,14 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AvatarLevelRing } from '@/components/ui/AvatarLevelRing';
 import { useAuth } from '@/hooks/useAuth';
-import { useMyGroupsSummary, type MyGroupSummary, type SummaryPeriod } from '@/hooks/useMyGroupsSummary';
+import {
+  useMyGroupsSummary,
+  type MemberPeriodBreakdown,
+  type MyGroupSummary,
+  type SummaryPeriod,
+} from '@/hooks/useMyGroupsSummary';
 import { useActiveGroupStore } from '@/state/activeGroupStore';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const PERIOD_OPTIONS: { key: SummaryPeriod; label: string }[] = [
   { key: 'week', label: 'Semana' },
@@ -38,6 +43,25 @@ function getInitials(fullName: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+/** One player's initials + validos/fallados for the selected period — admin_only's replacement
+ * for the position/✓/✗/%/GB row, which is all about the signed-in member's own attendance and
+ * doesn't apply to someone who doesn't play in this group. */
+function PlayerChip({ member }: { member: MemberPeriodBreakdown }) {
+  return (
+    <View style={styles.playerChip}>
+      <View style={styles.playerAvatar}>
+        <Text style={styles.playerAvatarText}>{getInitials(member.fullName)}</Text>
+      </View>
+      <Text style={styles.playerCounts}>
+        <Text style={styles.playerCountGood}>{member.completedCount}</Text>
+        {' ✓  '}
+        <Text style={styles.playerCountBad}>{member.failedCount}</Text>
+        {' ✗'}
+      </Text>
+    </View>
+  );
+}
+
 function GroupSummaryCard({
   summary,
   period,
@@ -59,7 +83,13 @@ function GroupSummaryCard({
     <Pressable onPress={onPress}>
       <Card style={[styles.card, isActive && styles.cardActive]}>
         <View style={styles.cardTopRow}>
-          <AvatarLevelRing initials={initials} level={level} size={56} ringWidth={3} />
+          <AvatarLevelRing
+            initials={initials}
+            level={level}
+            size={56}
+            ringWidth={3}
+            showLevel={membership.status !== 'admin_only'}
+          />
           <View style={styles.cardTopInfo}>
             <View style={styles.headerRow}>
               <Text style={styles.groupName} numberOfLines={1}>
@@ -80,13 +110,15 @@ function GroupSummaryCard({
 
         {/* An admin_only membership doesn't play here — "my" position/✓/✗/%/GB would always be
             empty/zero, which read as if the admin had a (bad) attendance record of their own.
-            One short line about the actual players instead, same idea as stats.tsx's own
-            AdminOnlyGroupStats branch. */}
+            Each actual player's own initials + validos/fallados instead, same idea as stats.tsx's
+            own AdminOnlyGroupStats branch. */}
         {membership.status === 'admin_only' ? (
-          stat ? (
-            <Text style={styles.positionText}>
-              👥 {stat.membersOnTrackCount} de {stat.activeMemberCount} sin fallar
-            </Text>
+          stat && stat.memberBreakdown.length > 0 ? (
+            <View style={styles.playerChipRow}>
+              {stat.memberBreakdown.map((member) => (
+                <PlayerChip key={member.userId} member={member} />
+              ))}
+            </View>
           ) : null
         ) : (
           <>
@@ -230,4 +262,18 @@ const styles = StyleSheet.create({
   statBad: { color: colors.danger },
   statLabel: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   leagueText: { color: colors.warning, fontSize: 13, fontWeight: '600' },
+  playerChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'center' },
+  playerChip: { alignItems: 'center', width: 52, gap: 2 },
+  playerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerAvatarText: { color: colors.text, fontWeight: '700', fontSize: 12 },
+  playerCounts: { fontSize: 11, fontWeight: '700' },
+  playerCountGood: { color: colors.success },
+  playerCountBad: { color: colors.danger },
 });
