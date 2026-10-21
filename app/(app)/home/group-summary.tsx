@@ -95,7 +95,7 @@ function GroupSummaryCard({
                 {group.name}
               </Text>
               <View style={styles.headerBadges}>
-                {membership.status === 'admin_only' ? <Badge label="Solo administras" /> : null}
+                {membership.status === 'admin_only' ? <Badge label="Solo admin" /> : null}
                 {isActive ? <Badge label="Actual" tone="success" /> : null}
               </View>
             </View>

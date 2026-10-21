@@ -99,7 +99,7 @@ export default function GroupSelectScreen() {
             </View>
             {item.status === 'pending_deposit' ? <Badge label="Falta depósito" tone="warning" /> : null}
             {item.status === 'needs_recharge' ? <Badge label="Necesita recarga" tone="danger" /> : null}
-            {item.status === 'admin_only' ? <Badge label="Solo administras" /> : null}
+            {item.status === 'admin_only' ? <Badge label="Solo admin" /> : null}
           </Card>
         </Pressable>
       )}
