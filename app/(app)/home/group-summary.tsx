@@ -246,7 +246,6 @@ export default function GroupSummaryScreen() {
         />
       )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-      SectionSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />
   );
 }
@@ -260,6 +259,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
     backgroundColor: colors.background,
   },
