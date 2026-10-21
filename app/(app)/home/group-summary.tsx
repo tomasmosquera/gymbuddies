@@ -53,10 +53,9 @@ function PlayerChip({ member }: { member: MemberPeriodBreakdown }) {
         <Text style={styles.playerAvatarText}>{getInitials(member.fullName)}</Text>
       </View>
       <Text style={styles.playerCounts}>
-        <Text style={styles.playerCountGood}>{member.completedCount}</Text>
-        {' ✓  '}
-        <Text style={styles.playerCountBad}>{member.failedCount}</Text>
-        {' ✗'}
+        <Text style={styles.playerCountGood}>{member.completedCount} ✓</Text>
+        {'  '}
+        <Text style={styles.playerCountBad}>{member.failedCount} ✗</Text>
       </Text>
     </View>
   );
