@@ -17,6 +17,14 @@ const PERIOD_OPTIONS: { key: SummaryPeriod; label: string }[] = [
   { key: 'total', label: 'Acumulado' },
 ];
 
+type RoleFilter = 'all' | 'admin' | 'member';
+
+const ROLE_FILTER_OPTIONS: { key: RoleFilter; label: string }[] = [
+  { key: 'all', label: 'Todos' },
+  { key: 'admin', label: 'Admin' },
+  { key: 'member', label: 'Jugador' },
+];
+
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
@@ -51,7 +59,10 @@ function GroupSummaryCard({
               <Text style={styles.groupName} numberOfLines={1}>
                 {group.name}
               </Text>
-              {isActive ? <Badge label="Actual" tone="success" /> : null}
+              <View style={styles.headerBadges}>
+                {membership.role === 'admin' ? <Badge label="Admin" /> : null}
+                {isActive ? <Badge label="Actual" tone="success" /> : null}
+              </View>
             </View>
             {membership.status === 'pending_deposit' ? (
               <Badge label="Falta depósito" tone="warning" />
@@ -61,40 +72,54 @@ function GroupSummaryCard({
           </View>
         </View>
 
-        {stat ? (
-          <>
-            {/* Fixed regardless of which period tab is selected below — see
-                MyGroupSummary.position's doc comment for why. */}
+        {/* An admin_only membership doesn't play here — "my" position/✓/✗/%/GB would always be
+            empty/zero, which read as if the admin had a (bad) attendance record of their own.
+            One short line about the actual players instead, same idea as stats.tsx's own
+            AdminOnlyGroupStats branch. */}
+        {membership.status === 'admin_only' ? (
+          stat ? (
             <Text style={styles.positionText}>
-              {position ? `Posición #${position.rank} de ${position.of}` : 'Sin datos todavía'}
+              👥 {stat.membersOnTrackCount} de {stat.activeMemberCount} sin fallar
             </Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statTile}>
-                <Text style={[styles.statValue, styles.statGood]}>{stat.completedDays}</Text>
-                <Text style={styles.statLabel}>✓</Text>
-              </View>
-              <View style={styles.statTile}>
-                <Text style={[styles.statValue, styles.statBad]}>{stat.failedDays}</Text>
-                <Text style={styles.statLabel}>✗</Text>
-              </View>
-              <View style={styles.statTile}>
-                <Text style={styles.statValue}>{stat.consistencyPercent !== null ? `${stat.consistencyPercent}%` : '—'}</Text>
-                <Text style={styles.statLabel}>%</Text>
-              </View>
-              <View style={styles.statTile}>
-                <Text style={styles.statValue}>{stat.gbScore !== null ? `${stat.gbScore}%` : '—'}</Text>
-                <Text style={styles.statLabel}>GB</Text>
-              </View>
-            </View>
-          </>
-        ) : null}
+          ) : null
+        ) : (
+          <>
+            {stat ? (
+              <>
+                {/* Fixed regardless of which period tab is selected below — see
+                    MyGroupSummary.position's doc comment for why. */}
+                <Text style={styles.positionText}>
+                  {position ? `Posición #${position.rank} de ${position.of}` : 'Sin datos todavía'}
+                </Text>
+                <View style={styles.statsRow}>
+                  <View style={styles.statTile}>
+                    <Text style={[styles.statValue, styles.statGood]}>{stat.completedDays}</Text>
+                    <Text style={styles.statLabel}>✓</Text>
+                  </View>
+                  <View style={styles.statTile}>
+                    <Text style={[styles.statValue, styles.statBad]}>{stat.failedDays}</Text>
+                    <Text style={styles.statLabel}>✗</Text>
+                  </View>
+                  <View style={styles.statTile}>
+                    <Text style={styles.statValue}>{stat.consistencyPercent !== null ? `${stat.consistencyPercent}%` : '—'}</Text>
+                    <Text style={styles.statLabel}>%</Text>
+                  </View>
+                  <View style={styles.statTile}>
+                    <Text style={styles.statValue}>{stat.gbScore !== null ? `${stat.gbScore}%` : '—'}</Text>
+                    <Text style={styles.statLabel}>GB</Text>
+                  </View>
+                </View>
+              </>
+            ) : null}
 
-        {group.payout_mode === 'league' ? (
-          <Text style={styles.leagueText}>
-            Liga: {leaguePlace !== null ? `puesto ${leaguePlace} · ` : ''}
-            {group.currency} {(leagueAmount ?? 0).toLocaleString('es-CO')}
-          </Text>
-        ) : null}
+            {group.payout_mode === 'league' ? (
+              <Text style={styles.leagueText}>
+                Liga: {leaguePlace !== null ? `puesto ${leaguePlace} · ` : ''}
+                {group.currency} {(leagueAmount ?? 0).toLocaleString('es-CO')}
+              </Text>
+            ) : null}
+          </>
+        )}
       </Card>
     </Pressable>
   );
@@ -106,7 +131,10 @@ export default function GroupSummaryScreen() {
   const activeGroupId = useActiveGroupStore((s) => s.activeGroupId);
   const setActiveGroupId = useActiveGroupStore((s) => s.setActiveGroupId);
   const [period, setPeriod] = useState<SummaryPeriod>('week');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const filteredSummaries = summaries.filter((s) => roleFilter === 'all' || s.membership.role === roleFilter);
 
   // A group switch elsewhere (Perfil, or picking a different group here)
   // shouldn't leave this screen showing stale numbers for whichever group
@@ -142,16 +170,22 @@ export default function GroupSummaryScreen() {
   return (
     <FlatList
       contentContainerStyle={styles.container}
-      data={summaries}
+      data={filteredSummaries}
       keyExtractor={(item) => item.membership.group_id}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={styles.subtitle}>Toca un grupo para cambiarte a él.</Text>
+          <SegmentedControl options={ROLE_FILTER_OPTIONS} value={roleFilter} onChange={setRoleFilter} />
           <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
         </View>
       }
-      ListEmptyComponent={<EmptyState title="Sin grupos" description="Todavía no perteneces a ningún grupo." />}
+      ListEmptyComponent={
+        <EmptyState
+          title="Sin grupos"
+          description={summaries.length === 0 ? 'Todavía no perteneces a ningún grupo.' : 'No tienes grupos con ese filtro.'}
+        />
+      }
       renderItem={({ item }) => (
         <GroupSummaryCard
           summary={item}
@@ -176,6 +210,7 @@ const styles = StyleSheet.create({
   cardTopRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardTopInfo: { flex: 1, gap: 4 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  headerBadges: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   groupName: { ...typography.heading, color: colors.text, flexShrink: 1 },
   positionText: { color: colors.text, fontWeight: '700', fontSize: 14 },
   statsRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.lg },

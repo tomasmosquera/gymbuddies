@@ -22,6 +22,10 @@ export interface GroupPeriodStat {
   consistencyPercent: number | null;
   gbScore: number | null;
   activeMemberCount: number;
+  /** How many members had zero failed days in this period — an admin_only membership (they
+   * don't play, see MyGroupSummary's own doc comment) shows this instead of "my" numbers above,
+   * which are always 0/null for them. */
+  membersOnTrackCount: number;
 }
 
 export interface MyGroupSummary {
@@ -90,6 +94,7 @@ async function computeGroupSummary(membership: MembershipWithGroup, userId: stri
       consistencyPercent: mine ? consistencyPercent(mine.completedCount, mine.failedCount) : null,
       gbScore: mine ? gbScore(mine.completedCount, mine.failedCount) : null,
       activeMemberCount: perMember.length,
+      membersOnTrackCount: perMember.filter((m) => m.failedCount === 0).length,
     };
   };
 
