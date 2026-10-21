@@ -17,12 +17,18 @@ const PERIOD_OPTIONS: { key: SummaryPeriod; label: string }[] = [
   { key: 'total', label: 'Acumulado' },
 ];
 
-type RoleFilter = 'all' | 'admin' | 'member';
+// Keyed off membership.status, not .role — the user may well be the admin
+// (role: 'admin') in every single group they belong to, so a role-based
+// filter would never actually narrow anything for them. What they want to
+// tell apart is whether they personally play in a group at all: 'admin_only'
+// (admin, doesn't play) vs. everything else (they do, whether or not they're
+// also that group's admin).
+type RoleFilter = 'all' | 'adminOnly' | 'player';
 
 const ROLE_FILTER_OPTIONS: { key: RoleFilter; label: string }[] = [
   { key: 'all', label: 'Todos' },
-  { key: 'admin', label: 'Admin' },
-  { key: 'member', label: 'Jugador' },
+  { key: 'adminOnly', label: 'Solo admin' },
+  { key: 'player', label: 'Jugador' },
 ];
 
 function getInitials(fullName: string): string {
@@ -60,7 +66,7 @@ function GroupSummaryCard({
                 {group.name}
               </Text>
               <View style={styles.headerBadges}>
-                {membership.role === 'admin' ? <Badge label="Admin" /> : null}
+                {membership.status === 'admin_only' ? <Badge label="Solo administras" /> : null}
                 {isActive ? <Badge label="Actual" tone="success" /> : null}
               </View>
             </View>
@@ -134,7 +140,11 @@ export default function GroupSummaryScreen() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const filteredSummaries = summaries.filter((s) => roleFilter === 'all' || s.membership.role === roleFilter);
+  const filteredSummaries = summaries.filter((s) => {
+    if (roleFilter === 'all') return true;
+    const isAdminOnly = s.membership.status === 'admin_only';
+    return roleFilter === 'adminOnly' ? isAdminOnly : !isAdminOnly;
+  });
 
   // A group switch elsewhere (Perfil, or picking a different group here)
   // shouldn't leave this screen showing stale numbers for whichever group
