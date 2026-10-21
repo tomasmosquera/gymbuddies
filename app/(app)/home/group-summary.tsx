@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -171,21 +171,18 @@ export default function GroupSummaryScreen() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Player groups first (A-Z), then admin_only ones (A-Z) — two alphabetical
-  // runs rather than one flat alphabetical list, so "where do I actually
-  // play" stays grouped together above "where I just administrate".
-  const filteredSummaries = summaries
-    .filter((s) => {
-      if (roleFilter === 'all') return true;
-      const isAdminOnly = s.membership.status === 'admin_only';
-      return roleFilter === 'adminOnly' ? isAdminOnly : !isAdminOnly;
-    })
-    .sort((a, b) => {
-      const aAdminOnly = a.membership.status === 'admin_only';
-      const bAdminOnly = b.membership.status === 'admin_only';
-      if (aAdminOnly !== bAdminOnly) return aAdminOnly ? 1 : -1;
-      return a.membership.group.name.localeCompare(b.membership.group.name, 'es');
-    });
+  const byName = (a: MyGroupSummary, b: MyGroupSummary) => a.membership.group.name.localeCompare(b.membership.group.name, 'es');
+  const playerSummaries = summaries.filter((s) => s.membership.status !== 'admin_only').sort(byName);
+  const adminOnlySummaries = summaries.filter((s) => s.membership.status === 'admin_only').sort(byName);
+
+  // Two real sections ("where do I play" vs. "where I just administrate"),
+  // each alphabetical — not just a sort order, per explicit feedback that a
+  // flat list with the right order still read as one group. roleFilter hides
+  // whichever section doesn't match, rather than filtering within a section.
+  const sections = [
+    ...(roleFilter !== 'adminOnly' && playerSummaries.length > 0 ? [{ title: 'Jugador', data: playerSummaries }] : []),
+    ...(roleFilter !== 'player' && adminOnlySummaries.length > 0 ? [{ title: 'Solo admin', data: adminOnlySummaries }] : []),
+  ];
 
   // A group switch elsewhere (Perfil, or picking a different group here)
   // shouldn't leave this screen showing stale numbers for whichever group
@@ -219,11 +216,12 @@ export default function GroupSummaryScreen() {
   }
 
   return (
-    <FlatList
+    <SectionList
       contentContainerStyle={styles.container}
-      data={filteredSummaries}
+      sections={sections}
       keyExtractor={(item) => item.membership.group_id}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
+      stickySectionHeadersEnabled={false}
       ListHeaderComponent={
         <View style={styles.header}>
           <Text style={styles.subtitle}>Toca un grupo para cambiarte a él.</Text>
@@ -237,6 +235,7 @@ export default function GroupSummaryScreen() {
           description={summaries.length === 0 ? 'Todavía no perteneces a ningún grupo.' : 'No tienes grupos con ese filtro.'}
         />
       }
+      renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title.toUpperCase()}</Text>}
       renderItem={({ item }) => (
         <GroupSummaryCard
           summary={item}
@@ -247,6 +246,7 @@ export default function GroupSummaryScreen() {
         />
       )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+      SectionSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
     />
   );
 }
@@ -255,6 +255,14 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { padding: spacing.lg, backgroundColor: colors.background, flexGrow: 1 },
   header: { gap: spacing.md, marginBottom: spacing.md },
+  sectionHeader: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
   subtitle: { color: colors.textMuted, fontSize: 13 },
   card: { gap: spacing.sm },
   cardActive: { borderColor: colors.primary },

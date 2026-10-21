@@ -1,5 +1,5 @@
 import { useLayoutEffect } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
@@ -74,20 +74,23 @@ export default function GroupSelectScreen() {
     );
   }
 
-  // Player groups first (A-Z), then admin_only ones (A-Z) — same ordering as
-  // "Tus grupos" (home/group-summary.tsx).
-  const sortedMemberships = [...memberships].sort((a, b) => {
-    const aAdminOnly = a.status === 'admin_only';
-    const bAdminOnly = b.status === 'admin_only';
-    if (aAdminOnly !== bAdminOnly) return aAdminOnly ? 1 : -1;
-    return a.group.name.localeCompare(b.group.name, 'es');
-  });
+  // Two sections — everywhere the member actually plays, then everywhere
+  // they're admin_only — each alphabetical, same grouping as "Tus grupos"
+  // (home/group-summary.tsx).
+  const byName = (a: MembershipWithGroup, b: MembershipWithGroup) => a.group.name.localeCompare(b.group.name, 'es');
+  const playerMemberships = memberships.filter((m) => m.status !== 'admin_only').sort(byName);
+  const adminOnlyMemberships = memberships.filter((m) => m.status === 'admin_only').sort(byName);
+  const sections = [
+    ...(playerMemberships.length > 0 ? [{ title: 'Jugador', data: playerMemberships }] : []),
+    ...(adminOnlyMemberships.length > 0 ? [{ title: 'Solo admin', data: adminOnlyMemberships }] : []),
+  ];
 
   return (
-    <FlatList
+    <SectionList
       contentContainerStyle={styles.container}
-      data={sortedMemberships}
+      sections={sections}
       keyExtractor={(item) => item.id}
+      stickySectionHeadersEnabled={false}
       ListHeaderComponent={
         memberships.length === 0 ? (
           <View style={styles.welcome}>
@@ -99,6 +102,7 @@ export default function GroupSelectScreen() {
           </View>
         ) : null
       }
+      renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title.toUpperCase()}</Text>}
       renderItem={({ item }) => (
         <Pressable onPress={() => handleSelect(item)}>
           <Card style={[styles.row, item.group_id === activeGroupId && styles.rowActive]}>
@@ -113,6 +117,7 @@ export default function GroupSelectScreen() {
         </Pressable>
       )}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+      SectionSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       ListFooterComponent={
         <View style={styles.footer}>
           <Text style={styles.creditsText}>
@@ -147,6 +152,14 @@ export default function GroupSelectScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { padding: spacing.lg, backgroundColor: colors.background, flexGrow: 1 },
+  sectionHeader: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowActive: { borderColor: colors.primary },
   groupName: { color: colors.text, fontWeight: '700', fontSize: 16 },
