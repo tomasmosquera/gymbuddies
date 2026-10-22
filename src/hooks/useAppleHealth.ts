@@ -11,6 +11,12 @@ const SYNC_LOOKBACK_HOURS = 72;
  * feature ships (apple_health_prompted_at starts null for everyone).
  * Both RPCs it calls stamp apple_health_prompted_at, so neither answer
  * ("Conectar" or "Ahora no") ever shows it again.
+ *
+ * Waits on location_disclosure_acknowledged_at first — two Alert.alert calls
+ * firing on the same render race each other (RN can only really show one at
+ * a time), and the location disclosure is the one Google Play actually
+ * requires to come first (useLocationDisclosurePrompt), so this one simply
+ * holds off until that's been answered.
  */
 export function useAppleHealthOnboardingPrompt() {
   const { session, profile, refreshProfile } = useAuth();
@@ -18,6 +24,7 @@ export function useAppleHealthOnboardingPrompt() {
 
   useEffect(() => {
     if ((Platform.OS !== 'ios' && Platform.OS !== 'android') || !session || !profile || hasPromptedRef.current) return;
+    if (!profile.location_disclosure_acknowledged_at) return;
     if (profile.apple_health_prompted_at !== null) return;
     hasPromptedRef.current = true;
 

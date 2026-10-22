@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useAuthBootstrap } from '@/hooks/useAuth';
 import { useAppleHealthForegroundSync, useAppleHealthOnboardingPrompt } from '@/hooks/useAppleHealth';
+import { useLocationDisclosurePrompt } from '@/hooks/useLocationDisclosure';
 import { useNotificationTapRouting } from '@/hooks/useNotificationTapRouting';
 import { useDeferredInviteCode } from '@/hooks/useDeferredInviteCode';
 import { useAppUpdateCheck } from '@/hooks/useAppUpdateCheck';
@@ -25,6 +26,7 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   useAuthBootstrap();
+  useLocationDisclosurePrompt();
   useAppleHealthOnboardingPrompt();
   useAppleHealthForegroundSync();
   useNotificationTapRouting();

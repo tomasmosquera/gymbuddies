@@ -58,6 +58,8 @@ export type Profile = {
   progressive_overload_enabled: boolean;
   /** Optional, in kg — see set_body_weight_kg. Only used to personalize a finished workout's calorie estimate (estimateWorkoutCalories) when Health/Health Connect's own body-mass record isn't available; never shown/compared across members. Null until the member enters it (or Health has one to read live at estimate time, which doesn't need this field at all). */
   body_weight_kg: number | null;
+  /** Set the first time the user sees the one-time in-app location disclosure (Google Play's Prominent Disclosure & Consent requirement) — see acknowledge_location_disclosure. Null means it hasn't been shown yet, so useLocationDisclosurePrompt still owes them that Alert before any screen is allowed to request the OS location permission. */
+  location_disclosure_acknowledged_at: string | null;
   created_at: string;
 };
 
@@ -1001,6 +1003,7 @@ export type Database = {
       };
       set_apple_health_enabled: { Args: { p_enabled: boolean }; Returns: void };
       dismiss_apple_health_prompt: { Args: Record<string, never>; Returns: void };
+      acknowledge_location_disclosure: { Args: Record<string, never>; Returns: void };
       set_checkin_active_energy: { Args: { p_checkin_id: string; p_active_energy_kcal: number }; Returns: void };
       set_auto_checkin_other_groups: { Args: { p_enabled: boolean }; Returns: void };
       set_progressive_overload_enabled: { Args: { p_enabled: boolean }; Returns: void };

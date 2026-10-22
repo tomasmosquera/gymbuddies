@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import * as Location from 'expo-location';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface LockedLocation {
   latitude: number;
@@ -62,11 +63,22 @@ async function getCurrentPositionWithFallback(): Promise<Location.LocationObject
  * a fix is locked — there is no "skip location" fallback by product design.
  */
 export function useLocationLock() {
+  const { profile } = useAuth();
   const [status, setStatus] = useState<LocationLockStatus>('idle');
   const [location, setLocation] = useState<LockedLocation | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const requestLock = useCallback(async () => {
+    // Google Play's Prominent Disclosure requirement: the OS permission
+    // dialog must never fire before the in-app disclosure has been shown
+    // and acknowledged (useLocationDisclosurePrompt, mounted at the root
+    // layout). That Alert normally resolves before any screen using this
+    // hook is even reachable, but this guard closes the gap for whatever
+    // rare case it hasn't yet (e.g. a cold start landing straight on a
+    // screen that calls requestLock before the root layout's own effect has
+    // run) — staying 'idle' rather than silently requesting anyway.
+    if (!profile?.location_disclosure_acknowledged_at) return;
+
     setStatus('requesting');
     setErrorMessage(null);
     try {
@@ -87,7 +99,7 @@ export function useLocationLock() {
       setErrorMessage(err instanceof Error ? err.message : 'No se pudo obtener tu ubicación');
       setStatus('error');
     }
-  }, []);
+  }, [profile?.location_disclosure_acknowledged_at]);
 
   return { status, location, errorMessage, requestLock };
 }
