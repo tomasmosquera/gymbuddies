@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
@@ -223,6 +223,26 @@ export default function ExerciseDetailScreen() {
   // pill. Never writes back to profile.weight_unit, just starts from it.
   const [unit, setUnit] = useState<WeightUnit>(profile?.weight_unit ?? 'kg');
   const exercise = exercises.find((e) => e.id === exerciseId) ?? null;
+  const navigation = useNavigation();
+
+  // Pushed into the header (next to the static "Ejercicio" title set by
+  // profile/_layout.tsx) rather than inline in the scrollable content — same
+  // setOptions idiom as group-select.tsx's own headerLeft. Depends on `unit`
+  // so the KG/LBS label itself updates after a tap.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => setUnit((u) => (u === 'kg' ? 'lbs' : 'kg'))}
+          style={styles.unitPill}
+          accessibilityRole="button"
+          accessibilityLabel="Cambiar unidad de peso para esta vista"
+        >
+          <Text style={styles.unitPillText}>{unit.toUpperCase()}</Text>
+        </Pressable>
+      ),
+    });
+  }, [navigation, unit]);
 
   if (isLoading || !exercise) {
     return (
@@ -259,17 +279,7 @@ export default function ExerciseDetailScreen() {
         )}
       </View>
 
-      <View style={styles.nameRow}>
-        <Text style={[styles.name, styles.nameText]}>{exercise.name}</Text>
-        <Pressable
-          onPress={() => setUnit((u) => (u === 'kg' ? 'lbs' : 'kg'))}
-          style={styles.unitPill}
-          accessibilityRole="button"
-          accessibilityLabel="Cambiar unidad de peso para esta vista"
-        >
-          <Text style={styles.unitPillText}>{unit.toUpperCase()}</Text>
-        </Pressable>
-      </View>
+      <Text style={styles.name}>{exercise.name}</Text>
       <Text style={styles.muscleLine}>
         Primario: {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
         {exercise.secondary_muscles.length > 0 ? `  ·  Secundario: ${exercise.secondary_muscles.join(', ')}` : ''}
@@ -317,9 +327,8 @@ const styles = StyleSheet.create({
   imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   imagePlaceholderText: { color: colors.textMuted, fontSize: 13 },
   name: { ...typography.heading, fontSize: 20, color: colors.text },
-  nameRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  nameText: { flex: 1 },
   unitPill: {
+    marginRight: spacing.md,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: radii.pill,
