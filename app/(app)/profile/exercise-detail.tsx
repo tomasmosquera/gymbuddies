@@ -218,7 +218,10 @@ export default function ExerciseDetailScreen() {
   const { profile, session: authSession } = useAuth();
   const { exercises, isLoading } = useExerciseCatalog();
   const [tab, setTab] = useState<DetailTab>('resumen');
-  const unit = profile?.weight_unit ?? 'kg';
+  // Local to this screen only — a quick "what would this look like in the
+  // other unit" toggle, same idea as workout-session.tsx's own per-card
+  // pill. Never writes back to profile.weight_unit, just starts from it.
+  const [unit, setUnit] = useState<WeightUnit>(profile?.weight_unit ?? 'kg');
   const exercise = exercises.find((e) => e.id === exerciseId) ?? null;
 
   if (isLoading || !exercise) {
@@ -256,7 +259,17 @@ export default function ExerciseDetailScreen() {
         )}
       </View>
 
-      <Text style={styles.name}>{exercise.name}</Text>
+      <View style={styles.nameRow}>
+        <Text style={[styles.name, styles.nameText]}>{exercise.name}</Text>
+        <Pressable
+          onPress={() => setUnit((u) => (u === 'kg' ? 'lbs' : 'kg'))}
+          style={styles.unitPill}
+          accessibilityRole="button"
+          accessibilityLabel="Cambiar unidad de peso para esta vista"
+        >
+          <Text style={styles.unitPillText}>{unit.toUpperCase()}</Text>
+        </Pressable>
+      </View>
       <Text style={styles.muscleLine}>
         Primario: {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
         {exercise.secondary_muscles.length > 0 ? `  ·  Secundario: ${exercise.secondary_muscles.join(', ')}` : ''}
@@ -304,6 +317,16 @@ const styles = StyleSheet.create({
   imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   imagePlaceholderText: { color: colors.textMuted, fontSize: 13 },
   name: { ...typography.heading, fontSize: 20, color: colors.text },
+  nameRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  nameText: { flex: 1 },
+  unitPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  unitPillText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   muscleLine: { color: colors.textMuted, fontSize: 13 },
   tabContent: { gap: spacing.md },
   recordsTitle: { ...typography.heading, fontSize: 15, color: colors.text },
