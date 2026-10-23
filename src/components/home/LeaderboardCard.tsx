@@ -277,7 +277,14 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   rankSpacer: { width: 28 },
   avatarSpacer: { width: 28 },
-  rowBodySpacer: { flex: 1, minWidth: 70 },
+  // maxWidth caps a long full name (previously unbounded — flex:1 with no
+  // ceiling let it eat the row and push ✓/✗/%/GB out past the screen edge,
+  // only reachable by scrolling the horizontal ScrollView). 130 fits roughly
+  // 16-18 characters of this bold 14px name text before numberOfLines={1}'s
+  // own ellipsis kicks in — exact count varies per letter width, which is
+  // why this caps pixels, not a character count. rowBody/rowBodySpacer stay
+  // identical so the header's ✓/✗/%/GB line up with each row's own stats.
+  rowBodySpacer: { flex: 1, minWidth: 70, maxWidth: 130 },
   headerLabel: { width: 38, color: colors.textMuted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   list: { gap: spacing.sm },
   // Vertical/horizontal padding lives on every row (not just relegated
@@ -296,7 +303,7 @@ const styles = StyleSheet.create({
   rowDescenso: { backgroundColor: 'rgba(255, 107, 107, 0.14)' },
   rank: { width: 28, color: colors.textMuted, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   rankMvp: { color: colors.primary, fontSize: 11 },
-  rowBody: { flex: 1, minWidth: 70 },
+  rowBody: { flex: 1, minWidth: 70, maxWidth: 130 },
   name: { color: colors.text, fontWeight: '600' },
   nameMe: { color: colors.primary },
   owed: { color: colors.warning, fontSize: 12, marginTop: 1, fontWeight: '600' },
