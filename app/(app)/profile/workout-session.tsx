@@ -198,6 +198,8 @@ function ExerciseCard({
   onDeleteSet,
   onRemoveExercise,
   onReplaceExercise,
+  onSetRest,
+  onSetNotes,
   defaultUnit,
   barWeightKg,
 }: {
@@ -208,6 +210,8 @@ function ExerciseCard({
   onDeleteSet: (setId: string) => void;
   onRemoveExercise: (sessionExerciseId: string) => void;
   onReplaceExercise: (sessionExerciseId: string) => void;
+  onSetRest: (sessionExerciseId: string, restSeconds: number | null) => void;
+  onSetNotes: (sessionExerciseId: string, notes: string | null) => void;
   defaultUnit: WeightUnit;
   barWeightKg: number;
 }) {
@@ -240,6 +244,38 @@ function ExerciseCard({
   const [editWeight, setEditWeight] = useState('');
   const [editReps, setEditReps] = useState('');
   const { sets: previousSets } = usePreviousExercisePerformance(sessionExercise.exercise_id, sessionId);
+
+  // Today's rest timer and note for this exercise — session-scoped (see
+  // set_session_exercise_rest/set_session_exercise_notes), never touching
+  // the routine's own plan, same as every other edit in this card.
+  const [isEditingRest, setIsEditingRest] = useState(false);
+  const [restMinutesInput, setRestMinutesInput] = useState('');
+  const [restSecondsInput, setRestSecondsInput] = useState('');
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesInput, setNotesInput] = useState('');
+
+  const startEditingRest = () => {
+    const total = sessionExercise.rest_seconds ?? 0;
+    setRestMinutesInput(total > 0 ? String(Math.floor(total / 60)) : '');
+    setRestSecondsInput(total > 0 ? String(total % 60) : '');
+    setIsEditingRest(true);
+  };
+
+  const saveRest = () => {
+    const total = (Number(restMinutesInput) || 0) * 60 + (Number(restSecondsInput) || 0);
+    onSetRest(sessionExercise.id, total > 0 ? total : null);
+    setIsEditingRest(false);
+  };
+
+  const startEditingNotes = () => {
+    setNotesInput(sessionExercise.notes ?? '');
+    setIsEditingNotes(true);
+  };
+
+  const saveNotes = () => {
+    onSetNotes(sessionExercise.id, notesInput);
+    setIsEditingNotes(false);
+  };
 
   const startEditingSet = (set: WorkoutSet) => {
     setEditingSetId(set.id);
@@ -391,6 +427,65 @@ function ExerciseCard({
           <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
         </Pressable>
       </View>
+
+      {isEditingRest ? (
+        <View style={styles.restEditRow}>
+          <Ionicons name="timer-outline" size={16} color={colors.primary} />
+          <TextInput
+            style={styles.restEditInput}
+            value={restMinutesInput}
+            onChangeText={(t) => setRestMinutesInput(t.replace(/[^0-9]/g, ''))}
+            keyboardType="numeric"
+            placeholder="0"
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+          />
+          <Text style={styles.restUnit}>min</Text>
+          <TextInput
+            style={styles.restEditInput}
+            value={restSecondsInput}
+            onChangeText={(t) => setRestSecondsInput(t.replace(/[^0-9]/g, ''))}
+            keyboardType="numeric"
+            placeholder="0"
+            placeholderTextColor={colors.textMuted}
+          />
+          <Text style={styles.restUnit}>seg</Text>
+          <Pressable onPress={saveRest} hitSlop={8} accessibilityRole="button" accessibilityLabel="Guardar descanso">
+            <Ionicons name="checkmark-circle-outline" size={20} color={colors.primary} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable onPress={startEditingRest} style={styles.restRow} accessibilityRole="button" accessibilityLabel="Editar descanso de este ejercicio">
+          <Ionicons name="timer-outline" size={16} color={colors.textMuted} />
+          <Text style={styles.restRowText}>
+            {sessionExercise.rest_seconds ? `Descanso: ${formatDuration(sessionExercise.rest_seconds)}` : '+ Agregar descanso'}
+          </Text>
+        </Pressable>
+      )}
+
+      {isEditingNotes ? (
+        <View style={styles.notesEditRow}>
+          <TextInput
+            style={styles.notesEditInput}
+            value={notesInput}
+            onChangeText={setNotesInput}
+            placeholder="Ej. alternando cada brazo, 8-9 RPE"
+            placeholderTextColor={colors.textMuted}
+            multiline
+            autoFocus
+            maxLength={200}
+          />
+          <Pressable onPress={saveNotes} hitSlop={8} accessibilityRole="button" accessibilityLabel="Guardar nota" style={styles.notesSaveButton}>
+            <Ionicons name="checkmark-circle-outline" size={20} color={colors.primary} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable onPress={startEditingNotes} accessibilityRole="button" accessibilityLabel="Editar nota de este ejercicio">
+          <Text style={styles.notesRowText} numberOfLines={2}>
+            {sessionExercise.notes || '+ Agregar nota'}
+          </Text>
+        </Pressable>
+      )}
 
       {/* Only for an exercise added mid-session (not part of the routine's own
           plan) — those never get an ANTERIOR column (target_sets_snapshot is
@@ -548,8 +643,20 @@ function ExerciseCard({
  */
 export default function WorkoutSessionScreen() {
   const { profile } = useAuth();
-  const { session, isLoading, addExercise, removeExercise, replaceExercise, logSet, updateLoggedSet, deleteLoggedSet, finish, discard } =
-    useWorkoutSession();
+  const {
+    session,
+    isLoading,
+    addExercise,
+    removeExercise,
+    replaceExercise,
+    setExerciseRest,
+    setExerciseNotes,
+    logSet,
+    updateLoggedSet,
+    deleteLoggedSet,
+    finish,
+    discard,
+  } = useWorkoutSession();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   // Which row's "Reemplazar" was tapped, if any — set while its own picker is open, read once a
   // substitute is actually chosen (see handleReplaceExercise), null the rest of the time. A
@@ -681,6 +788,22 @@ export default function WorkoutSessionScreen() {
       await removeExercise(sessionExerciseId);
     } catch (err) {
       Alert.alert('No se pudo quitar el ejercicio', friendlyErrorMessage(err));
+    }
+  };
+
+  const handleSetRest = async (sessionExerciseId: string, restSeconds: number | null) => {
+    try {
+      await setExerciseRest(sessionExerciseId, restSeconds);
+    } catch (err) {
+      Alert.alert('No se pudo guardar el descanso', friendlyErrorMessage(err));
+    }
+  };
+
+  const handleSetNotes = async (sessionExerciseId: string, notes: string | null) => {
+    try {
+      await setExerciseNotes(sessionExerciseId, notes);
+    } catch (err) {
+      Alert.alert('No se pudo guardar la nota', friendlyErrorMessage(err));
     }
   };
 
@@ -826,6 +949,8 @@ export default function WorkoutSessionScreen() {
             onDeleteSet={deleteLoggedSet}
             onRemoveExercise={handleRemoveExercise}
             onReplaceExercise={setReplacingSessionExerciseId}
+            onSetRest={handleSetRest}
+            onSetNotes={handleSetNotes}
             defaultUnit={unit}
             barWeightKg={profile?.default_bar_weight_kg ?? 20}
           />
@@ -897,6 +1022,36 @@ const styles = StyleSheet.create({
   },
   unitPillText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   previousLine: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic' },
+  restRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  restRowText: { color: colors.textMuted, fontSize: 13 },
+  restEditRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  restEditInput: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    color: colors.text,
+    fontSize: 13,
+    width: 44,
+    textAlign: 'center',
+  },
+  restUnit: { color: colors.textMuted, fontSize: 12 },
+  notesRowText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
+  notesEditRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.xs },
+  notesEditInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+    color: colors.text,
+    fontSize: 13,
+  },
+  notesSaveButton: { paddingBottom: spacing.xs + 2 },
   overloadBanner: {
     flexDirection: 'row',
     alignItems: 'center',

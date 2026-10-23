@@ -651,8 +651,10 @@ export type WorkoutSessionExercise = {
   exercise_id: string;
   sort_order: number;
   target_sets_snapshot: WorkoutSessionSetTarget[];
-  /** Frozen from routine_exercises.rest_seconds at session start — null for a freeform-added exercise. */
+  /** Frozen from routine_exercises.rest_seconds at session start (null for a freeform-added exercise) — editable afterwards for TODAY only via set_session_exercise_rest, never writing back to the routine itself. */
   rest_seconds: number | null;
+  /** A free-text note for today's instance of this exercise ("alternando cada brazo", "8-9 RPE") — set_session_exercise_notes, session-scoped only, never the routine's own notes. */
+  notes: string | null;
   created_at: string;
 };
 
@@ -962,6 +964,8 @@ export type Database = {
       add_session_exercise: { Args: { p_session_id: string; p_exercise_id: string }; Returns: WorkoutSessionExercise };
       remove_session_exercise: { Args: { p_session_exercise_id: string }; Returns: void };
       replace_session_exercise: { Args: { p_session_exercise_id: string; p_new_exercise_id: string }; Returns: WorkoutSessionExercise };
+      set_session_exercise_rest: { Args: { p_session_exercise_id: string; p_rest_seconds: number | null }; Returns: WorkoutSessionExercise };
+      set_session_exercise_notes: { Args: { p_session_exercise_id: string; p_notes: string | null }; Returns: WorkoutSessionExercise };
       log_set: {
         Args: { p_session_exercise_id: string; p_reps: number; p_weight?: number | null; p_unit?: 'kg' | 'lbs'; p_is_warmup?: boolean };
         Returns: WorkoutSet;

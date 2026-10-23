@@ -131,6 +131,43 @@ export function useWorkoutSession() {
     [refresh]
   );
 
+  // Session-scoped only, same "today's workout, not the routine" idiom as
+  // removeExercise/replaceExercise above — the routine's own rest_seconds is
+  // untouched, so the next time it's started fresh it's back to whatever the
+  // routine plans. null clears today's rest entirely (no timer on log).
+  const setExerciseRest = useCallback(async (sessionExerciseId: string, restSeconds: number | null) => {
+    const data = await retryOnTransientNetworkError(async () => {
+      const { data, error } = await supabase.rpc('set_session_exercise_rest', {
+        p_session_exercise_id: sessionExerciseId,
+        p_rest_seconds: restSeconds,
+      });
+      if (error) throw new Error(error.message);
+      return data;
+    });
+    setSession((prev) =>
+      prev
+        ? { ...prev, exercises: prev.exercises.map((se) => (se.id === sessionExerciseId ? { ...se, rest_seconds: data.rest_seconds } : se)) }
+        : prev
+    );
+  }, []);
+
+  // Same session-scoped idiom as setExerciseRest above, for a free-text note
+  // on today's instance of this exercise ("alternando cada brazo", "8-9
+  // RPE") — never the routine's own notes.
+  const setExerciseNotes = useCallback(async (sessionExerciseId: string, notes: string | null) => {
+    const data = await retryOnTransientNetworkError(async () => {
+      const { data, error } = await supabase.rpc('set_session_exercise_notes', {
+        p_session_exercise_id: sessionExerciseId,
+        p_notes: notes,
+      });
+      if (error) throw new Error(error.message);
+      return data;
+    });
+    setSession((prev) =>
+      prev ? { ...prev, exercises: prev.exercises.map((se) => (se.id === sessionExerciseId ? { ...se, notes: data.notes } : se)) } : prev
+    );
+  }, []);
+
   // Both log_set and update_set already return the persisted row — splicing
   // it straight into local state means the newly-completed set appears the
   // moment this one RPC resolves, instead of waiting on a second round trip
@@ -266,6 +303,8 @@ export function useWorkoutSession() {
     addExercise,
     removeExercise,
     replaceExercise,
+    setExerciseRest,
+    setExerciseNotes,
     logSet,
     updateLoggedSet,
     deleteLoggedSet,
