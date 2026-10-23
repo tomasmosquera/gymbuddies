@@ -334,6 +334,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.primary,
+    backgroundColor: 'transparent',
   },
   unitPillText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   muscleLine: { color: colors.textMuted, fontSize: 13 },
