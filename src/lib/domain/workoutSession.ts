@@ -15,13 +15,18 @@ import type { WorkoutSessionSetTarget } from '@/lib/supabase/types';
  * targetRepsMax are the full range, for the header display) — reps stay the
  * routine's own goal always, by explicit product decision, never history's,
  * unlike suggestedWeight. suggestedWeight is the SUGGESTED weight (from this
- * routine's own history when available — see WorkoutSessionSetTarget's doc
- * comment — else the routine's static plan, plus a Progressive Overload
- * increment when isProgressiveOverloadSuggestion is true, which the UI
- * highlights); previousWeight/previousReps are that same lookup's raw,
- * unfallback-ed, un-incremented answer, for the read-only "Anterior" column
- * ('' when there's no such history at all, same empty-string convention as
- * every other text field here).
+ * routine's own history when available, else any other routine's most
+ * recent — see WorkoutSessionSetTarget's doc comment — else the routine's
+ * static plan, plus a Progressive Overload increment when
+ * isProgressiveOverloadSuggestion is true, which the UI highlights);
+ * previousWeight/previousReps are that same lookup's raw, unfallback-ed,
+ * un-incremented answer, for the read-only "Anterior" column — but ONLY when
+ * it's genuinely this same routine's own history (target.is_last_time
+ * false). The column is reserved for that; an any-routine fallback still
+ * seeds suggestedWeight above, but previousWeight/previousReps stay '' so
+ * the column doesn't show it — the UI puts that in its own "Última vez"
+ * line instead (same empty-string convention as every other text field here
+ * either way).
  */
 export interface PendingSetRow {
   targetReps: string;
@@ -45,8 +50,8 @@ function draftFromTarget(target: WorkoutSessionSetTarget | undefined, unit: Weig
     targetWeight: '',
     suggestedWeight: target?.target_weight_kg != null ? formatWeightUnit(target.target_weight_kg, unit) : '',
     isFailureTarget: target?.is_failure_target ?? false,
-    previousWeight: target?.previous_weight_kg != null ? formatWeightUnit(target.previous_weight_kg, unit) : '',
-    previousReps: target?.previous_reps != null ? String(target.previous_reps) : '',
+    previousWeight: target && !target.is_last_time && target.previous_weight_kg != null ? formatWeightUnit(target.previous_weight_kg, unit) : '',
+    previousReps: target && !target.is_last_time && target.previous_reps != null ? String(target.previous_reps) : '',
     isProgressiveOverloadSuggestion: target?.is_progressive_overload_suggestion ?? false,
   };
 }

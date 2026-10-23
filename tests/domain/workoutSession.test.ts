@@ -125,6 +125,13 @@ describe('initialPendingRows', () => {
     expect(rows[0].previousReps).toBe('');
   });
 
+  it('leaves previousWeight/previousReps blank for an any-routine fallback — the ANTERIOR column is this same routine only, even though suggestedWeight still uses it', () => {
+    const rows = initialPendingRows([target(8, 10, 27, false, 27, 8, false, true)], 0, 'kg');
+    expect(rows[0].suggestedWeight).toBe('27.0');
+    expect(rows[0].previousWeight).toBe('');
+    expect(rows[0].previousReps).toBe('');
+  });
+
   it('flags a Progressive Overload suggestion when the server marked one', () => {
     const rows = initialPendingRows([target(8, 10, 32.5, false, 30, 10, true)], 0, 'kg');
     expect(rows[0].isProgressiveOverloadSuggestion).toBe(true);

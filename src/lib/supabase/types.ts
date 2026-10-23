@@ -625,13 +625,16 @@ export type WorkoutSession = {
  * every set and the member has that toggle on (is_progressive_overload_suggestion
  * marks exactly when this happened — the UI highlights it). previous_weight_kg/
  * previous_reps are that same lookup's raw answer, always the true
- * historical value (never the routine's plan, never the PO increment) —
- * what the UI's read-only "Anterior" column shows, both null with no such
- * history at all. is_last_time marks when that history came from the
- * any-routine fallback rather than this same routine (a brand new routine,
- * or this exercise just swapped in) — the UI relabels the column "Última
- * vez" instead of "Anterior" whenever it's true; the PO increment never
- * applies in that case (see start_workout_session).
+ * historical value (never the routine's plan, never the PO increment), both
+ * null with no such history at all. is_last_time marks when that history
+ * came from the any-routine fallback rather than this same routine (a brand
+ * new routine, or this exercise just swapped in) — the PO increment never
+ * applies in that case (see start_workout_session). The "Anterior" column
+ * is reserved for this same routine's own history ONLY — the UI shows
+ * previous_weight_kg/previous_reps there exclusively when is_last_time is
+ * false; when it's true, that same fallback data instead feeds a separate
+ * "Última vez" line (no fixed per-set position to align a column against
+ * once it's a different routine's own plan).
  */
 export type WorkoutSessionSetTarget = {
   target_reps_min: number;

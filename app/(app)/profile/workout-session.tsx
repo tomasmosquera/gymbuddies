@@ -36,15 +36,17 @@ import { useExercisePickerDetourStore } from '@/state/exercisePickerDetourStore'
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
 
-/** "60 kg × 8" for the read-only ANTERIOR/ÚLTIMA VEZ column — the exact weight/reps actually lifted last time (see WorkoutSessionSetTarget's doc comment), never the routine's own plan. A dash with no such history at all (first time ever doing this exercise, or this position has never been logged with a weight in it). */
+/** "60 kg × 8" for the read-only ANTERIOR column — the exact weight/reps actually lifted last time THIS SAME routine was done at this set position, never the routine's own plan and never an any-routine fallback (is_last_time true reads as no data here — see WorkoutSessionSetTarget's doc comment, and the separate "Última vez" line below for that case). A dash with no such history at all. */
 function formatPreviousSet(target: WorkoutSessionSetTarget | undefined, unit: WeightUnit): string {
-  if (!target || target.previous_weight_kg === null || target.previous_reps === null) return '—';
+  if (!target || target.is_last_time || target.previous_weight_kg === null || target.previous_reps === null) return '—';
   return formatSetLine({ reps: target.previous_reps, weightKg: target.previous_weight_kg, isWarmup: false }, unit);
 }
 
-/** "ANTERIOR" for this same routine's own history, "ÚLTIMA VEZ" when that's empty and the column is instead showing the last time this exercise was done in any other routine (see is_last_time on WorkoutSessionSetTarget). */
-function previousColumnLabel(snapshot: WorkoutSessionSetTarget[]): string {
-  return snapshot.some((t) => t.is_last_time) ? 'ÚLTIMA VEZ' : 'ANTERIOR';
+/** Every planned set carrying any-routine fallback history (is_last_time) — the ANTERIOR column never shows these, so they surface instead in the "Última vez" line next to formatSetLine, same shape as a freeform exercise's own previousSets. */
+function lastTimeFallbackSets(snapshot: WorkoutSessionSetTarget[]): { reps: number; weightKg: number | null }[] {
+  return snapshot
+    .filter((t) => t.is_last_time && t.previous_weight_kg !== null && t.previous_reps !== null)
+    .map((t) => ({ reps: t.previous_reps as number, weightKg: t.previous_weight_kg }));
 }
 
 /** "8-10" (or just "8" when the range is a single number) — shown once in the REPS header, from the first planned set, as a reminder of the goal range. Different sets can plan different ranges (a pyramid scheme); this is only a representative hint, not per-row. */
@@ -487,14 +489,25 @@ function ExerciseCard({
         </Pressable>
       )}
 
-      {/* Only for an exercise added mid-session (not part of the routine's own
-          plan) — those never get an ANTERIOR column (target_sets_snapshot is
-          empty), so this is their only historical reference. A planned
-          exercise already shows the exact same info per set in ANTERIOR
-          below; repeating it here would just be the same numbers twice. */}
-      {sessionExercise.target_sets_snapshot.length === 0 && previousSets && previousSets.length > 0 ? (
+      {/* One line, never a column — the ANTERIOR column is reserved for this
+          same routine's own history, which neither case here has: a
+          freeform exercise (no plan at all, so no fixed position to begin
+          with — reads previousSets, the generic any-exercise lookup) or a
+          planned one that's never been done in THIS routine before
+          (is_last_time — reads the snapshot's own any-routine fallback
+          data instead, already matched by position server-side). */}
+      {sessionExercise.target_sets_snapshot.length === 0 ? (
+        previousSets && previousSets.length > 0 ? (
+          <Text style={styles.previousLine} numberOfLines={1}>
+            Última vez: {previousSets.map((s) => formatSetLine({ reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup }, unit)).join(', ')}
+          </Text>
+        ) : null
+      ) : lastTimeFallbackSets(sessionExercise.target_sets_snapshot).length > 0 ? (
         <Text style={styles.previousLine} numberOfLines={1}>
-          Última vez: {previousSets.map((s) => formatSetLine({ reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup }, unit)).join(', ')}
+          Última vez:{' '}
+          {lastTimeFallbackSets(sessionExercise.target_sets_snapshot)
+            .map((s) => formatSetLine({ reps: s.reps, weightKg: s.weightKg, isWarmup: false }, unit))
+            .join(', ')}
         </Text>
       ) : null}
 
@@ -507,7 +520,7 @@ function ExerciseCard({
 
       <View style={styles.setsTableHeader}>
         <Text style={[styles.tableHeaderCell, styles.setColumn]}>SERIE</Text>
-        <Text style={[styles.tableHeaderCell, styles.previousColumn]}>{previousColumnLabel(sessionExercise.target_sets_snapshot)}</Text>
+        <Text style={[styles.tableHeaderCell, styles.previousColumn]}>ANTERIOR</Text>
         <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{unit.toUpperCase()}</Text>
         <Text style={[styles.tableHeaderCell, styles.repsColumn]}>
           REPS{sessionExercise.target_sets_snapshot[0] ? ` (${repRangeLabel(sessionExercise.target_sets_snapshot[0])})` : ''}
