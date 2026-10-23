@@ -16,7 +16,8 @@ const target = (
   isFailureTarget = false,
   previousKg: number | null = null,
   previousReps: number | null = null,
-  isPoSuggestion = false
+  isPoSuggestion = false,
+  isLastTime = false
 ): WorkoutSessionSetTarget => ({
   target_reps_min: repsMin,
   target_reps_max: repsMax,
@@ -25,6 +26,7 @@ const target = (
   previous_weight_kg: previousKg,
   previous_reps: previousReps,
   is_progressive_overload_suggestion: isPoSuggestion,
+  is_last_time: isLastTime,
 });
 
 describe('initialPendingRows', () => {

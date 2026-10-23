@@ -36,10 +36,15 @@ import { useExercisePickerDetourStore } from '@/state/exercisePickerDetourStore'
 import { colors, radii, spacing, typography } from '@/constants/theme';
 import type { Exercise, WorkoutSessionSetTarget, WorkoutSet } from '@/lib/supabase/types';
 
-/** "60 kg × 8" for the read-only ANTERIOR column — the exact weight/reps actually lifted last time this routine was done at this set position (see WorkoutSessionSetTarget's doc comment), never the routine's own plan. A dash with no such history at all (first time doing this routine, or this position/exercise has never been logged with a weight in it). */
+/** "60 kg × 8" for the read-only ANTERIOR/ÚLTIMA VEZ column — the exact weight/reps actually lifted last time (see WorkoutSessionSetTarget's doc comment), never the routine's own plan. A dash with no such history at all (first time ever doing this exercise, or this position has never been logged with a weight in it). */
 function formatPreviousSet(target: WorkoutSessionSetTarget | undefined, unit: WeightUnit): string {
   if (!target || target.previous_weight_kg === null || target.previous_reps === null) return '—';
   return formatSetLine({ reps: target.previous_reps, weightKg: target.previous_weight_kg, isWarmup: false }, unit);
+}
+
+/** "ANTERIOR" for this same routine's own history, "ÚLTIMA VEZ" when that's empty and the column is instead showing the last time this exercise was done in any other routine (see is_last_time on WorkoutSessionSetTarget). */
+function previousColumnLabel(snapshot: WorkoutSessionSetTarget[]): string {
+  return snapshot.some((t) => t.is_last_time) ? 'ÚLTIMA VEZ' : 'ANTERIOR';
 }
 
 /** "8-10" (or just "8" when the range is a single number) — shown once in the REPS header, from the first planned set, as a reminder of the goal range. Different sets can plan different ranges (a pyramid scheme); this is only a representative hint, not per-row. */
@@ -407,7 +412,7 @@ function ExerciseCard({
 
       <View style={styles.setsTableHeader}>
         <Text style={[styles.tableHeaderCell, styles.setColumn]}>SERIE</Text>
-        <Text style={[styles.tableHeaderCell, styles.previousColumn]}>ANTERIOR</Text>
+        <Text style={[styles.tableHeaderCell, styles.previousColumn]}>{previousColumnLabel(sessionExercise.target_sets_snapshot)}</Text>
         <Text style={[styles.tableHeaderCell, styles.weightColumn]}>{unit.toUpperCase()}</Text>
         <Text style={[styles.tableHeaderCell, styles.repsColumn]}>
           REPS{sessionExercise.target_sets_snapshot[0] ? ` (${repRangeLabel(sessionExercise.target_sets_snapshot[0])})` : ''}

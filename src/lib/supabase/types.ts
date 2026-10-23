@@ -627,7 +627,11 @@ export type WorkoutSession = {
  * previous_reps are that same lookup's raw answer, always the true
  * historical value (never the routine's plan, never the PO increment) —
  * what the UI's read-only "Anterior" column shows, both null with no such
- * history at all.
+ * history at all. is_last_time marks when that history came from the
+ * any-routine fallback rather than this same routine (a brand new routine,
+ * or this exercise just swapped in) — the UI relabels the column "Última
+ * vez" instead of "Anterior" whenever it's true; the PO increment never
+ * applies in that case (see start_workout_session).
  */
 export type WorkoutSessionSetTarget = {
   target_reps_min: number;
@@ -637,6 +641,7 @@ export type WorkoutSessionSetTarget = {
   previous_weight_kg: number | null;
   previous_reps: number | null;
   is_progressive_overload_suggestion: boolean;
+  is_last_time: boolean;
 };
 
 /** One exercise within a specific session — copied from routine_exercises/routine_exercise_sets at start time (or added freeform, with an empty snapshot), independent of the routine afterwards. */
