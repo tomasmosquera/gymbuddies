@@ -9,6 +9,7 @@ import { TextField } from '@/components/ui/TextField';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { requestHealthAuthorization } from '@/lib/health';
+import { confirmBackgroundLocationDisclosure } from '@/lib/location/backgroundLocationDisclosure';
 import { getHealthConnectSdkStatus, HEALTH_CONNECT_SDK_STATUS } from '@/lib/health/healthConnect';
 import { kgToUnit, sanitizeWeightInput, unitToKg } from '@/lib/domain/workoutUnits';
 import { supabase } from '@/lib/supabase/client';
@@ -89,6 +90,17 @@ export default function SettingsScreen() {
   const handleRequestBackgroundLocation = async () => {
     setIsRequesting(true);
     try {
+      // Google Play's Prominent Disclosure requirement for background
+      // location — see confirmBackgroundLocationDisclosure's own doc
+      // comment. Only needed while the OS itself hasn't decided yet; once
+      // already granted or denied, requestBackgroundPermissionsAsync below
+      // is a no-op either way, so this button only reaches it then anyway
+      // (see the locationBackground !== 'granted'/'denied' gating above).
+      const current = await Location.getBackgroundPermissionsAsync();
+      if (current.status === 'undetermined') {
+        const agreed = await confirmBackgroundLocationDisclosure();
+        if (!agreed) return;
+      }
       await Location.requestBackgroundPermissionsAsync();
       await refreshPermissionStatus();
     } finally {

@@ -2,6 +2,7 @@ import { Alert, AppState, Linking, type AppStateStatus } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
 import { distanceMeters } from '@/lib/domain/geo';
+import { confirmBackgroundLocationDisclosure } from '@/lib/location/backgroundLocationDisclosure';
 import { CHECKOUT_GEOFENCE_TASK } from './checkoutGeofenceTask';
 import { getRemindersEnabledCache } from './reminderPreference';
 
@@ -126,6 +127,17 @@ export async function scheduleCheckoutReminders(
   startForegroundDistanceWatch(latitude, longitude, geofenceRadiusMeters);
 
   try {
+    // Google Play's Prominent Disclosure requirement for background
+    // location — see confirmBackgroundLocationDisclosure's own doc comment.
+    // Only shown the first time the OS itself hasn't decided yet; once
+    // granted or denied, requestBackgroundPermissionsAsync below is a no-op
+    // either way, so asking again would just be noise.
+    const current = await Location.getBackgroundPermissionsAsync();
+    if (current.status === 'undetermined') {
+      const agreed = await confirmBackgroundLocationDisclosure();
+      if (!agreed) return;
+    }
+
     const { status } = await Location.requestBackgroundPermissionsAsync();
     if (status !== 'granted') {
       // Silently giving up here means the background reminder just never
