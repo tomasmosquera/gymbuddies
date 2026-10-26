@@ -37,7 +37,15 @@ async function runForegroundWatchIfActive(): Promise<void> {
       (position) => {
         const distance = distanceMeters(latitude, longitude, position.coords.latitude, position.coords.longitude);
         if (distance > radiusMeters) {
-          stopForegroundWatchSubscription();
+          // Tears down pendingWatch AND the AppState listener, not just this
+          // one subscription — stopForegroundWatchSubscription() alone left
+          // pendingWatch set, so every later AppState 'active' transition
+          // (screen on/off, switching apps back) re-armed watchPositionAsync,
+          // whose first reading was still past the radius, re-firing this
+          // same notification every single time — reported as ~10 copies of
+          // it in 20 minutes. One warning is enough; nothing downstream
+          // needs this watch running again after it's already fired once.
+          stopForegroundDistanceWatch();
           getRemindersEnabledCache().then((enabled) => {
             if (!enabled) return;
             Notifications.scheduleNotificationAsync({
