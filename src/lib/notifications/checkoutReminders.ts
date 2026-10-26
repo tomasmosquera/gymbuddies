@@ -27,9 +27,31 @@ const FOREGROUND_WATCH_DISTANCE_INTERVAL_METERS = 20;
 let foregroundSubscription: Location.LocationSubscription | null = null;
 let appStateSubscription: { remove: () => void } | null = null;
 let pendingWatch: { latitude: number; longitude: number; radiusMeters: number } | null = null;
+// Set synchronously the instant a watch starts being created, cleared only
+// once watchPositionAsync's own promise settles — see isCreatingWatch's own
+// note below for why foregroundSubscription alone isn't enough to guard
+// against this.
+let isCreatingWatch = false;
 
 async function runForegroundWatchIfActive(): Promise<void> {
-  if (!pendingWatch || AppState.currentState !== 'active' || foregroundSubscription) return;
+  if (!pendingWatch || AppState.currentState !== 'active' || foregroundSubscription || isCreatingWatch) return;
+  // A check-in that fans out to several groups at once ("Check-in en otros
+  // grupos") calls scheduleCheckoutReminders once per group, in parallel —
+  // each one reaches here within the same tick, well before the FIRST
+  // call's `await Location.watchPositionAsync(...)` below has resolved and
+  // actually assigned foregroundSubscription. Without this flag, every one
+  // of those calls saw foregroundSubscription still null and started its
+  // OWN real watchPositionAsync subscription — only the last one ever got
+  // assigned to foregroundSubscription, so the earlier ones became
+  // orphaned: no reference left to call .remove() on, including from
+  // cancelCheckoutReminders() at actual checkout time. One of those
+  // orphans firing on its own is exactly how the "te alejaste" notification
+  // kept showing up after the checkout photo was already taken (reported
+  // for an account checked into 3 groups at once). isCreatingWatch is set
+  // here, synchronously, before any await — so every later concurrent call
+  // this same tick (or until the promise below settles) bails out
+  // immediately instead of racing it.
+  isCreatingWatch = true;
   const { latitude, longitude, radiusMeters } = pendingWatch;
   try {
     foregroundSubscription = await Location.watchPositionAsync(
@@ -60,8 +82,18 @@ async function runForegroundWatchIfActive(): Promise<void> {
         }
       }
     );
+    // Checkout (or some other stop) landed while watchPositionAsync was
+    // still resolving — pendingWatch is already null, so nothing is meant
+    // to be watching anymore; remove the subscription we just got instead
+    // of leaving it assigned and running unsupervised.
+    if (!pendingWatch) {
+      foregroundSubscription?.remove();
+      foregroundSubscription = null;
+    }
   } catch {
     // best-effort — this is itself already a fallback, never throw past it
+  } finally {
+    isCreatingWatch = false;
   }
 }
 
