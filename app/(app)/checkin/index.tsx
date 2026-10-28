@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Linking, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Button } from '@/components/ui/Button';
@@ -18,8 +19,13 @@ import { supabase } from '@/lib/supabase/client';
 import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
 import { usePostConfirmRedirectStore } from '@/state/postConfirmRedirectStore';
 import { logBreadcrumb } from '@/lib/debugBreadcrumb';
+import { compressVideo } from '@/lib/media/compressVideo';
 import { formatZonedTime12h, formatElapsedClock, toZonedDateString } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing, typography } from '@/constants/theme';
+
+/** How long the shutter has to stay held before a tap turns into a video recording instead of a photo. */
+const HOLD_TO_RECORD_MS = 350;
+const MAX_VIDEO_DURATION_SECONDS = 10;
 
 export default function CheckinCameraScreen() {
   const { session } = useAuth();
@@ -44,6 +50,23 @@ export default function CheckinCameraScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [isCameraReady, setIsCameraReady] = useState(false);
+  // 'video' only while the shutter is held past HOLD_TO_RECORD_MS — see
+  // handleShutterPressIn/Out below. Switching this remounts <CameraView>
+  // (key includes it, same idiom as the facing flip) since a single native
+  // camera session is configured for either still or movie output, not
+  // both at once — recordAsync was validated crash-free in this mode via
+  // the debug screen under Ajustes > "Probar video" before this shipped.
+  const [cameraMode, setCameraMode] = useState<'picture' | 'video'>('picture');
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [videoElapsedSeconds, setVideoElapsedSeconds] = useState(0);
+  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoElapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Set when the shutter is released before recordAsync's own promise
+  // actually starts (released during the brief camera-mode-switch window) —
+  // checked right before recordAsync is called so that ultra-short hold
+  // doesn't start (and then immediately have to stop) a real recording.
+  const stopRequestedRef = useRef(false);
 
   // Set by the lock-screen workout timer's "Tomar foto final" button (gymbuddies://checkin?checkout=1).
   const { checkout: checkoutParam } = useLocalSearchParams<{ checkout?: string }>();
@@ -137,10 +160,17 @@ export default function CheckinCameraScreen() {
     }
   }, [retakeRequested, checkoutRequested, requestLock]);
 
-  // Switching front/back re-negotiates the native camera session too.
+  // Switching front/back — or picture/video — re-negotiates the native camera session too.
   useEffect(() => {
     setIsCameraReady(false);
-  }, [facing]);
+  }, [facing, cameraMode]);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (videoElapsedIntervalRef.current) clearInterval(videoElapsedIntervalRef.current);
+    };
+  }, []);
 
   // Safety net for when the geofence's exit event never fired (e.g. the app
   // was killed before it could): whenever this screen loads and there's no
@@ -158,7 +188,7 @@ export default function CheckinCameraScreen() {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
       if (!photo) throw new Error('No se pudo tomar la foto');
       setDraft({
-        photoUri: photo.uri,
+        media: { kind: 'photo', uri: photo.uri },
         capturedAt: new Date().toISOString(),
         latitude: location.latitude,
         longitude: location.longitude,
@@ -176,11 +206,88 @@ export default function CheckinCameraScreen() {
     }
   };
 
+  const startVideoRecording = async () => {
+    if (!cameraRef.current) return;
+    if (stopRequestedRef.current) {
+      // Released during the mode-switch window — too short to count as a
+      // real hold; drop back to picture mode instead of recording anything.
+      stopRequestedRef.current = false;
+      setCameraMode('picture');
+      return;
+    }
+    setIsRecordingVideo(true);
+    setVideoElapsedSeconds(0);
+    videoElapsedIntervalRef.current = setInterval(() => setVideoElapsedSeconds((s) => s + 1), 1000);
+    try {
+      const video = await cameraRef.current.recordAsync({ maxDuration: MAX_VIDEO_DURATION_SECONDS });
+      if (video?.uri && location) {
+        setIsProcessingVideo(true);
+        const { uri: processedUri } = await compressVideo(video.uri).finally(() => setIsProcessingVideo(false));
+        setDraft({
+          media: { kind: 'video', uri: processedUri },
+          capturedAt: new Date().toISOString(),
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracyMeters: location.accuracyMeters,
+          locationMocked: location.mocked,
+          address: null,
+          existingCheckinId: todayCheckin?.id ?? null,
+          mode: isCheckoutFlow ? 'checkout' : 'checkin',
+        });
+        router.push('/checkin/preview');
+      }
+    } catch (err) {
+      Alert.alert('No se pudo grabar el video', err instanceof Error ? err.message : 'Intenta de nuevo');
+    } finally {
+      if (videoElapsedIntervalRef.current) clearInterval(videoElapsedIntervalRef.current);
+      videoElapsedIntervalRef.current = null;
+      setIsRecordingVideo(false);
+      setCameraMode('picture');
+    }
+  };
+
+  // Fires the instant the just-switched-to-video session reports ready —
+  // recordAsync can't be called any earlier than this (same "Camera is not
+  // ready yet" risk noted on the facing-flip effect above applies here too).
+  useEffect(() => {
+    if (cameraMode === 'video' && isCameraReady && !isRecordingVideo) {
+      startVideoRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraMode, isCameraReady]);
+
+  const handleShutterPressIn = () => {
+    if (!isLocked || !isCameraReady || isCapturing || cameraMode === 'video') return;
+    holdTimerRef.current = setTimeout(() => {
+      holdTimerRef.current = null;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setCameraMode('video');
+    }, HOLD_TO_RECORD_MS);
+  };
+
+  const handleShutterPressOut = () => {
+    if (holdTimerRef.current) {
+      // Released before the hold threshold — a plain tap, take the photo.
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      void handleCapture();
+      return;
+    }
+    if (isRecordingVideo) {
+      cameraRef.current?.stopRecording();
+    } else {
+      // Already past the threshold (mode switching to 'video') but released
+      // before recordAsync actually started — see startVideoRecording's own
+      // check of this flag.
+      stopRequestedRef.current = true;
+    }
+  };
+
   const confirmDeleteToday = () => {
     if (!todayCheckin) return;
     Alert.alert(
       'Eliminar registro de hoy',
-      'Se borrará tu foto (y la de salida, si ya la tomaste) de hoy. El día queda en blanco, a la espera de una foto nueva — no cuenta como exitoso.',
+      'Se borrará tu foto o video (y el de salida, si ya lo tomaste) de hoy. El día queda en blanco, a la espera de un registro nuevo — no cuenta como exitoso.',
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Eliminar', style: 'destructive', onPress: handleDeleteToday },
@@ -332,16 +439,19 @@ export default function CheckinCameraScreen() {
   return (
     <View style={styles.flex}>
       <CameraView
-        key={facing}
+        key={`${facing}-${cameraMode}`}
         ref={cameraRef}
         style={styles.camera}
         facing={facing}
+        mode={cameraMode}
+        mute
         onCameraReady={() => setIsCameraReady(true)}
       />
       <Pressable
         accessibilityRole="button"
         style={styles.flipButton}
         onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+        disabled={cameraMode === 'video'}
       >
         <Ionicons name="camera-reverse-outline" size={24} color="#fff" />
       </Pressable>
@@ -349,26 +459,51 @@ export default function CheckinCameraScreen() {
         <View style={styles.modePill}>
           <Text style={styles.modePillText}>{isCheckoutFlow ? 'Foto Final 🏁' : 'Foto Inicial 📸'}</Text>
         </View>
-        <View style={styles.statusPill}>
-          {isLocked && isCameraReady ? (
-            <Text style={styles.statusText}>📍 Ubicación lista</Text>
-          ) : (
-            <>
-              <ActivityIndicator color={colors.text} size="small" />
-              <Text style={styles.statusText}>{isLocked ? 'Preparando cámara...' : 'Ubicando...'}</Text>
-            </>
-          )}
-        </View>
+        {isRecordingVideo ? (
+          <Text style={styles.recordingTimer}>🔴 {videoElapsedSeconds}s / {MAX_VIDEO_DURATION_SECONDS}s</Text>
+        ) : (
+          <View style={styles.statusPill}>
+            {isLocked && isCameraReady ? (
+              <Text style={styles.statusText}>📍 Ubicación lista</Text>
+            ) : (
+              <>
+                <ActivityIndicator color={colors.text} size="small" />
+                <Text style={styles.statusText}>{isLocked ? 'Preparando cámara...' : 'Ubicando...'}</Text>
+              </>
+            )}
+          </View>
+        )}
         <Pressable
           accessibilityRole="button"
           disabled={!isLocked || !isCameraReady || isCapturing}
-          onPress={handleCapture}
-          style={[styles.shutter, (!isLocked || !isCameraReady || isCapturing) && styles.shutterDisabled]}
+          onPressIn={handleShutterPressIn}
+          onPressOut={handleShutterPressOut}
+          style={[
+            styles.shutter,
+            (!isLocked || !isCameraReady || isCapturing) && styles.shutterDisabled,
+            isRecordingVideo && styles.shutterRecording,
+          ]}
         >
-          {isCapturing ? <ActivityIndicator color={colors.background} /> : <View style={styles.shutterInner} />}
+          {isCapturing ? (
+            <ActivityIndicator color={colors.background} />
+          ) : (
+            <View style={[styles.shutterInner, isRecordingVideo && styles.shutterInnerRecording]} />
+          )}
         </Pressable>
-        <Text style={styles.hint}>{membership?.status === 'needs_recharge' ? 'Recuerda recargar tu saldo' : ' '}</Text>
+        <Text style={styles.hint}>
+          {membership?.status === 'needs_recharge'
+            ? 'Recuerda recargar tu saldo'
+            : isRecordingVideo
+              ? 'Suelta para terminar'
+              : `Mantén presionado para grabar video (máx. ${MAX_VIDEO_DURATION_SECONDS}s)`}
+        </Text>
       </View>
+      {isProcessingVideo ? (
+        <View style={styles.processingOverlay}>
+          <ActivityIndicator color={colors.text} />
+          <Text style={styles.statusText}>Procesando video...</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -437,6 +572,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   statusText: { color: colors.text, ...typography.caption, fontWeight: '600' },
+  recordingTimer: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   shutter: {
     width: 76,
     height: 76,
@@ -448,6 +584,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.4)',
   },
   shutterDisabled: { opacity: 0.4 },
+  shutterRecording: { borderColor: 'rgba(255,0,0,0.6)' },
   shutterInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary },
+  shutterInnerRecording: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#ff3b30' },
   hint: { color: colors.warning, fontSize: 12 },
+  processingOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
 });

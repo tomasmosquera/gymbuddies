@@ -200,7 +200,14 @@ export default function RulesScreen() {
   const [isCancellingLeave, setIsCancellingLeave] = useState(false);
   const [isStartingCycle, setIsStartingCycle] = useState(false);
   const [isChangingEarlyClose, setIsChangingEarlyClose] = useState(false);
-  const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
+  /** Same shape as Dashboard's/Moderar fotos' own ViewingMedia — what CheckinPhotoModal needs to show one half of a check-in, video or photo. */
+  const [viewingMedia, setViewingMedia] = useState<{
+    photoPath: string | null;
+    videoPath: string | null;
+    capturedAt: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  } | null>(null);
   const [excuseProofItems, setExcuseProofItems] = useState<{ url: string; path: string }[]>([]);
   const [viewingExcuseProof, setViewingExcuseProof] = useState<{ url: string; path: string } | null>(null);
   const [viewingKothVideoPath, setViewingKothVideoPath] = useState<string | null>(null);
@@ -782,21 +789,39 @@ export default function RulesScreen() {
                 <CheckinPhotoColumn
                   label="Foto Inicial"
                   photoPath={challenge.checkin.photo_path}
+                  videoPath={challenge.checkin.video_path}
                   capturedAt={challenge.checkin.captured_at}
                   latitude={challenge.checkin.latitude}
                   longitude={challenge.checkin.longitude}
                   timezone={group?.timezone ?? 'America/Bogota'}
-                  onPress={() => setViewingPhotoPath(challenge.checkin!.photo_path)}
+                  onPress={() =>
+                    setViewingMedia({
+                      photoPath: challenge.checkin!.photo_path,
+                      videoPath: challenge.checkin!.video_path,
+                      capturedAt: challenge.checkin!.captured_at,
+                      latitude: challenge.checkin!.latitude,
+                      longitude: challenge.checkin!.longitude,
+                    })
+                  }
                 />
-                {challenge.checkin.checkout_photo_path ? (
+                {challenge.checkin.checkout_photo_path || challenge.checkin.checkout_video_path ? (
                   <CheckinPhotoColumn
                     label="Foto Final"
                     photoPath={challenge.checkin.checkout_photo_path}
+                    videoPath={challenge.checkin.checkout_video_path}
                     capturedAt={challenge.checkin.checkout_captured_at}
                     latitude={challenge.checkin.checkout_latitude}
                     longitude={challenge.checkin.checkout_longitude}
                     timezone={group?.timezone ?? 'America/Bogota'}
-                    onPress={() => setViewingPhotoPath(challenge.checkin!.checkout_photo_path)}
+                    onPress={() =>
+                      setViewingMedia({
+                        photoPath: challenge.checkin!.checkout_photo_path,
+                        videoPath: challenge.checkin!.checkout_video_path,
+                        capturedAt: challenge.checkin!.checkout_captured_at,
+                        latitude: challenge.checkin!.checkout_latitude,
+                        longitude: challenge.checkin!.checkout_longitude,
+                      })
+                    }
                   />
                 ) : null}
               </View>
@@ -911,9 +936,14 @@ export default function RulesScreen() {
       ) : null}
     </ScrollView>
     <CheckinPhotoModal
-      visible={viewingPhotoPath !== null}
-      photoPath={viewingPhotoPath}
-      onClose={() => setViewingPhotoPath(null)}
+      visible={viewingMedia !== null}
+      photoPath={viewingMedia?.photoPath ?? null}
+      videoPath={viewingMedia?.videoPath ?? null}
+      capturedAt={viewingMedia?.capturedAt ?? null}
+      latitude={viewingMedia?.latitude ?? null}
+      longitude={viewingMedia?.longitude ?? null}
+      timezone={group?.timezone ?? 'America/Bogota'}
+      onClose={() => setViewingMedia(null)}
     />
     <ZoomableImageModal
       visible={viewingExcuseProof !== null}

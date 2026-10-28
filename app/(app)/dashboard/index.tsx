@@ -38,6 +38,15 @@ import { colors, radii, spacing, typography } from '@/constants/theme';
 type Period = 'week' | 'month' | 'cycle' | 'total';
 type ViewMode = 'days' | 'members' | 'calendar';
 
+/** What CheckinPhotoModal needs to show one half (inicial/final) of a check-in — a video needs capturedAt/lat/lng too, to render its overlay live; a photo already has its watermark baked in. */
+interface ViewingMedia {
+  photoPath: string | null;
+  videoPath: string | null;
+  capturedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 function periodOptions(payoutMode?: PayoutMode): { key: Period; label: string }[] {
   if (payoutMode === 'league' || payoutMode === 'mixed') {
     return [
@@ -275,12 +284,12 @@ function DayCheckinRow({
   reactions: CheckinReaction[];
   currentUserId: string | null;
   level?: number;
-  onPressPhoto: (path: string) => void;
+  onPressPhoto: (media: ViewingMedia) => void;
   onChallenge: () => void;
   onReact: (emoji: string) => void;
   onRemoveReaction: () => void;
 }) {
-  const hasCheckout = !!checkin.checkout_photo_path;
+  const hasCheckout = !!checkin.checkout_photo_path || !!checkin.checkout_video_path;
   const isShort = hasCheckout && checkin.workout_minutes !== null && checkin.workout_minutes < minWorkoutMinutes;
   // Purely informational — members still vote if they want to invalidate a
   // checkout taken away from where the check-in photo was captured.
@@ -306,20 +315,39 @@ function DayCheckinRow({
         <CheckinPhotoColumn
           label="Foto Inicial"
           photoPath={checkin.photo_path}
+          videoPath={checkin.video_path}
           capturedAt={checkin.captured_at}
           latitude={checkin.latitude}
           longitude={checkin.longitude}
           timezone={timezone}
-          onPress={() => onPressPhoto(checkin.photo_path)}
+          onPress={() =>
+            onPressPhoto({
+              photoPath: checkin.photo_path,
+              videoPath: checkin.video_path,
+              capturedAt: checkin.captured_at,
+              latitude: checkin.latitude,
+              longitude: checkin.longitude,
+            })
+          }
         />
         <CheckinPhotoColumn
           label="Foto Final"
           photoPath={checkin.checkout_photo_path}
+          videoPath={checkin.checkout_video_path}
           capturedAt={checkin.checkout_captured_at}
           latitude={checkin.checkout_latitude}
           longitude={checkin.checkout_longitude}
           timezone={timezone}
-          onPress={() => checkin.checkout_photo_path && onPressPhoto(checkin.checkout_photo_path)}
+          onPress={() =>
+            hasCheckout &&
+            onPressPhoto({
+              photoPath: checkin.checkout_photo_path,
+              videoPath: checkin.checkout_video_path,
+              capturedAt: checkin.checkout_captured_at,
+              latitude: checkin.checkout_latitude,
+              longitude: checkin.checkout_longitude,
+            })
+          }
         />
       </View>
       {hasCheckout ? (
@@ -413,7 +441,7 @@ function DayRow({
   levelByUserId: Record<string, number>;
   timezone: string;
   onToggle: () => void;
-  onPressPhoto: (path: string) => void;
+  onPressPhoto: (media: ViewingMedia) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
   onReact: (checkinId: string, emoji: string) => void;
   onRemoveReaction: (checkinId: string) => void;
@@ -493,7 +521,7 @@ function MemberRow({
   todayString: string;
   timezone: string;
   onToggle: () => void;
-  onPressPhoto: (path: string) => void;
+  onPressPhoto: (media: ViewingMedia) => void;
   onChallenge: (checkin: GroupCheckinWithProfile) => void;
   onReact: (checkinId: string, emoji: string) => void;
   onRemoveReaction: (checkinId: string) => void;
@@ -587,7 +615,7 @@ export default function DashboardScreen() {
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [expandedCalendarDate, setExpandedCalendarDate] = useState<string | null>(null);
-  const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
+  const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
   const [challengeTarget, setChallengeTarget] = useState<GroupCheckinWithProfile | null>(null);
   const [challengeReason, setChallengeReason] = useState('');
   const [isSubmittingChallenge, setIsSubmittingChallenge] = useState(false);
@@ -806,7 +834,7 @@ export default function DashboardScreen() {
               reactionsByCheckinId={reactionsByCheckinId}
               levelByUserId={levelByUserId}
               onToggle={() => setExpandedDate((d) => (d === item.date ? null : item.date))}
-              onPressPhoto={setViewingPhotoPath}
+              onPressPhoto={setViewingMedia}
               onChallenge={handleChallenge}
               onReact={handleReact}
               onRemoveReaction={handleRemoveReaction}
@@ -838,7 +866,7 @@ export default function DashboardScreen() {
               todayString={todayString}
               timezone={group.timezone}
               onToggle={() => setExpandedMemberId((id) => (id === item.user_id ? null : item.user_id))}
-              onPressPhoto={setViewingPhotoPath}
+              onPressPhoto={setViewingMedia}
               onChallenge={handleChallenge}
               onReact={handleReact}
               onRemoveReaction={handleRemoveReaction}
@@ -903,7 +931,7 @@ export default function DashboardScreen() {
                         reactions={reactionsByCheckinId.get(c.id) ?? []}
                         currentUserId={session?.user.id ?? null}
                         level={levelByUserId[c.user_id]}
-                        onPressPhoto={setViewingPhotoPath}
+                        onPressPhoto={setViewingMedia}
                         onChallenge={() => handleChallenge(c)}
                         onReact={(emoji) => handleReact(c.id, emoji)}
                         onRemoveReaction={() => handleRemoveReaction(c.id)}
@@ -920,9 +948,14 @@ export default function DashboardScreen() {
         </View>
       </Modal>
       <CheckinPhotoModal
-        visible={viewingPhotoPath !== null}
-        photoPath={viewingPhotoPath}
-        onClose={() => setViewingPhotoPath(null)}
+        visible={viewingMedia !== null}
+        photoPath={viewingMedia?.photoPath ?? null}
+        videoPath={viewingMedia?.videoPath ?? null}
+        capturedAt={viewingMedia?.capturedAt ?? null}
+        latitude={viewingMedia?.latitude ?? null}
+        longitude={viewingMedia?.longitude ?? null}
+        timezone={group.timezone}
+        onClose={() => setViewingMedia(null)}
       />
       <Modal visible={challengeTarget !== null} transparent animationType="fade" onRequestClose={() => setChallengeTarget(null)}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

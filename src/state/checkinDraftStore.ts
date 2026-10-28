@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 
+/** Either exactly what the shutter produced: a tap takes a photo, holding it down records a short video instead — never both. */
+export type CheckinDraftMedia = { kind: 'photo'; uri: string } | { kind: 'video'; uri: string };
+
 export interface CheckinDraft {
-  photoUri: string;
+  media: CheckinDraftMedia;
   capturedAt: string; // ISO instant, set the moment the shutter fired
   latitude: number;
   longitude: number;

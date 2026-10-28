@@ -38,6 +38,15 @@ interface DayGroup {
   checkins: GroupCheckinWithProfile[];
 }
 
+/** Same shape as Dashboard's own ViewingMedia — what CheckinPhotoModal needs to show one half of a check-in, video or photo. */
+interface ViewingMedia {
+  photoPath: string | null;
+  videoPath: string | null;
+  capturedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 /** Most recent day first; within each day, earliest check-in first — a clear timeline instead of a flat, ambiguously-ordered list. */
 function groupByDay(checkins: readonly GroupCheckinWithProfile[]): DayGroup[] {
   const byDate = new Map<string, GroupCheckinWithProfile[]>();
@@ -63,7 +72,7 @@ function CheckinModerationRow({
   checkin: GroupCheckinWithProfile;
   minWorkoutMinutes: number;
   timezone: string;
-  onPressPhoto: (path: string) => void;
+  onPressPhoto: (media: ViewingMedia) => void;
   onChanged: () => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -76,7 +85,7 @@ function CheckinModerationRow({
   );
   const [isSavingCalories, setIsSavingCalories] = useState(false);
   const [replacingPhoto, setReplacingPhoto] = useState<'initial' | 'final' | null>(null);
-  const hasCheckout = !!checkin.checkout_photo_path;
+  const hasCheckout = !!checkin.checkout_photo_path || !!checkin.checkout_video_path;
   const isShort = hasCheckout && checkin.workout_minutes !== null && checkin.workout_minutes < minWorkoutMinutes;
   const isLocationMismatch =
     hasCheckout &&
@@ -201,11 +210,20 @@ function CheckinModerationRow({
           <CheckinPhotoColumn
             label="Foto Inicial"
             photoPath={checkin.photo_path}
+            videoPath={checkin.video_path}
             capturedAt={checkin.captured_at}
             latitude={checkin.latitude}
             longitude={checkin.longitude}
             timezone={timezone}
-            onPress={() => onPressPhoto(checkin.photo_path)}
+            onPress={() =>
+              onPressPhoto({
+                photoPath: checkin.photo_path,
+                videoPath: checkin.video_path,
+                capturedAt: checkin.captured_at,
+                latitude: checkin.latitude,
+                longitude: checkin.longitude,
+              })
+            }
           />
           <Pressable
             onPress={() => handleReplacePhoto('initial')}
@@ -227,11 +245,21 @@ function CheckinModerationRow({
           <CheckinPhotoColumn
             label="Foto Final"
             photoPath={checkin.checkout_photo_path}
+            videoPath={checkin.checkout_video_path}
             capturedAt={checkin.checkout_captured_at}
             latitude={checkin.checkout_latitude}
             longitude={checkin.checkout_longitude}
             timezone={timezone}
-            onPress={() => checkin.checkout_photo_path && onPressPhoto(checkin.checkout_photo_path)}
+            onPress={() =>
+              hasCheckout &&
+              onPressPhoto({
+                photoPath: checkin.checkout_photo_path,
+                videoPath: checkin.checkout_video_path,
+                capturedAt: checkin.checkout_captured_at,
+                latitude: checkin.checkout_latitude,
+                longitude: checkin.checkout_longitude,
+              })
+            }
           />
           {hasCheckout ? (
             <Pressable
@@ -313,7 +341,7 @@ function CheckinModerationRow({
 export default function AdminPhotosScreen() {
   const { group, isLoading: groupLoading } = useActiveGroup();
   const { checkins, isLoading, refresh } = useGroupWeekCheckins(group?.id ?? null, group?.timezone ?? 'America/Bogota');
-  const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
+  const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
 
   // Refetches every time this screen gains focus — otherwise a check-in
   // submitted while the admin already had this screen open earlier in the
@@ -362,7 +390,7 @@ export default function AdminPhotosScreen() {
                   checkin={checkin}
                   minWorkoutMinutes={group.min_workout_minutes}
                   timezone={group.timezone}
-                  onPressPhoto={setViewingPhotoPath}
+                  onPressPhoto={setViewingMedia}
                   onChanged={refresh}
                 />
               ))}
@@ -372,9 +400,14 @@ export default function AdminPhotosScreen() {
         ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
       />
       <CheckinPhotoModal
-        visible={viewingPhotoPath !== null}
-        photoPath={viewingPhotoPath}
-        onClose={() => setViewingPhotoPath(null)}
+        visible={viewingMedia !== null}
+        photoPath={viewingMedia?.photoPath ?? null}
+        videoPath={viewingMedia?.videoPath ?? null}
+        capturedAt={viewingMedia?.capturedAt ?? null}
+        latitude={viewingMedia?.latitude ?? null}
+        longitude={viewingMedia?.longitude ?? null}
+        timezone={group.timezone}
+        onClose={() => setViewingMedia(null)}
       />
     </>
   );

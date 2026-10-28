@@ -4,13 +4,22 @@ import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Button } from '@/components/ui/Button';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useMyMemberships, type MembershipWithGroup } from '@/hooks/useMyMemberships';
-import { useCheckinDraftStore } from '@/state/checkinDraftStore';
+import { useCheckinDraftStore, type CheckinDraftMedia } from '@/state/checkinDraftStore';
 import { supabase } from '@/lib/supabase/client';
-import { checkinPhotoPath, checkoutPhotoPath, uploadImage } from '@/lib/supabase/storage';
+import {
+  checkinPhotoPath,
+  checkinVideoPath,
+  checkoutPhotoPath,
+  checkoutVideoPath,
+  uploadImage,
+  uploadVideo,
+} from '@/lib/supabase/storage';
 import { formatZonedDateTime12h, toZonedDateString } from '@/lib/domain/dateUtils';
 import { cancelCheckoutReminders, scheduleCheckoutReminders } from '@/lib/notifications/checkoutReminders';
 import { requestWorkoutActivitySync } from '@/state/workoutActivitySyncStore';
@@ -25,7 +34,7 @@ import { colors, radii, spacing, typography } from '@/constants/theme';
 interface FanOutParams {
   otherGroups: MembershipWithGroup[];
   userId: string;
-  flattenedUri: string;
+  media: CheckinDraftMedia;
   capturedAtDate: Date;
   capturedAtIso: string;
   latitude: number;
@@ -59,7 +68,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
   const {
     otherGroups,
     userId,
-    flattenedUri,
+    media,
     capturedAtDate,
     capturedAtIso,
     latitude,
@@ -73,15 +82,21 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
     otherGroups.map(async (m) => {
       try {
         const otherDate = toZonedDateString(capturedAtDate, m.group.timezone);
-        const path = checkinPhotoPath(m.group_id, userId, otherDate);
-        await uploadImage('checkins', path, flattenedUri);
+        const isVideo = media.kind === 'video';
+        const path = isVideo ? checkinVideoPath(m.group_id, userId, otherDate) : checkinPhotoPath(m.group_id, userId, otherDate);
+        if (isVideo) {
+          await uploadVideo('checkins', path, media.uri);
+        } else {
+          await uploadImage('checkins', path, media.uri);
+        }
         const { data } = await supabase.rpc('submit_checkin', {
           p_group_id: m.group_id,
           p_captured_at: capturedAtIso,
           p_latitude: latitude,
           p_longitude: longitude,
           p_location_accuracy_m: accuracyMeters,
-          p_photo_path: path,
+          p_photo_path: isVideo ? null : path,
+          p_video_path: isVideo ? path : null,
           p_location_mocked: locationMocked,
           p_auto_created: true,
         });
@@ -113,7 +128,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
  * clobbering a checkout the person already completed there themselves.
  */
 async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
-  const { otherGroups, userId, flattenedUri, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
+  const { otherGroups, userId, media, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
     params;
   await Promise.all(
     otherGroups.map(async (m) => {
@@ -128,15 +143,21 @@ async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
           .maybeSingle();
         if (!existing || existing.checkout_captured_at) return;
 
-        const path = checkoutPhotoPath(m.group_id, userId, otherDate);
-        await uploadImage('checkins', path, flattenedUri);
+        const isVideo = media.kind === 'video';
+        const path = isVideo ? checkoutVideoPath(m.group_id, userId, otherDate) : checkoutPhotoPath(m.group_id, userId, otherDate);
+        if (isVideo) {
+          await uploadVideo('checkins', path, media.uri);
+        } else {
+          await uploadImage('checkins', path, media.uri);
+        }
         const { data } = await supabase.rpc('submit_workout_checkout', {
           p_checkin_id: existing.id,
           p_captured_at: capturedAtIso,
           p_latitude: latitude,
           p_longitude: longitude,
           p_location_accuracy_m: accuracyMeters,
-          p_photo_path: path,
+          p_photo_path: isVideo ? null : path,
+          p_video_path: isVideo ? path : null,
           p_location_mocked: locationMocked,
           p_auto_created: true,
         });
@@ -172,6 +193,32 @@ function confirmReplicateToOtherGroups(otherGroups: MembershipWithGroup[]): Prom
   });
 }
 
+/**
+ * A recorded video can't be flattened through ViewShot the way the photo
+ * branch above bakes its date/location bar into the actual JPEG — so this
+ * renders that same bar as a plain overlay View on top of the player
+ * instead. Split into its own component, mounted only while actually
+ * showing a video draft, so useVideoPlayer never runs unconditionally —
+ * same isolation already used by VideoPreview (the debug screen) and
+ * ClaimVideoPreview (King of the Hill) to keep AVPlayer creation scoped to
+ * exactly when it's needed.
+ */
+function VideoPreviewWithOverlay({ uri, overlayText, locationText }: { uri: string; overlayText: string; locationText: string }) {
+  const player = useVideoPlayer({ uri }, (p) => {
+    p.loop = true;
+    p.play();
+  });
+  return (
+    <View style={styles.shotWrapper}>
+      <VideoView style={styles.photo} player={player} nativeControls={false} contentFit="cover" />
+      <View style={styles.overlay}>
+        <Text style={styles.overlayText}>{overlayText}</Text>
+        <Text style={styles.overlayText}>{locationText}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function CheckinPreviewScreen() {
   const { session, profile } = useAuth();
   const { group } = useActiveGroup();
@@ -180,6 +227,7 @@ export default function CheckinPreviewScreen() {
   const setDraft = useCheckinDraftStore((s) => s.setDraft);
   const [address, setAddress] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
   const viewShotRef = useRef<ComponentRef<typeof ViewShot>>(null);
   // Kept around purely so the diagnostic logging below can still attribute a breadcrumb to
   // someone once session itself has already gone null — see the fallback-render effect.
@@ -253,18 +301,29 @@ export default function CheckinPreviewScreen() {
   };
 
   const handleConfirm = async () => {
-    if (!viewShotRef.current) return;
+    const isVideo = draft.media.kind === 'video';
+    if (!isVideo && !viewShotRef.current) return;
     setIsSubmitting(true);
-    logBreadcrumb(session.user.id, 'confirm:start', { mode: draft.mode });
+    logBreadcrumb(session.user.id, 'confirm:start', { mode: draft.mode, mediaKind: draft.media.kind });
     try {
-      const flattenedUri = await captureRef(viewShotRef, { format: 'jpg', quality: 0.85 });
+      // A video can't be flattened through ViewShot (that only snapshots a
+      // RN View tree) — its date/location watermark is rendered live by
+      // whatever plays it back instead (see VideoPreviewWithOverlay below),
+      // so the video just uploads as-is, with no capture step.
+      const mediaUri = isVideo ? draft.media.uri : await captureRef(viewShotRef, { format: 'jpg', quality: 0.85 });
       logBreadcrumb(session.user.id, 'confirm:captured');
       const checkinDate = toZonedDateString(capturedAtDate, group.timezone);
 
       if (draft.mode === 'checkout') {
         if (!draft.existingCheckinId) throw new Error('No se encontró el check-in de hoy');
-        const path = checkoutPhotoPath(group.id, session.user.id, checkinDate);
-        await uploadImage('checkins', path, flattenedUri);
+        const path = isVideo
+          ? checkoutVideoPath(group.id, session.user.id, checkinDate)
+          : checkoutPhotoPath(group.id, session.user.id, checkinDate);
+        if (isVideo) {
+          await uploadVideo('checkins', path, mediaUri, 'video/mp4', setVideoUploadProgress);
+        } else {
+          await uploadImage('checkins', path, mediaUri);
+        }
         logBreadcrumb(session.user.id, 'confirm:checkout_uploaded');
 
         const { data, error } = await supabase.rpc('submit_workout_checkout', {
@@ -273,7 +332,8 @@ export default function CheckinPreviewScreen() {
           p_latitude: draft.latitude,
           p_longitude: draft.longitude,
           p_location_accuracy_m: draft.accuracyMeters,
-          p_photo_path: path,
+          p_photo_path: isVideo ? null : path,
+          p_video_path: isVideo ? path : null,
           p_location_mocked: draft.locationMocked,
         });
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
@@ -312,7 +372,7 @@ export default function CheckinPreviewScreen() {
           await fanOutCheckoutToOtherGroups({
             otherGroups: otherActiveGroups,
             userId: session.user.id,
-            flattenedUri,
+            media: isVideo ? { kind: 'video', uri: mediaUri } : { kind: 'photo', uri: mediaUri },
             capturedAtDate,
             capturedAtIso: draft.capturedAt,
             latitude: draft.latitude,
@@ -380,8 +440,14 @@ export default function CheckinPreviewScreen() {
         return;
       }
 
-      const path = checkinPhotoPath(group.id, session.user.id, checkinDate);
-      await uploadImage('checkins', path, flattenedUri);
+      const path = isVideo
+        ? checkinVideoPath(group.id, session.user.id, checkinDate)
+        : checkinPhotoPath(group.id, session.user.id, checkinDate);
+      if (isVideo) {
+        await uploadVideo('checkins', path, mediaUri, 'video/mp4', setVideoUploadProgress);
+      } else {
+        await uploadImage('checkins', path, mediaUri);
+      }
       logBreadcrumb(session.user.id, 'confirm:checkin_uploaded');
 
       // submit_checkin upserts on (group_id, user_id, checkin_date) server-side
@@ -397,7 +463,8 @@ export default function CheckinPreviewScreen() {
         p_latitude: draft.latitude,
         p_longitude: draft.longitude,
         p_location_accuracy_m: draft.accuracyMeters,
-        p_photo_path: path,
+        p_photo_path: isVideo ? null : path,
+        p_video_path: isVideo ? path : null,
         p_location_mocked: draft.locationMocked,
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
@@ -420,7 +487,7 @@ export default function CheckinPreviewScreen() {
         await fanOutCheckinToOtherGroups({
           otherGroups: otherActiveGroups,
           userId: session.user.id,
-          flattenedUri,
+          media: isVideo ? { kind: 'video', uri: mediaUri } : { kind: 'photo', uri: mediaUri },
           capturedAtDate,
           capturedAtIso: draft.capturedAt,
           reminderMinutes: profile?.checkout_reminder_minutes,
@@ -528,26 +595,45 @@ export default function CheckinPreviewScreen() {
     } finally {
       logBreadcrumb(session.user.id, 'confirm:finally');
       setIsSubmitting(false);
+      setVideoUploadProgress(null);
     }
   };
 
+  const isVideoDraft = draft.media.kind === 'video';
+  const actionLabel = isVideoDraft
+    ? draft.mode === 'checkout'
+      ? 'Confirmar video final'
+      : 'Confirmar video inicial'
+    : draft.mode === 'checkout'
+      ? 'Confirmar foto final'
+      : 'Confirmar foto inicial';
+
   return (
     <View style={styles.container}>
-      <ViewShot ref={viewShotRef} style={styles.shotWrapper} options={{ format: 'jpg', quality: 0.85 }}>
-        <Image source={{ uri: draft.photoUri }} style={styles.photo} />
-        <View style={styles.overlay}>
-          <Text style={styles.overlayText}>{overlayText}</Text>
-          <Text style={styles.overlayText}>{address ?? coordsText}</Text>
+      {isVideoDraft ? (
+        <VideoPreviewWithOverlay uri={draft.media.uri} overlayText={overlayText} locationText={address ?? coordsText} />
+      ) : (
+        <ViewShot ref={viewShotRef} style={styles.shotWrapper} options={{ format: 'jpg', quality: 0.85 }}>
+          <Image source={{ uri: draft.media.uri }} style={styles.photo} />
+          <View style={styles.overlay}>
+            <Text style={styles.overlayText}>{overlayText}</Text>
+            <Text style={styles.overlayText}>{address ?? coordsText}</Text>
+          </View>
+        </ViewShot>
+      )}
+
+      {isSubmitting && isVideoDraft && videoUploadProgress !== null ? (
+        <View style={styles.uploadProgress}>
+          <ProgressBar progress={videoUploadProgress} />
+          <Text style={styles.uploadProgressText}>
+            {videoUploadProgress < 1 ? `Subiendo video... ${Math.round(videoUploadProgress * 100)}%` : 'Procesando...'}
+          </Text>
         </View>
-      </ViewShot>
+      ) : null}
 
       <View style={styles.actions}>
-        <Button label="Repetir foto" variant="secondary" onPress={handleRetake} disabled={isSubmitting} />
-        <Button
-          label={draft.mode === 'checkout' ? 'Confirmar foto final' : 'Confirmar foto inicial'}
-          onPress={handleConfirm}
-          loading={isSubmitting}
-        />
+        <Button label={isVideoDraft ? 'Repetir video' : 'Repetir foto'} variant="secondary" onPress={handleRetake} disabled={isSubmitting} />
+        <Button label={actionLabel} onPress={handleConfirm} loading={isSubmitting} />
       </View>
     </View>
   );
@@ -569,4 +655,6 @@ const styles = StyleSheet.create({
   },
   overlayText: { color: 'white', ...typography.caption, fontWeight: '700' },
   actions: { gap: spacing.sm },
+  uploadProgress: { gap: spacing.xs },
+  uploadProgressText: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
 });

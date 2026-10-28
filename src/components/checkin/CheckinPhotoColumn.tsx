@@ -25,10 +25,11 @@ export function useReverseGeocode(latitude: number | null, longitude: number | n
   return locationText;
 }
 
-/** One labeled photo (inicial/final) with its captured time and reverse-geocoded location. */
+/** One labeled photo OR video (inicial/final) with its captured time and reverse-geocoded location. Exactly one of photoPath/videoPath is ever set, matching the DB's own invariant. */
 export function CheckinPhotoColumn({
   label,
   photoPath,
+  videoPath,
   capturedAt,
   latitude,
   longitude,
@@ -37,6 +38,7 @@ export function CheckinPhotoColumn({
 }: {
   label: string;
   photoPath: string | null;
+  videoPath?: string | null;
   capturedAt: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -72,8 +74,15 @@ export function CheckinPhotoColumn({
 
   return (
     <View style={styles.column}>
-      <Pressable onPress={onPress} disabled={status !== 'ready'}>
-        {status === 'ready' && signedUrl ? (
+      <Pressable onPress={onPress} disabled={!videoPath && status !== 'ready'}>
+        {videoPath ? (
+          // No thumbnail decode here on purpose — just a placeholder tile;
+          // the real frame plays once opened in CheckinPhotoModal.
+          <View style={[styles.photo, styles.photoPlaceholder, styles.videoPlaceholder]}>
+            <Text style={styles.videoPlayIcon}>▶️</Text>
+            <Text style={styles.missingText}>Video</Text>
+          </View>
+        ) : status === 'ready' && signedUrl ? (
           <Image
             source={{ uri: signedUrl, cacheKey: photoPath ?? undefined }}
             style={styles.photo}
@@ -105,6 +114,8 @@ const styles = StyleSheet.create({
   column: { flex: 1, gap: 2 },
   photo: { width: '100%', aspectRatio: 3 / 4, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  videoPlaceholder: { backgroundColor: colors.surface, gap: 2 },
+  videoPlayIcon: { fontSize: 22 },
   missingText: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
   label: { color: colors.text, fontWeight: '600', fontSize: 13, marginTop: spacing.xs },
   meta: { color: colors.textMuted, fontSize: 12 },

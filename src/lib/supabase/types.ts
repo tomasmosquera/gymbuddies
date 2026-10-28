@@ -228,12 +228,17 @@ export type Checkin = {
   latitude: number;
   longitude: number;
   location_accuracy_m: number | null;
-  photo_path: string;
+  /** Exactly one of photo_path/video_path is set — never both, never neither. */
+  photo_path: string | null;
+  /** Date/location watermark is rendered as an overlay by the app's own player when showing this, never baked into the file itself. */
+  video_path: string | null;
   checkout_captured_at: string | null;
   checkout_latitude: number | null;
   checkout_longitude: number | null;
   checkout_location_accuracy_m: number | null;
+  /** At most one of checkout_photo_path/checkout_video_path is set — both null just means no checkout yet. */
   checkout_photo_path: string | null;
+  checkout_video_path: string | null;
   workout_minutes: number | null;
   /** Active calories burned during the workout window, sourced from Apple Health — display-only, never used for penalties/ranking/badges. */
   active_energy_kcal: number | null;
@@ -1005,9 +1010,11 @@ export type Database = {
           p_latitude: number;
           p_longitude: number;
           p_location_accuracy_m: number | null;
-          p_photo_path: string;
+          /** Exactly one of p_photo_path/p_video_path must be set. */
+          p_photo_path?: string | null;
           p_location_mocked?: boolean;
           p_auto_created?: boolean;
+          p_video_path?: string | null;
         };
         // null when p_auto_created is true and the target checkin turned out
         // to be a genuinely separate manual one — fan-out skips it, on purpose.
@@ -1035,9 +1042,11 @@ export type Database = {
           p_latitude: number;
           p_longitude: number;
           p_location_accuracy_m: number | null;
-          p_photo_path: string;
+          /** Exactly one of p_photo_path/p_video_path must be set. */
+          p_photo_path?: string | null;
           p_location_mocked?: boolean;
           p_auto_created?: boolean;
+          p_video_path?: string | null;
         };
         // null when p_auto_created is true and a genuinely separate manual
         // check-in already existed that day in the target group.

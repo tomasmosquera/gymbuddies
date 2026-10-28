@@ -35,6 +35,15 @@ import { colors, radii, spacing, typography } from '@/constants/theme';
 
 const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
+/** Same shape as Dashboard's/Moderar fotos' own ViewingMedia — what CheckinPhotoModal needs to show one half of a check-in, video or photo. */
+interface ViewingMedia {
+  photoPath: string | null;
+  videoPath: string | null;
+  capturedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 export default function HomeScreen() {
   const { session } = useAuth();
   // Temporary diagnostic for the checkin/checkout "stuck on Confirmar" hang — see
@@ -138,7 +147,7 @@ export default function HomeScreen() {
   } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
   const { challenges: openChallenges, refresh: refreshChallenges } = usePhotoChallenges(group?.id ?? null);
   const { claims: openKothClaims, refresh: refreshKothClaims } = usePendingKothClaims(group?.id ?? null);
-  const [viewingPhotoPath, setViewingPhotoPath] = useState<string | null>(null);
+  const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // "Did I check in today?" only from todayCheckin while actually viewing
@@ -449,7 +458,7 @@ export default function HomeScreen() {
             members={teamWeekMembers}
             checkinsByDate={teamCheckinsByDate}
             currentUserId={session?.user.id ?? null}
-            onPressPhoto={setViewingPhotoPath}
+            onPressPhoto={setViewingMedia}
             isCurrentWeek={isCurrentWeek}
             canNudge={canNudge}
             onNudge={handleNudge}
@@ -488,7 +497,16 @@ export default function HomeScreen() {
                     key={day}
                     style={styles.dayColumn}
                     disabled={!checkinForDay}
-                    onPress={() => checkinForDay && setViewingPhotoPath(checkinForDay.photo_path)}
+                    onPress={() =>
+                      checkinForDay &&
+                      setViewingMedia({
+                        photoPath: checkinForDay.photo_path,
+                        videoPath: checkinForDay.video_path,
+                        capturedAt: checkinForDay.captured_at,
+                        latitude: checkinForDay.latitude,
+                        longitude: checkinForDay.longitude,
+                      })
+                    }
                   >
                     <View style={[styles.dayDot, dayToneStyle(tone)]}>
                       <Text
@@ -526,7 +544,7 @@ export default function HomeScreen() {
                   members={teamWeekMembers}
                   checkinsByDate={teamCheckinsByDate}
                   currentUserId={session?.user.id ?? null}
-                  onPressPhoto={setViewingPhotoPath}
+                  onPressPhoto={setViewingMedia}
                   isCurrentWeek={isCurrentWeek}
                   canNudge={canNudge}
                   onNudge={handleNudge}
@@ -599,16 +617,33 @@ export default function HomeScreen() {
             </View>
           ) : null}
           <View style={styles.doneActions}>
-            <Button label="Ver mi foto" variant="secondary" onPress={() => setViewingPhotoPath(todayCheckin.photo_path)} />
+            <Button
+              label={todayCheckin.video_path ? 'Ver mi video' : 'Ver mi foto'}
+              variant="secondary"
+              onPress={() =>
+                setViewingMedia({
+                  photoPath: todayCheckin.photo_path,
+                  videoPath: todayCheckin.video_path,
+                  capturedAt: todayCheckin.captured_at,
+                  latitude: todayCheckin.latitude,
+                  longitude: todayCheckin.longitude,
+                })
+              }
+            />
             <Button label="Volver a tomar la foto" variant="secondary" onPress={() => router.push('/checkin')} />
           </View>
         </Card>
       ) : null}
 
       <CheckinPhotoModal
-        visible={viewingPhotoPath !== null}
-        photoPath={viewingPhotoPath}
-        onClose={() => setViewingPhotoPath(null)}
+        visible={viewingMedia !== null}
+        photoPath={viewingMedia?.photoPath ?? null}
+        videoPath={viewingMedia?.videoPath ?? null}
+        capturedAt={viewingMedia?.capturedAt ?? null}
+        latitude={viewingMedia?.latitude ?? null}
+        longitude={viewingMedia?.longitude ?? null}
+        timezone={group.timezone}
+        onClose={() => setViewingMedia(null)}
       />
 
       <LeaderboardCard
@@ -672,7 +707,7 @@ function TeamWeekRows({
   members: MemberAttendance[];
   checkinsByDate: Map<string, GroupCheckinWithProfile[]>;
   currentUserId: string | null;
-  onPressPhoto: (photoPath: string) => void;
+  onPressPhoto: (media: ViewingMedia) => void;
   /** "Bud" only ever makes sense for today — nudging someone about a day already in the past is meaningless, so it's hidden entirely outside the current week's view (same value regardless of which week's dots happen to be on screen). */
   isCurrentWeek: boolean;
   /** "Bud" — whether Bud would actually let me nudge this person right now (see useBuddyNudges). */
@@ -722,7 +757,20 @@ function TeamWeekRows({
                 status === 'completed' ? 'success' : status === 'excused' ? 'warning' : status === 'failed' ? 'danger' : 'neutral';
               const checkinForDay = checkinsByDate.get(day)?.find((c) => c.user_id === member.user_id);
               return (
-                <Pressable key={day} disabled={!checkinForDay} onPress={() => checkinForDay && onPressPhoto(checkinForDay.photo_path)}>
+                <Pressable
+                  key={day}
+                  disabled={!checkinForDay}
+                  onPress={() =>
+                    checkinForDay &&
+                    onPressPhoto({
+                      photoPath: checkinForDay.photo_path,
+                      videoPath: checkinForDay.video_path,
+                      capturedAt: checkinForDay.captured_at,
+                      latitude: checkinForDay.latitude,
+                      longitude: checkinForDay.longitude,
+                    })
+                  }
+                >
                   <View style={[styles.dayDot, styles.teamDot, dayToneStyle(tone)]}>
                     <Text
                       style={[
