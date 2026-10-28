@@ -502,7 +502,7 @@ export default function CheckinCameraScreen() {
           <Text style={styles.modePillText}>{isCheckoutFlow ? 'Foto Final 🏁' : 'Foto Inicial 📸'}</Text>
         </View>
         {isRecordingVideo ? (
-          <Text style={styles.recordingTimer}>🔴 {videoElapsedSeconds}s / {MAX_VIDEO_DURATION_SECONDS}s</Text>
+          <Text style={styles.recordingTimer}>{videoElapsedSeconds}s / {MAX_VIDEO_DURATION_SECONDS}s</Text>
         ) : (
           <View style={styles.statusPill}>
             {isLocked && isCameraReady ? (
