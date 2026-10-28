@@ -60,6 +60,12 @@ export default function CheckinCameraScreen() {
   const [isRecordingVideo, setIsRecordingVideo] = useState(false);
   const [videoElapsedSeconds, setVideoElapsedSeconds] = useState(0);
   const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  // Forces a fresh <CameraView> mount (bumped into its key below) when the
+  // native session seems to have gotten stuck mid-reconfiguration and never
+  // calls onCameraReady — see cameraStuck's own effect further down.
+  const [cameraRetryKey, setCameraRetryKey] = useState(0);
+  const [cameraStuck, setCameraStuck] = useState(false);
+  const cameraStuckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoElapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Set when the shutter is released before recordAsync's own promise
@@ -160,17 +166,38 @@ export default function CheckinCameraScreen() {
     }
   }, [retakeRequested, checkoutRequested, requestLock]);
 
-  // Switching front/back — or picture/video — re-negotiates the native camera session too.
-  useEffect(() => {
-    setIsCameraReady(false);
-  }, [facing, cameraMode]);
-
   useEffect(() => {
     return () => {
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (videoElapsedIntervalRef.current) clearInterval(videoElapsedIntervalRef.current);
+      if (cameraStuckTimeoutRef.current) clearTimeout(cameraStuckTimeoutRef.current);
     };
   }, []);
+
+  // A real device occasionally leaves the native camera session stuck
+  // mid-reconfiguration after a mode/facing switch — onCameraReady just
+  // never fires, no error, nothing to catch — so a plain "Preparando
+  // cámara..." spinner with no way out would otherwise strand the member
+  // here. Offers a manual retry (forces a brand new <CameraView> mount) once
+  // it's been stuck for a few seconds.
+  useEffect(() => {
+    if (cameraStuckTimeoutRef.current) clearTimeout(cameraStuckTimeoutRef.current);
+    if (isCameraReady) {
+      setCameraStuck(false);
+      return;
+    }
+    cameraStuckTimeoutRef.current = setTimeout(() => setCameraStuck(true), 5000);
+    return () => {
+      if (cameraStuckTimeoutRef.current) clearTimeout(cameraStuckTimeoutRef.current);
+    };
+  }, [isCameraReady, cameraRetryKey]);
+
+  const handleRetryCamera = () => {
+    setCameraStuck(false);
+    setIsCameraReady(false);
+    setCameraMode('picture');
+    setCameraRetryKey((k) => k + 1);
+  };
 
   // Safety net for when the geofence's exit event never fired (e.g. the app
   // was killed before it could): whenever this screen loads and there's no
@@ -212,6 +239,7 @@ export default function CheckinCameraScreen() {
       // Released during the mode-switch window — too short to count as a
       // real hold; drop back to picture mode instead of recording anything.
       stopRequestedRef.current = false;
+      setIsCameraReady(false);
       setCameraMode('picture');
       return;
     }
@@ -242,6 +270,7 @@ export default function CheckinCameraScreen() {
       if (videoElapsedIntervalRef.current) clearInterval(videoElapsedIntervalRef.current);
       videoElapsedIntervalRef.current = null;
       setIsRecordingVideo(false);
+      setIsCameraReady(false);
       setCameraMode('picture');
     }
   };
@@ -261,6 +290,16 @@ export default function CheckinCameraScreen() {
     holdTimerRef.current = setTimeout(() => {
       holdTimerRef.current = null;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // Both state updates in the same handler so they land in the same
+      // render/commit — splitting setIsCameraReady(false) into its own
+      // effect keyed off [cameraMode] left a window where the OTHER effect
+      // (the one that calls recordAsync once ready) could still read the
+      // PREVIOUS render's isCameraReady === true before this effect's own
+      // reset had a chance to run, firing recordAsync against the brand new
+      // (not yet actually ready) video-mode session — observed as
+      // "CameraOutputNotReadyException: Camera is not ready yet" on the very
+      // first hold after a mode switch.
+      setIsCameraReady(false);
       setCameraMode('video');
     }, HOLD_TO_RECORD_MS);
   };
@@ -439,7 +478,7 @@ export default function CheckinCameraScreen() {
   return (
     <View style={styles.flex}>
       <CameraView
-        key={`${facing}-${cameraMode}`}
+        key={`${facing}-${cameraMode}-${cameraRetryKey}`}
         ref={cameraRef}
         style={styles.camera}
         facing={facing}
@@ -450,7 +489,10 @@ export default function CheckinCameraScreen() {
       <Pressable
         accessibilityRole="button"
         style={styles.flipButton}
-        onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+        onPress={() => {
+          setIsCameraReady(false);
+          setFacing((f) => (f === 'back' ? 'front' : 'back'));
+        }}
         disabled={cameraMode === 'video'}
       >
         <Ionicons name="camera-reverse-outline" size={24} color="#fff" />
@@ -465,6 +507,10 @@ export default function CheckinCameraScreen() {
           <View style={styles.statusPill}>
             {isLocked && isCameraReady ? (
               <Text style={styles.statusText}>📍 Ubicación lista</Text>
+            ) : isLocked && cameraStuck ? (
+              <Pressable onPress={handleRetryCamera} hitSlop={8}>
+                <Text style={styles.statusText}>⚠️ La cámara no responde — toca para reintentar</Text>
+              </Pressable>
             ) : (
               <>
                 <ActivityIndicator color={colors.text} size="small" />
