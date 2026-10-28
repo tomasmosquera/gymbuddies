@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -292,6 +292,17 @@ export default function SettingsScreen() {
             thumbColor={colors.text}
           />
         </View>
+      </Card>
+
+      <Card style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Prueba de video (debug)</Text>
+        </View>
+        <Text style={styles.hint}>
+          Prueba interna: grabar un video corto (máx. 10s) y reproducirlo, para ver si crashea en este teléfono. No
+          sube nada a ningún lado ni afecta tu check-in real.
+        </Text>
+        <Button label="Probar video" variant="secondary" onPress={() => router.push('/profile/video-test')} />
       </Card>
 
       {Platform.OS === 'ios' || Platform.OS === 'android' ? (

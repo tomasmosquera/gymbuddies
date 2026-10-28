@@ -124,6 +124,7 @@ export default function ProfileStackLayout() {
         options={{ title: 'Editar grupo', headerLeft: () => <AdminChildBackButton /> }}
       />
       <Stack.Screen name="invite" options={{ title: 'Invitar', headerLeft: () => <InviteBackButton /> }} />
+      <Stack.Screen name="video-test" options={{ title: 'Prueba de video', headerShown: false }} />
     </Stack>
   );
 }
