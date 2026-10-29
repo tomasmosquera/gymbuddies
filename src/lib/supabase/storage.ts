@@ -33,6 +33,14 @@ export function checkoutVideoPath(groupId: string, userId: string, checkinDate: 
   return `${groupId}/${userId}/${checkinDate}-checkout.mp4`;
 }
 
+export function checkinVideoThumbnailPath(groupId: string, userId: string, checkinDate: string): string {
+  return `${groupId}/${userId}/${checkinDate}-thumb.jpg`;
+}
+
+export function checkoutVideoThumbnailPath(groupId: string, userId: string, checkinDate: string): string {
+  return `${groupId}/${userId}/${checkinDate}-checkout-thumb.jpg`;
+}
+
 /**
  * A fresh, unique path for an admin replacing a check-in photo from Moderar
  * Fotos (admin_replace_checkin_photo) — deliberately never the same key as

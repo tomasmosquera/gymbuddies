@@ -211,6 +211,7 @@ function CheckinModerationRow({
             label="Foto Inicial"
             photoPath={checkin.photo_path}
             videoPath={checkin.video_path}
+            videoThumbnailPath={checkin.video_thumbnail_path}
             capturedAt={checkin.captured_at}
             latitude={checkin.latitude}
             longitude={checkin.longitude}
@@ -246,6 +247,7 @@ function CheckinModerationRow({
             label="Foto Final"
             photoPath={checkin.checkout_photo_path}
             videoPath={checkin.checkout_video_path}
+            videoThumbnailPath={checkin.checkout_video_thumbnail_path}
             capturedAt={checkin.checkout_captured_at}
             latitude={checkin.checkout_latitude}
             longitude={checkin.checkout_longitude}

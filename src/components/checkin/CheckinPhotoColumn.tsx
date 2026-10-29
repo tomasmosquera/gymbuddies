@@ -61,11 +61,18 @@ function VideoThumbnailTile({ uri }: { uri: string }) {
   );
 }
 
-/** One labeled photo OR video (inicial/final) with its captured time and reverse-geocoded location. Exactly one of photoPath/videoPath is ever set, matching the DB's own invariant. */
+/**
+ * One labeled photo OR video (inicial/final) with its captured time and reverse-geocoded
+ * location. Exactly one of photoPath/videoPath is ever set, matching the DB's own invariant.
+ * videoThumbnailPath, when present, is a small pre-generated JPEG (0166_checkin_video_thumbnail.sql)
+ * — loads as fast as a real photo. Older/thumbnail-less videos fall back to generating one live
+ * (VideoThumbnailTile), which has to buffer the actual remote video first and is noticeably slower.
+ */
 export function CheckinPhotoColumn({
   label,
   photoPath,
   videoPath,
+  videoThumbnailPath,
   capturedAt,
   latitude,
   longitude,
@@ -75,13 +82,16 @@ export function CheckinPhotoColumn({
   label: string;
   photoPath: string | null;
   videoPath?: string | null;
+  videoThumbnailPath?: string | null;
   capturedAt: string | null;
   latitude: number | null;
   longitude: number | null;
   timezone: string;
   onPress: () => void;
 }) {
-  const mediaPath = photoPath ?? videoPath ?? null;
+  // Prefer the pre-generated thumbnail over the full video — same loading cost as a photo.
+  const mediaPath = photoPath ?? videoThumbnailPath ?? videoPath ?? null;
+  const needsLiveThumbnail = !photoPath && !videoThumbnailPath && !!videoPath;
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'none' | 'loading' | 'ready' | 'expired'>(mediaPath ? 'loading' : 'none');
   const locationText = useReverseGeocode(latitude, longitude);
@@ -112,8 +122,15 @@ export function CheckinPhotoColumn({
   return (
     <View style={styles.column}>
       <Pressable onPress={onPress} disabled={status !== 'ready'}>
-        {status === 'ready' && signedUrl && videoPath ? (
+        {status === 'ready' && signedUrl && needsLiveThumbnail ? (
           <VideoThumbnailTile uri={signedUrl} />
+        ) : status === 'ready' && signedUrl && videoPath ? (
+          <View style={styles.videoTileWrap}>
+            <Image source={{ uri: signedUrl, cacheKey: mediaPath ?? undefined }} style={styles.photo} contentFit="cover" cachePolicy="memory-disk" />
+            <View style={styles.videoPlayBadge}>
+              <Text style={styles.videoPlayBadgeIcon}>▶️</Text>
+            </View>
+          </View>
         ) : status === 'ready' && signedUrl ? (
           <Image
             source={{ uri: signedUrl, cacheKey: photoPath ?? undefined }}

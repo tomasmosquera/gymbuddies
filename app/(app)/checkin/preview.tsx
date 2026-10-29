@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoPlayer, VideoView, type VideoThumbnail } from 'expo-video';
+import { Image as ExpoImage } from 'expo-image';
+import { useEvent } from 'expo';
 import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,8 +17,10 @@ import { supabase } from '@/lib/supabase/client';
 import {
   checkinPhotoPath,
   checkinVideoPath,
+  checkinVideoThumbnailPath,
   checkoutPhotoPath,
   checkoutVideoPath,
+  checkoutVideoThumbnailPath,
   uploadImage,
   uploadVideo,
 } from '@/lib/supabase/storage';
@@ -35,6 +39,8 @@ interface FanOutParams {
   otherGroups: MembershipWithGroup[];
   userId: string;
   media: CheckinDraftMedia;
+  /** Local thumbnail JPEG (see VideoThumbnailCapture below) — only meaningful when media.kind === 'video'. Each group needs its own uploaded copy, same reasoning as media.uri itself (see this function's own doc comment). */
+  videoThumbnailUri?: string | null;
   capturedAtDate: Date;
   capturedAtIso: string;
   latitude: number;
@@ -69,6 +75,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
     otherGroups,
     userId,
     media,
+    videoThumbnailUri,
     capturedAtDate,
     capturedAtIso,
     latitude,
@@ -89,6 +96,13 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
         } else {
           await uploadImage('checkins', path, media.uri);
         }
+        let thumbnailPath: string | null = null;
+        if (isVideo && videoThumbnailUri) {
+          thumbnailPath = checkinVideoThumbnailPath(m.group_id, userId, otherDate);
+          await uploadImage('checkins', thumbnailPath, videoThumbnailUri).catch(() => {
+            thumbnailPath = null;
+          });
+        }
         const { data } = await supabase.rpc('submit_checkin', {
           p_group_id: m.group_id,
           p_captured_at: capturedAtIso,
@@ -97,6 +111,7 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
           p_location_accuracy_m: accuracyMeters,
           p_photo_path: isVideo ? null : path,
           p_video_path: isVideo ? path : null,
+          p_video_thumbnail_path: thumbnailPath,
           p_location_mocked: locationMocked,
           p_auto_created: true,
         });
@@ -128,8 +143,18 @@ async function fanOutCheckinToOtherGroups(params: FanOutParams) {
  * clobbering a checkout the person already completed there themselves.
  */
 async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
-  const { otherGroups, userId, media, capturedAtDate, capturedAtIso, latitude, longitude, accuracyMeters, locationMocked } =
-    params;
+  const {
+    otherGroups,
+    userId,
+    media,
+    videoThumbnailUri,
+    capturedAtDate,
+    capturedAtIso,
+    latitude,
+    longitude,
+    accuracyMeters,
+    locationMocked,
+  } = params;
   await Promise.all(
     otherGroups.map(async (m) => {
       try {
@@ -150,6 +175,13 @@ async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
         } else {
           await uploadImage('checkins', path, media.uri);
         }
+        let thumbnailPath: string | null = null;
+        if (isVideo && videoThumbnailUri) {
+          thumbnailPath = checkoutVideoThumbnailPath(m.group_id, userId, otherDate);
+          await uploadImage('checkins', thumbnailPath, videoThumbnailUri).catch(() => {
+            thumbnailPath = null;
+          });
+        }
         const { data } = await supabase.rpc('submit_workout_checkout', {
           p_checkin_id: existing.id,
           p_captured_at: capturedAtIso,
@@ -158,6 +190,7 @@ async function fanOutCheckoutToOtherGroups(params: FanOutParams) {
           p_location_accuracy_m: accuracyMeters,
           p_photo_path: isVideo ? null : path,
           p_video_path: isVideo ? path : null,
+          p_video_thumbnail_path: thumbnailPath,
           p_location_mocked: locationMocked,
           p_auto_created: true,
         });
@@ -219,6 +252,65 @@ function VideoPreviewWithOverlay({ uri, overlayText, locationText }: { uri: stri
   );
 }
 
+/** Polls a ref until it's set or the timeout elapses — used so handleConfirm can wait a bit for VideoThumbnailCapture's (fast, local-file) result instead of a Promise plumbed across renders. */
+async function waitForRef<T>(ref: { current: T | null }, timeoutMs: number, intervalMs = 150): Promise<T | null> {
+  const start = Date.now();
+  while (ref.current === null && Date.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return ref.current;
+}
+
+/**
+ * Captures a static JPEG thumbnail of the video's first frame, used so the Dashboard/Moderar
+ * fotos tile loads instantly instead of buffering the remote video just to show a preview (see
+ * 0166_checkin_video_thumbnail.sql). generateThumbnailsAsync gives back a native image reference
+ * (VideoThumbnail, a SharedRef) — not a file — so it's flattened into a real JPEG the same way
+ * the photo branch above already does: render it into an <Image>, then captureRef that view.
+ * Rendered off-screen, invisible to the user; the visible preview is VideoPreviewWithOverlay.
+ * Mounted alongside it, against the SAME local file, as its own isolated player instance — same
+ * AVPlayer-scoping idiom as every other video use in this app.
+ */
+function VideoThumbnailCapture({ uri, onReady }: { uri: string; onReady: (localUri: string) => void }) {
+  const player = useVideoPlayer({ uri });
+  const { status } = useEvent(player, 'statusChange', { status: player.status });
+  const [thumbnail, setThumbnail] = useState<VideoThumbnail | null>(null);
+  const shotRef = useRef<ComponentRef<typeof ViewShot>>(null);
+  const requestedThumbnailRef = useRef(false);
+  const capturedRef = useRef(false);
+
+  useEffect(() => {
+    if (status !== 'readyToPlay' || requestedThumbnailRef.current) return;
+    requestedThumbnailRef.current = true;
+    player
+      // 1280 matches uploadImage's own MAX_DIMENSION_PX — generating it any smaller would just
+      // get upscaled back up by that resize step (no quality gained, wasted bytes either way).
+      .generateThumbnailsAsync(0, { maxWidth: 1280 })
+      .then(([thumb]) => {
+        if (thumb) setThumbnail(thumb);
+      })
+      .catch(() => {});
+  }, [status, player]);
+
+  useEffect(() => {
+    if (!thumbnail || capturedRef.current) return;
+    capturedRef.current = true;
+    // One tick so the <Image> actually paints the native ref before it's snapshotted.
+    requestAnimationFrame(() => {
+      captureRef(shotRef, { format: 'jpg', quality: 0.85 })
+        .then(onReady)
+        .catch(() => {});
+    });
+  }, [thumbnail, onReady]);
+
+  if (!thumbnail) return null;
+  return (
+    <ViewShot ref={shotRef} style={[styles.hiddenThumbnail, { width: thumbnail.width, height: thumbnail.height }]}>
+      <ExpoImage source={thumbnail} style={{ width: thumbnail.width, height: thumbnail.height }} />
+    </ViewShot>
+  );
+}
+
 export default function CheckinPreviewScreen() {
   const { session, profile } = useAuth();
   const { group } = useActiveGroup();
@@ -229,6 +321,10 @@ export default function CheckinPreviewScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
   const viewShotRef = useRef<ComponentRef<typeof ViewShot>>(null);
+  const videoThumbnailUriRef = useRef<string | null>(null);
+  const handleThumbnailReady = useCallback((localUri: string) => {
+    videoThumbnailUriRef.current = localUri;
+  }, []);
   // Kept around purely so the diagnostic logging below can still attribute a breadcrumb to
   // someone once session itself has already gone null — see the fallback-render effect.
   const lastKnownUserIdRef = useRef<string | null>(null);
@@ -326,6 +422,15 @@ export default function CheckinPreviewScreen() {
         }
         logBreadcrumb(session.user.id, 'confirm:checkout_uploaded');
 
+        const localThumbUri = isVideo ? await waitForRef(videoThumbnailUriRef, 3000) : null;
+        let thumbnailPath: string | null = null;
+        if (localThumbUri) {
+          thumbnailPath = checkoutVideoThumbnailPath(group.id, session.user.id, checkinDate);
+          await uploadImage('checkins', thumbnailPath, localThumbUri).catch(() => {
+            thumbnailPath = null;
+          });
+        }
+
         const { data, error } = await supabase.rpc('submit_workout_checkout', {
           p_checkin_id: draft.existingCheckinId,
           p_captured_at: draft.capturedAt,
@@ -334,6 +439,7 @@ export default function CheckinPreviewScreen() {
           p_location_accuracy_m: draft.accuracyMeters,
           p_photo_path: isVideo ? null : path,
           p_video_path: isVideo ? path : null,
+          p_video_thumbnail_path: thumbnailPath,
           p_location_mocked: draft.locationMocked,
         });
         if (error || !data) throw new Error(error?.message ?? 'No se pudo registrar la foto final');
@@ -373,6 +479,7 @@ export default function CheckinPreviewScreen() {
             otherGroups: otherActiveGroups,
             userId: session.user.id,
             media: isVideo ? { kind: 'video', uri: mediaUri } : { kind: 'photo', uri: mediaUri },
+            videoThumbnailUri: localThumbUri,
             capturedAtDate,
             capturedAtIso: draft.capturedAt,
             latitude: draft.latitude,
@@ -450,6 +557,15 @@ export default function CheckinPreviewScreen() {
       }
       logBreadcrumb(session.user.id, 'confirm:checkin_uploaded');
 
+      const localThumbUri = isVideo ? await waitForRef(videoThumbnailUriRef, 3000) : null;
+      let thumbnailPath: string | null = null;
+      if (localThumbUri) {
+        thumbnailPath = checkinVideoThumbnailPath(group.id, session.user.id, checkinDate);
+        await uploadImage('checkins', thumbnailPath, localThumbUri).catch(() => {
+          thumbnailPath = null;
+        });
+      }
+
       // submit_checkin upserts on (group_id, user_id, checkin_date) server-side
       // (SECURITY DEFINER, bypassing the client role's column grants): a plain
       // client-side upsert doesn't work here because PostgREST's generated
@@ -465,6 +581,7 @@ export default function CheckinPreviewScreen() {
         p_location_accuracy_m: draft.accuracyMeters,
         p_photo_path: isVideo ? null : path,
         p_video_path: isVideo ? path : null,
+        p_video_thumbnail_path: thumbnailPath,
         p_location_mocked: draft.locationMocked,
       });
       if (error || !checkinRow) throw new Error(error?.message ?? 'No se pudo registrar el check-in');
@@ -488,6 +605,7 @@ export default function CheckinPreviewScreen() {
           otherGroups: otherActiveGroups,
           userId: session.user.id,
           media: isVideo ? { kind: 'video', uri: mediaUri } : { kind: 'photo', uri: mediaUri },
+          videoThumbnailUri: localThumbUri,
           capturedAtDate,
           capturedAtIso: draft.capturedAt,
           reminderMinutes: profile?.checkout_reminder_minutes,
@@ -611,7 +729,10 @@ export default function CheckinPreviewScreen() {
   return (
     <View style={styles.container}>
       {isVideoDraft ? (
-        <VideoPreviewWithOverlay uri={draft.media.uri} overlayText={overlayText} locationText={address ?? coordsText} />
+        <>
+          <VideoPreviewWithOverlay uri={draft.media.uri} overlayText={overlayText} locationText={address ?? coordsText} />
+          <VideoThumbnailCapture uri={draft.media.uri} onReady={handleThumbnailReady} />
+        </>
       ) : (
         <ViewShot ref={viewShotRef} style={styles.shotWrapper} options={{ format: 'jpg', quality: 0.85 }}>
           <Image source={{ uri: draft.media.uri }} style={styles.photo} />
@@ -654,6 +775,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   overlayText: { color: 'white', ...typography.caption, fontWeight: '700' },
+  hiddenThumbnail: { position: 'absolute', top: -4000, left: 0 },
   actions: { gap: spacing.sm },
   uploadProgress: { gap: spacing.xs },
   uploadProgressText: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },

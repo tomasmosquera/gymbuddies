@@ -232,6 +232,8 @@ export type Checkin = {
   photo_path: string | null;
   /** Date/location watermark is rendered as an overlay by the app's own player when showing this, never baked into the file itself. */
   video_path: string | null;
+  /** Static first-frame JPEG, captured once client-side right after recording — lets the tile load instantly like a photo instead of buffering the video just to show a preview. Nullable/best-effort: null just means fall back to live generation. */
+  video_thumbnail_path: string | null;
   checkout_captured_at: string | null;
   checkout_latitude: number | null;
   checkout_longitude: number | null;
@@ -239,6 +241,7 @@ export type Checkin = {
   /** At most one of checkout_photo_path/checkout_video_path is set — both null just means no checkout yet. */
   checkout_photo_path: string | null;
   checkout_video_path: string | null;
+  checkout_video_thumbnail_path: string | null;
   workout_minutes: number | null;
   /** Active calories burned during the workout window, sourced from Apple Health — display-only, never used for penalties/ranking/badges. */
   active_energy_kcal: number | null;
@@ -1015,6 +1018,7 @@ export type Database = {
           p_location_mocked?: boolean;
           p_auto_created?: boolean;
           p_video_path?: string | null;
+          p_video_thumbnail_path?: string | null;
         };
         // null when p_auto_created is true and the target checkin turned out
         // to be a genuinely separate manual one — fan-out skips it, on purpose.
@@ -1047,6 +1051,7 @@ export type Database = {
           p_location_mocked?: boolean;
           p_auto_created?: boolean;
           p_video_path?: string | null;
+          p_video_thumbnail_path?: string | null;
         };
         // null when p_auto_created is true and a genuinely separate manual
         // check-in already existed that day in the target group.

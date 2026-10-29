@@ -790,6 +790,7 @@ export default function RulesScreen() {
                   label="Foto Inicial"
                   photoPath={challenge.checkin.photo_path}
                   videoPath={challenge.checkin.video_path}
+                  videoThumbnailPath={challenge.checkin.video_thumbnail_path}
                   capturedAt={challenge.checkin.captured_at}
                   latitude={challenge.checkin.latitude}
                   longitude={challenge.checkin.longitude}
@@ -809,6 +810,7 @@ export default function RulesScreen() {
                     label="Foto Final"
                     photoPath={challenge.checkin.checkout_photo_path}
                     videoPath={challenge.checkin.checkout_video_path}
+                    videoThumbnailPath={challenge.checkin.checkout_video_thumbnail_path}
                     capturedAt={challenge.checkin.checkout_captured_at}
                     latitude={challenge.checkin.checkout_latitude}
                     longitude={challenge.checkin.checkout_longitude}
