@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { useVideoPlayer, type VideoThumbnail } from 'expo-video';
+import { useEvent } from 'expo';
 import * as Location from 'expo-location';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { formatZonedTime12h } from '@/lib/domain/dateUtils';
@@ -25,6 +27,40 @@ export function useReverseGeocode(latitude: number | null, longitude: number | n
   return locationText;
 }
 
+/** Grabs the first frame of a video as a static thumbnail — mounted only while a video tile needs one; the real playback happens in CheckinPhotoModal once opened. */
+function VideoThumbnailTile({ uri }: { uri: string }) {
+  const player = useVideoPlayer({ uri });
+  const { status } = useEvent(player, 'statusChange', { status: player.status });
+  const [thumbnail, setThumbnail] = useState<VideoThumbnail | null>(null);
+  const requestedRef = useRef(false);
+
+  useEffect(() => {
+    if (status !== 'readyToPlay' || requestedRef.current) return;
+    requestedRef.current = true;
+    player
+      .generateThumbnailsAsync(0)
+      .then(([thumb]) => {
+        if (thumb) setThumbnail(thumb);
+      })
+      .catch(() => {});
+  }, [status, player]);
+
+  return (
+    <View style={styles.videoTileWrap}>
+      {thumbnail ? (
+        <Image source={thumbnail} style={styles.photo} contentFit="cover" />
+      ) : (
+        <View style={[styles.photo, styles.photoPlaceholder]}>
+          <ActivityIndicator color={colors.primary} size="small" />
+        </View>
+      )}
+      <View style={styles.videoPlayBadge}>
+        <Text style={styles.videoPlayBadgeIcon}>▶️</Text>
+      </View>
+    </View>
+  );
+}
+
 /** One labeled photo OR video (inicial/final) with its captured time and reverse-geocoded location. Exactly one of photoPath/videoPath is ever set, matching the DB's own invariant. */
 export function CheckinPhotoColumn({
   label,
@@ -45,25 +81,26 @@ export function CheckinPhotoColumn({
   timezone: string;
   onPress: () => void;
 }) {
+  const mediaPath = photoPath ?? videoPath ?? null;
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [status, setStatus] = useState<'none' | 'loading' | 'ready' | 'expired'>(photoPath ? 'loading' : 'none');
+  const [status, setStatus] = useState<'none' | 'loading' | 'ready' | 'expired'>(mediaPath ? 'loading' : 'none');
   const locationText = useReverseGeocode(latitude, longitude);
 
   useEffect(() => {
-    if (!photoPath) {
+    if (!mediaPath) {
       setSignedUrl(null);
       setStatus('none');
       return;
     }
     setStatus('loading');
     setSignedUrl(null);
-    getSignedUrl('checkins', photoPath)
+    getSignedUrl('checkins', mediaPath)
       .then((url) => {
         setSignedUrl(url);
         setStatus('ready');
       })
       .catch(() => setStatus('expired'));
-  }, [photoPath]);
+  }, [mediaPath]);
 
   const coordsText = latitude !== null && longitude !== null ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : null;
 
@@ -74,14 +111,9 @@ export function CheckinPhotoColumn({
 
   return (
     <View style={styles.column}>
-      <Pressable onPress={onPress} disabled={!videoPath && status !== 'ready'}>
-        {videoPath ? (
-          // No thumbnail decode here on purpose — just a placeholder tile;
-          // the real frame plays once opened in CheckinPhotoModal.
-          <View style={[styles.photo, styles.photoPlaceholder, styles.videoPlaceholder]}>
-            <Text style={styles.videoPlayIcon}>▶️</Text>
-            <Text style={styles.missingText}>Video</Text>
-          </View>
+      <Pressable onPress={onPress} disabled={status !== 'ready'}>
+        {status === 'ready' && signedUrl && videoPath ? (
+          <VideoThumbnailTile uri={signedUrl} />
         ) : status === 'ready' && signedUrl ? (
           <Image
             source={{ uri: signedUrl, cacheKey: photoPath ?? undefined }}
@@ -93,7 +125,12 @@ export function CheckinPhotoColumn({
           <View style={[styles.photo, styles.photoPlaceholder]}>
             {status === 'loading' ? <ActivityIndicator color={colors.primary} size="small" /> : null}
             {status === 'none' ? <Text style={styles.missingText}>Sin foto</Text> : null}
-            {status === 'expired' ? <Text style={styles.missingText}>Foto expirada{'\n'}(se borran a los 7 días)</Text> : null}
+            {status === 'expired' ? (
+              <Text style={styles.missingText}>
+                {videoPath ? 'Video expirado' : 'Foto expirada'}
+                {'\n'}(se borran a los 7 días)
+              </Text>
+            ) : null}
           </View>
         )}
       </Pressable>
@@ -114,8 +151,17 @@ const styles = StyleSheet.create({
   column: { flex: 1, gap: 2 },
   photo: { width: '100%', aspectRatio: 3 / 4, borderRadius: radii.md, backgroundColor: colors.surfaceAlt },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  videoPlaceholder: { backgroundColor: colors.surface, gap: 2 },
-  videoPlayIcon: { fontSize: 22 },
+  videoTileWrap: { position: 'relative' },
+  videoPlayBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  videoPlayBadgeIcon: { fontSize: 12 },
   missingText: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
   label: { color: colors.text, fontWeight: '600', fontSize: 13, marginTop: spacing.xs },
   meta: { color: colors.textMuted, fontSize: 12 },

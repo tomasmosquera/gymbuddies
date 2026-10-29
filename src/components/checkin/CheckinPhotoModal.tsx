@@ -30,7 +30,9 @@ function VideoModalContent({
   overlayText: string | null;
   locationText: string | null;
 }) {
-  const player = useVideoPlayer({ uri });
+  const player = useVideoPlayer({ uri }, (p) => {
+    p.play();
+  });
   return (
     <View style={styles.imageArea}>
       <VideoView style={styles.video} player={player} nativeControls fullscreenOptions={{ enable: true }} />
