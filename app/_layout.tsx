@@ -10,6 +10,7 @@ import { useLocationDisclosurePrompt } from '@/hooks/useLocationDisclosure';
 import { useNotificationTapRouting } from '@/hooks/useNotificationTapRouting';
 import { useDeferredInviteCode } from '@/hooks/useDeferredInviteCode';
 import { useAppUpdateCheck } from '@/hooks/useAppUpdateCheck';
+import { useOtaForegroundCheck } from '@/hooks/useOtaForegroundCheck';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { colors } from '@/constants/theme';
 import '@/lib/notifications/checkoutGeofenceTask';
@@ -32,6 +33,7 @@ export default function RootLayout() {
   useNotificationTapRouting();
   useDeferredInviteCode();
   useAppUpdateCheck();
+  useOtaForegroundCheck();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
