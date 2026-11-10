@@ -194,8 +194,17 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
   const rowsByPeriod = useMemo(() => {
     const { weekStart, weekEnd } = getWeekBounds(referenceDate, timezone);
     const todayString = toZonedDateString(new Date(), timezone);
-    const isCurrentWeek = weekStart === getWeekBounds(new Date(), timezone).weekStart;
-    const remainingDays = daysRemainingInWeek(weekEnd, todayString);
+    // The real, still-open current week — deliberately NOT the navigated
+    // week above. Month/Total/Cycle always need the live projection for
+    // whatever week is actually open today, regardless of which week the
+    // "Semana" tab happens to be scrolled to; using the navigated week here
+    // instead made going "back" one week double-count that week's money
+    // (its frozen weekly_evaluation_results charge, already baked into
+    // allChargedAmountByUser/monthChargedAmountByUser/cycleChargedAmountByUser,
+    // PLUS a live "projection" recomputed over that same past, closed week).
+    const nowWeek = getWeekBounds(new Date(), timezone);
+    const isCurrentWeek = weekStart === nowWeek.weekStart;
+    const remainingDays = daysRemainingInWeek(nowWeek.weekEnd, todayString);
     const { monthStart } = currentMonthBounds(timezone);
 
     // Guaranteed-misses-only projection for the still-open current week —
@@ -207,10 +216,10 @@ export function useLeaderboard(groupId: string | null, timezone: string, referen
     // must never show a live projected charge, even if they're missing days
     // for consistency purposes.
     const liveChargedFailedDays = (m: MemberAttendanceRecord): number => {
-      const weekDays = m.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
+      const weekDays = m.days.filter((d) => d.date >= nowWeek.weekStart && d.date <= nowWeek.weekEnd);
       const completed = weekDays.filter((d) => d.status === 'completed').length;
       const excused = weekDays.filter((d) => d.status === 'excused').length;
-      const presentDays = m.penaltyStartDate ? daysPresentInWeek(m.penaltyStartDate, weekStart, weekEnd) : 7;
+      const presentDays = m.penaltyStartDate ? daysPresentInWeek(m.penaltyStartDate, nowWeek.weekStart, nowWeek.weekEnd) : 7;
       const requiredDays = Math.min(m.minDaysPerWeek, presentDays);
       const effectiveRequired = Math.max(requiredDays - excused, 0);
       const stillNeeded = Math.max(effectiveRequired - completed, 0);
