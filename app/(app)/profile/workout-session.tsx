@@ -245,7 +245,7 @@ function ExerciseCard({
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [editWeight, setEditWeight] = useState('');
   const [editReps, setEditReps] = useState('');
-  const { sets: previousSets } = usePreviousExercisePerformance(sessionExercise.exercise_id, sessionId);
+  const { sets: previousSets, lastNote } = usePreviousExercisePerformance(sessionExercise.exercise_id, sessionId);
 
   // Today's rest timer and note for this exercise — session-scoped (see
   // set_session_exercise_rest/set_session_exercise_notes), never touching
@@ -270,7 +270,7 @@ function ExerciseCard({
   };
 
   const startEditingNotes = () => {
-    setNotesInput(sessionExercise.notes ?? '');
+    setNotesInput(sessionExercise.notes ?? lastNote ?? '');
     setIsEditingNotes(true);
   };
 
@@ -484,7 +484,11 @@ function ExerciseCard({
       ) : (
         <Pressable onPress={startEditingNotes} accessibilityRole="button" accessibilityLabel="Editar nota de este ejercicio">
           <Text style={styles.notesRowText} numberOfLines={2}>
-            {sessionExercise.notes || '+ Agregar nota'}
+            {sessionExercise.notes
+              ? sessionExercise.notes
+              : lastNote
+                ? `Última vez: ${lastNote}`
+                : '+ Agregar nota'}
           </Text>
         </Pressable>
       )}
