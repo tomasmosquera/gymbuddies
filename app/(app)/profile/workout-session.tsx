@@ -485,9 +485,9 @@ function ExerciseCard({
         <Pressable onPress={startEditingNotes} accessibilityRole="button" accessibilityLabel="Editar nota de este ejercicio">
           <Text style={styles.notesRowText} numberOfLines={2}>
             {sessionExercise.notes
-              ? sessionExercise.notes
+              ? `Nota: ${sessionExercise.notes}`
               : lastNote
-                ? `Última vez: ${lastNote}`
+                ? `Nota (última vez): ${lastNote}`
                 : '+ Agregar nota'}
           </Text>
         </Pressable>

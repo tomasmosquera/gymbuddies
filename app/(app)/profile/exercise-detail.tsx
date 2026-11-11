@@ -71,7 +71,7 @@ function HistoryTab({ exerciseId, unit }: { exerciseId: string; unit: WeightUnit
         <Card key={session.sessionId} style={styles.historyCard}>
           <Text style={styles.historyLabel}>{session.label}</Text>
           <Text style={styles.historyDate}>{formatFullDate(session.date)}</Text>
-          {session.notes ? <Text style={styles.historyNotes}>"{session.notes}"</Text> : null}
+          {session.notes ? <Text style={styles.historyNotes}>Nota: "{session.notes}"</Text> : null}
 
           <View style={styles.setsTableHeader}>
             <Text style={[styles.tableHeaderCell, styles.historySetColumn]}>SET</Text>
