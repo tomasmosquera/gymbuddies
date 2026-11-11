@@ -5,6 +5,7 @@ import type { HistorySession } from '@/lib/domain/exerciseRecords';
 
 interface SessionExerciseRow {
   id: string;
+  notes: string | null;
   session: { id: string; started_at: string; status: string; user_id: string; routine_name_snapshot: string | null } | null;
   sets: { id: string; set_number: number; reps: number; weight_kg: number | null; is_warmup: boolean }[];
 }
@@ -31,7 +32,7 @@ export function useExerciseSessionHistory(exerciseId: string) {
     const { data } = await supabase
       .from('workout_session_exercises')
       .select(
-        'id, session:workout_sessions(id, started_at, status, user_id, routine_name_snapshot), sets:workout_sets(id, set_number, reps, weight_kg, is_warmup)'
+        'id, notes, session:workout_sessions(id, started_at, status, user_id, routine_name_snapshot), sets:workout_sets(id, set_number, reps, weight_kg, is_warmup)'
       )
       .eq('exercise_id', exerciseId);
     const rows = (data as unknown as SessionExerciseRow[]) ?? [];
@@ -40,6 +41,7 @@ export function useExerciseSessionHistory(exerciseId: string) {
       sessionId: r.session!.id,
       date: r.session!.started_at,
       label: r.session!.routine_name_snapshot ?? 'Entreno libre',
+      notes: r.notes,
       sets: [...r.sets]
         .sort((a, b) => a.set_number - b.set_number)
         .map((s) => ({ id: s.id, setNumber: s.set_number, reps: s.reps, weightKg: s.weight_kg, isWarmup: s.is_warmup })),

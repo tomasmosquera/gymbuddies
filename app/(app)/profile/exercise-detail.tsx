@@ -71,6 +71,7 @@ function HistoryTab({ exerciseId, unit }: { exerciseId: string; unit: WeightUnit
         <Card key={session.sessionId} style={styles.historyCard}>
           <Text style={styles.historyLabel}>{session.label}</Text>
           <Text style={styles.historyDate}>{formatFullDate(session.date)}</Text>
+          {session.notes ? <Text style={styles.historyNotes}>"{session.notes}"</Text> : null}
 
           <View style={styles.setsTableHeader}>
             <Text style={[styles.tableHeaderCell, styles.historySetColumn]}>SET</Text>
@@ -355,6 +356,7 @@ const styles = StyleSheet.create({
   historyCard: { gap: 2 },
   historyLabel: { ...typography.heading, fontSize: 15, color: colors.text },
   historyDate: { color: colors.textMuted, fontSize: 12, marginBottom: spacing.xs },
+  historyNotes: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginBottom: spacing.xs },
   historySetColumn: { width: 32 },
   historyValueColumn: { flex: 1 },
   historySetRow: {

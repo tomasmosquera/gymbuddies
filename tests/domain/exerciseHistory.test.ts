@@ -5,6 +5,7 @@ const sessions: HistorySession[] = [
     sessionId: 's1',
     date: '2026-08-31T06:30:00Z',
     label: 'Pull',
+    notes: null,
     sets: [
       { id: 'a', setNumber: 1, reps: 12, weightKg: 20, isWarmup: false },
       { id: 'b', setNumber: 2, reps: 12, weightKg: 20, isWarmup: false },
@@ -14,6 +15,7 @@ const sessions: HistorySession[] = [
     sessionId: 's2',
     date: '2026-09-16T06:26:00Z',
     label: 'Pull',
+    notes: null,
     sets: [
       { id: 'c', setNumber: 1, reps: 12, weightKg: 20, isWarmup: false },
       { id: 'd', setNumber: 2, reps: 12, weightKg: 20, isWarmup: false },
@@ -24,6 +26,7 @@ const sessions: HistorySession[] = [
     sessionId: 's3',
     date: '2026-09-23T18:39:00Z',
     label: 'Pull',
+    notes: null,
     sets: [
       { id: 'f', setNumber: 1, reps: 12, weightKg: 20, isWarmup: false },
       { id: 'g', setNumber: 2, reps: 12, weightKg: 25, isWarmup: false }, // new weight + volume + 1RM PR

@@ -49,6 +49,8 @@ export interface HistorySession {
   sessionId: string;
   date: string;
   label: string;
+  /** The free-text note entered for this exercise during this specific session, if any — never the routine's own notes. */
+  notes: string | null;
   sets: HistorySet[];
 }
 
