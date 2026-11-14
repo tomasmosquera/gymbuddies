@@ -29,6 +29,7 @@ export default function HomeStackLayout() {
         }}
       />
       <Stack.Screen name="group-summary" options={{ title: 'Tus grupos' }} />
+      <Stack.Screen name="feed" options={{ title: 'Feed de fotos' }} />
     </Stack>
   );
 }
