@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, LayoutChangeEvent, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEvent } from 'expo';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  cancelAnimation,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { useReverseGeocode } from '@/components/checkin/CheckinPhotoColumn';
 import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
@@ -61,39 +67,55 @@ const PHOTO_PAGE_DURATION_MS = 8000;
 const SWIPE_THRESHOLD = 60;
 const DISMISS_DISTANCE_THRESHOLD = 120;
 const DISMISS_VELOCITY_THRESHOLD = 800;
+// A tap within the outer 28% of the width on either side counts as "tap the
+// edge to go back/forward", same zones Instagram stories use — a tap
+// anywhere in the wide middle does nothing (it's not a dead zone by
+// accident, it's so a stray tap mid-photo doesn't surprise-skip a story).
+const TAP_ZONE_FRACTION = 0.28;
 
-/** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. Reports its own playback position (for the progress bar) and end-of-playback (to advance) back up, rather than this story page guessing a duration up front — a video's real length is whatever it is, not a fixed 8s. */
+/** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. Reports its real duration once known (so the parent's progress bar times itself to the ACTUAL video length, not a guess) and end-of-playback (to advance) — a video's real length is whatever it is, not the fixed 8s a photo gets. `paused` mirrors the story's own pause state (press-and-hold) onto real playback, so the video doesn't keep rolling behind a frozen progress bar. */
 function VideoSide({
   uri,
   overlayText,
   locationText,
-  onProgress,
+  paused,
+  onDurationKnown,
   onEnd,
 }: {
   uri: string;
   overlayText: string | null;
   locationText: string | null;
-  onProgress: (fraction: number) => void;
+  paused: boolean;
+  onDurationKnown: (durationMs: number) => void;
   onEnd: () => void;
 }) {
   const player = useVideoPlayer({ uri }, (p) => {
     p.play();
   });
-  const { currentTime } = useEvent(player, 'timeUpdate', { currentTime: 0, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: 0 });
+  const reportedDurationRef = useRef(false);
 
   useEffect(() => {
-    if (player.duration > 0) onProgress(Math.min(currentTime / player.duration, 1));
+    const sub = player.addListener('statusChange', ({ status }) => {
+      if (status === 'readyToPlay' && player.duration > 0 && !reportedDurationRef.current) {
+        reportedDurationRef.current = true;
+        onDurationKnown(player.duration * 1000);
+      }
+    });
+    return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime]);
+  }, [player]);
 
-  // playToEnd fires once, right as playback finishes — a dedicated listener
-  // (rather than reading useEvent's return value) since there's no payload
-  // to key a dependency array off of.
+  // playToEnd fires once, right as playback finishes.
   useEffect(() => {
     const sub = player.addListener('playToEnd', onEnd);
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player]);
+
+  useEffect(() => {
+    if (paused) player.pause();
+    else player.play();
+  }, [paused, player]);
 
   return (
     <View style={styles.mediaArea}>
@@ -111,12 +133,14 @@ function VideoSide({
 function SideView({
   media,
   timezone,
-  onVideoProgress,
+  paused,
+  onVideoDurationKnown,
   onVideoEnd,
 }: {
   media: SideMedia;
   timezone: string;
-  onVideoProgress: (fraction: number) => void;
+  paused: boolean;
+  onVideoDurationKnown: (durationMs: number) => void;
   onVideoEnd: () => void;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -167,7 +191,8 @@ function SideView({
         uri={signedUrl}
         overlayText={overlayText}
         locationText={locationText ?? coordsText}
-        onProgress={onVideoProgress}
+        paused={paused}
+        onDurationKnown={onVideoDurationKnown}
         onEnd={onVideoEnd}
       />
     );
@@ -183,21 +208,75 @@ function SideView({
 }
 
 /**
+ * The current page's own progress fill — given its own `key` (the page
+ * index) by the caller so a new page gets a genuinely fresh shared value
+ * (starting at 0) instead of needing a manual reset, and so this is the
+ * ONLY place that ever mutates it: one effect, reacting to both durationMs
+ * becoming known and `paused` toggling, is what the lint rule wants here —
+ * two separate effects each touching the same shared value previously
+ * tripped it (see useOtaForegroundCheck.ts's plain-ref pattern for the same
+ * "effect that also needs a prior value" shape, not applicable here since
+ * reanimated's own progress.value already IS that prior value).
+ */
+function ActiveSegmentBar({
+  durationMs,
+  paused,
+  isVideo,
+  onComplete,
+}: {
+  durationMs: number | null;
+  paused: boolean;
+  isVideo: boolean;
+  onComplete: () => void;
+}) {
+  const progress = useSharedValue(0);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  });
+
+  useEffect(() => {
+    if (durationMs === null) return;
+    if (paused) {
+      cancelAnimation(progress);
+      return;
+    }
+    // Starts fresh at 0 on mount (a new page); resumes from wherever it was
+    // frozen when `paused` flips back to false over whatever time is left.
+    const remaining = durationMs * (1 - progress.value);
+    progress.value = withTiming(1, { duration: remaining }, (finished) => {
+      if (finished && !isVideo) runOnJS(onCompleteRef.current)();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durationMs, paused]);
+
+  const style = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+  return <Animated.View style={[styles.segmentFill, style]} />;
+}
+
+/**
  * The feed's own lightbox — Instagram-stories-shaped: each item's checkin
  * page auto-advances to its checkout page (when it has one) after 8s, then
  * on to the next item's checkin, and so on; a video page advances once it
  * finishes playing instead of on a fixed timer. The top progress bar has
  * one segment per page of the CURRENT item (1 or 2), resetting for each new
- * item — same as a story's own bar resetting per user. Swiping left/right
- * moves through this exact same sequence manually (past the current item's
- * pages too, into the next/previous one); swiping down still dismisses.
+ * item — same as a story's own bar resetting per user, and its fill tracks
+ * the real remaining time smoothly (Reanimated's UI-thread withTiming, not
+ * a JS setInterval re-rendering every 100ms).
+ *
+ * Three ways to move, same as the real thing: swipe left/right moves
+ * through this same flat sequence (past the current item's pages too, into
+ * the next/previous one); tapping near the right/left edge does the exact
+ * same thing as swiping that direction; press-and-hold anywhere pauses the
+ * timer/video until released, to read a caption or just look longer.
+ * Swiping down still dismisses.
  *
  * This is deliberately its own component rather than extending
- * CheckinPhotoModal — composing pinch-zoom with a second, competing
- * horizontal-pan-for-paging gesture, on top of an auto-advance timer, isn't
- * worth the risk on that shared, widely-used component. This view trades
- * pinch-zoom for paging + auto-advance; CheckinPhotoModal elsewhere keeps
- * pinch-zoom since it only ever shows one static image with no paging.
+ * CheckinPhotoModal — composing pinch-zoom with tap zones, a pause gesture,
+ * and a second competing horizontal-pan-for-paging gesture on top of an
+ * auto-advance timer isn't worth the risk on that shared, widely-used
+ * component. This view trades pinch-zoom for all of that; CheckinPhotoModal
+ * elsewhere keeps pinch-zoom since it only ever shows one static image.
  */
 export function FeedMediaModal({
   visible,
@@ -237,7 +316,12 @@ function FeedMediaModalContent({
   const insets = useSafeAreaInsets();
   const pages = useMemo(() => buildPages(items), [items]);
   const [pageIndex, setPageIndex] = useState(() => Math.max(pages.findIndex((p) => p.itemIndex === initialItemIndex), 0));
-  const [fraction, setFraction] = useState(0);
+  // null while a video's real duration isn't known yet — the timer simply
+  // doesn't start until it is (see the effect below), so the bar never
+  // animates toward a guessed length.
+  const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
   const dismissTranslateY = useSharedValue(0);
   const dismissOpacity = useSharedValue(1);
 
@@ -246,6 +330,7 @@ function FeedMediaModalContent({
   const media = sideMediaFor(item, page.side)!;
   const segmentCount = sideMediaFor(item, 'checkout') ? 2 : 1;
   const activeSegment = page.side === 'checkin' ? 0 : 1;
+  const durationMs = media.videoPath ? videoDurationMs : PHOTO_PAGE_DURATION_MS;
 
   const goNext = () => {
     if (pageIndex + 1 >= pages.length) onClose();
@@ -255,13 +340,6 @@ function FeedMediaModalContent({
     if (pageIndex > 0) setPageIndex(pageIndex - 1);
   };
 
-  // Latest callback/close in a ref — read from the timer effect below
-  // without needing it in that effect's dependency array (which would
-  // restart the 8s timer on every unrelated parent re-render).
-  const goNextRef = useRef(goNext);
-  useEffect(() => {
-    goNextRef.current = goNext;
-  });
   const onViewItemRef = useRef(onViewItem);
   useEffect(() => {
     onViewItemRef.current = onViewItem;
@@ -271,25 +349,17 @@ function FeedMediaModalContent({
     onViewItemRef.current?.(item);
   }, [item]);
 
-  // Photo pages drive their own fixed-duration timer here; video pages
-  // report their real playback position via SideView's onVideoProgress/
-  // onVideoEnd instead (see VideoSide) — a video's length is whatever it
-  // actually is, not a guess.
+  // A fresh page always starts playing (never carries over a pause from
+  // whatever page came before it), and its video duration is unknown again
+  // until VideoSide reports it.
   useEffect(() => {
-    setFraction(0);
-    if (media.videoPath) return;
-    const start = Date.now();
-    const id = setInterval(() => {
-      const f = Math.min((Date.now() - start) / PHOTO_PAGE_DURATION_MS, 1);
-      setFraction(f);
-      if (f >= 1) {
-        clearInterval(id);
-        goNextRef.current();
-      }
-    }, 100);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setIsPaused(false);
+    setVideoDurationMs(null);
   }, [pageIndex]);
+
+  const handleContainerLayout = (e: LayoutChangeEvent) => {
+    setContainerWidth(e.nativeEvent.layout.width);
+  };
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -316,50 +386,88 @@ function FeedMediaModalContent({
       }
     });
 
+  // Tapping the right/left edge is just a one-touch shortcut for swiping
+  // that direction — a tap in the wide middle does nothing.
+  const tapGesture = Gesture.Tap()
+    .maxDuration(200)
+    .onEnd((e) => {
+      if (containerWidth <= 0) return;
+      if (e.x < containerWidth * TAP_ZONE_FRACTION) {
+        runOnJS(goPrev)();
+      } else if (e.x > containerWidth * (1 - TAP_ZONE_FRACTION)) {
+        runOnJS(goNext)();
+      }
+    });
+
+  // Exclusive with tapGesture (below Gesture.Exclusive) so a long-enough
+  // hold "wins" and the matching tap never also fires on release.
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(200)
+    .onStart(() => {
+      runOnJS(setIsPaused)(true);
+    })
+    .onFinalize(() => {
+      runOnJS(setIsPaused)(false);
+    });
+
+  // Race against panGesture: real movement activates the pan (swipe) first;
+  // a mostly-stationary touch instead resolves to the long-press-vs-tap
+  // pair, long-press winning once it's held past its own minDuration.
+  const composedGesture = Gesture.Race(panGesture, Gesture.Exclusive(longPressGesture, tapGesture));
+
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: dismissOpacity.value,
     transform: [{ translateY: dismissTranslateY.value }],
   }));
 
   return (
-    <GestureDetector gesture={panGesture}>
-      <Animated.View style={[styles.backdrop, animatedStyle]}>
-        <SideView
-          key={`${item.checkinId}-${page.side}`}
-          media={media}
-          timezone={item.groupTimezone}
-          onVideoProgress={setFraction}
-          onVideoEnd={goNext}
-        />
+    <View style={styles.root}>
+      {/* The close button is a SIBLING, not a descendant, of the gesture-
+          detected surface below — painted on top, so it claims its own taps
+          outright instead of racing the edge-tap/long-press/swipe gestures
+          covering the whole screen underneath it. Same for the progress bar
+          and swipe hint, which are purely decorative (pointerEvents="none")
+          and were never meant to intercept touches anyway. */}
+      <GestureDetector gesture={composedGesture}>
+        <Animated.View style={[styles.backdrop, animatedStyle]} onLayout={handleContainerLayout}>
+          <SideView
+            key={`${item.checkinId}-${page.side}`}
+            media={media}
+            timezone={item.groupTimezone}
+            paused={isPaused}
+            onVideoDurationKnown={setVideoDurationMs}
+            onVideoEnd={goNext}
+          />
+        </Animated.View>
+      </GestureDetector>
 
-        <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
-          {Array.from({ length: segmentCount }).map((_, i) => (
-            <View key={i} style={styles.segmentTrack}>
-              <View
-                style={[
-                  styles.segmentFill,
-                  i < activeSegment ? styles.segmentFillDone : i === activeSegment ? { width: `${fraction * 100}%` } : styles.segmentFillNone,
-                ]}
-              />
-            </View>
-          ))}
-        </View>
-
-        {segmentCount > 1 && activeSegment === 0 ? (
-          <View style={styles.swipeHint} pointerEvents="none">
-            <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
+      <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
+        {Array.from({ length: segmentCount }).map((_, i) => (
+          <View key={i} style={styles.segmentTrack}>
+            {i < activeSegment ? (
+              <View style={[styles.segmentFill, styles.segmentFillDone]} />
+            ) : i === activeSegment ? (
+              <ActiveSegmentBar key={pageIndex} durationMs={durationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
+            ) : null}
           </View>
-        ) : null}
+        ))}
+      </View>
 
-        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={16} style={[styles.closeButton, { top: insets.top + spacing.md }]}>
-          <Text style={styles.closeButtonText}>Cerrar ✕</Text>
-        </Pressable>
-      </Animated.View>
-    </GestureDetector>
+      {segmentCount > 1 && activeSegment === 0 ? (
+        <View style={styles.swipeHint} pointerEvents="none">
+          <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
+        </View>
+      ) : null}
+
+      <Pressable accessibilityRole="button" onPress={onClose} hitSlop={16} style={[styles.closeButton, { top: insets.top + spacing.md }]}>
+        <Text style={styles.closeButtonText}>Cerrar ✕</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   mediaArea: { flex: 1 },
@@ -378,7 +486,6 @@ const styles = StyleSheet.create({
   segmentTrack: { flex: 1, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
   segmentFill: { height: '100%', borderRadius: radii.pill, backgroundColor: colors.primary },
   segmentFillDone: { width: '100%' },
-  segmentFillNone: { width: '0%' },
   swipeHint: {
     position: 'absolute',
     bottom: spacing.xl,
