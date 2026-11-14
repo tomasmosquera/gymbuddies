@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEvent } from 'expo';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { getSignedUrl } from '@/lib/supabase/storage';
@@ -41,14 +42,62 @@ function sideMediaFor(item: PhotoFeedItem, side: Side): SideMedia | null {
   };
 }
 
-/** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. */
-function VideoSide({ uri, overlayText, locationText }: { uri: string; overlayText: string | null; locationText: string | null }) {
+/** One "page" in the whole swipeable/auto-advancing sequence — a single item's checkin page, then its checkout page if it has one, then the next item's own pages, and so on. */
+interface FeedPage {
+  itemIndex: number;
+  side: Side;
+}
+
+function buildPages(items: PhotoFeedItem[]): FeedPage[] {
+  const pages: FeedPage[] = [];
+  items.forEach((item, itemIndex) => {
+    pages.push({ itemIndex, side: 'checkin' });
+    if (sideMediaFor(item, 'checkout')) pages.push({ itemIndex, side: 'checkout' });
+  });
+  return pages;
+}
+
+const PHOTO_PAGE_DURATION_MS = 8000;
+const SWIPE_THRESHOLD = 60;
+const DISMISS_DISTANCE_THRESHOLD = 120;
+const DISMISS_VELOCITY_THRESHOLD = 800;
+
+/** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. Reports its own playback position (for the progress bar) and end-of-playback (to advance) back up, rather than this story page guessing a duration up front — a video's real length is whatever it is, not a fixed 8s. */
+function VideoSide({
+  uri,
+  overlayText,
+  locationText,
+  onProgress,
+  onEnd,
+}: {
+  uri: string;
+  overlayText: string | null;
+  locationText: string | null;
+  onProgress: (fraction: number) => void;
+  onEnd: () => void;
+}) {
   const player = useVideoPlayer({ uri }, (p) => {
     p.play();
   });
+  const { currentTime } = useEvent(player, 'timeUpdate', { currentTime: 0, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: 0 });
+
+  useEffect(() => {
+    if (player.duration > 0) onProgress(Math.min(currentTime / player.duration, 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime]);
+
+  // playToEnd fires once, right as playback finishes — a dedicated listener
+  // (rather than reading useEvent's return value) since there's no payload
+  // to key a dependency array off of.
+  useEffect(() => {
+    const sub = player.addListener('playToEnd', onEnd);
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player]);
+
   return (
     <View style={styles.mediaArea}>
-      <VideoView style={styles.mediaArea} player={player} nativeControls fullscreenOptions={{ enable: true }} />
+      <VideoView style={styles.mediaArea} player={player} nativeControls={false} />
       {overlayText || locationText ? (
         <View style={styles.videoOverlay}>
           {overlayText ? <Text style={styles.videoOverlayText}>{overlayText}</Text> : null}
@@ -59,7 +108,17 @@ function VideoSide({ uri, overlayText, locationText }: { uri: string; overlayTex
   );
 }
 
-function SideView({ media, timezone }: { media: SideMedia; timezone: string }) {
+function SideView({
+  media,
+  timezone,
+  onVideoProgress,
+  onVideoEnd,
+}: {
+  media: SideMedia;
+  timezone: string;
+  onVideoProgress: (fraction: number) => void;
+  onVideoEnd: () => void;
+}) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'expired'>('loading');
   const mediaPath = media.videoPath ?? media.photoPath;
@@ -103,7 +162,15 @@ function SideView({ media, timezone }: { media: SideMedia; timezone: string }) {
   const overlayText = media.capturedAt ? formatZonedDateTime12h(new Date(media.capturedAt), timezone) : null;
 
   if (media.videoPath) {
-    return <VideoSide uri={signedUrl} overlayText={overlayText} locationText={locationText ?? coordsText} />;
+    return (
+      <VideoSide
+        uri={signedUrl}
+        overlayText={overlayText}
+        locationText={locationText ?? coordsText}
+        onProgress={onVideoProgress}
+        onEnd={onVideoEnd}
+      />
+    );
   }
   return (
     <Image
@@ -115,42 +182,114 @@ function SideView({ media, timezone }: { media: SideMedia; timezone: string }) {
   );
 }
 
-const SWIPE_THRESHOLD = 60;
-const DISMISS_DISTANCE_THRESHOLD = 120;
-const DISMISS_VELOCITY_THRESHOLD = 800;
-
 /**
- * The feed's own lightbox: checkin media by default, swipe left for the
- * checkout half when this check-in has one (swipe right to go back) — the
- * 2-dot bar at the top doubles as both the position indicator and the
- * affordance that there's a second page to see, same idiom as a story
- * progress bar. Swipe DOWN (not left/right) still dismisses, same feel as
- * ZoomableImage elsewhere, but this is deliberately its own component
- * rather than reusing ZoomableImage — composing pinch-zoom with a second,
- * competing horizontal-pan-for-paging gesture on the same image isn't worth
- * the risk here, so this view trades pinch-zoom for paging; the plain
- * CheckinPhotoModal used everywhere else keeps pinch-zoom since it only
- * ever shows one side at a time with no swipe gesture of its own.
+ * The feed's own lightbox — Instagram-stories-shaped: each item's checkin
+ * page auto-advances to its checkout page (when it has one) after 8s, then
+ * on to the next item's checkin, and so on; a video page advances once it
+ * finishes playing instead of on a fixed timer. The top progress bar has
+ * one segment per page of the CURRENT item (1 or 2), resetting for each new
+ * item — same as a story's own bar resetting per user. Swiping left/right
+ * moves through this exact same sequence manually (past the current item's
+ * pages too, into the next/previous one); swiping down still dismisses.
+ *
+ * This is deliberately its own component rather than extending
+ * CheckinPhotoModal — composing pinch-zoom with a second, competing
+ * horizontal-pan-for-paging gesture, on top of an auto-advance timer, isn't
+ * worth the risk on that shared, widely-used component. This view trades
+ * pinch-zoom for paging + auto-advance; CheckinPhotoModal elsewhere keeps
+ * pinch-zoom since it only ever shows one static image with no paging.
  */
-export function FeedMediaModal({ visible, item, onClose }: { visible: boolean; item: PhotoFeedItem | null; onClose: () => void }) {
+export function FeedMediaModal({
+  visible,
+  items,
+  initialIndex,
+  onClose,
+  onViewItem,
+}: {
+  visible: boolean;
+  items: PhotoFeedItem[];
+  /** Which item in `items` was tapped to open this — null while nothing is open. */
+  initialIndex: number | null;
+  onClose: () => void;
+  /** Fired for every item actually shown, the first one included — not just the one that was tapped. */
+  onViewItem?: (item: PhotoFeedItem) => void;
+}) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      {/* Keyed by checkinId rather than reset via a useEffect: a fresh key
-          means fresh useState/useSharedValue initial values for free (no
-          lingering drag/fade from whatever the PREVIOUS item was left at),
-          and sidesteps mutating a shared value from inside an effect. */}
-      {item ? <FeedMediaModalContent key={item.checkinId} item={item} onClose={onClose} /> : null}
+      {visible && initialIndex !== null ? (
+        <FeedMediaModalContent key={initialIndex} items={items} initialItemIndex={initialIndex} onClose={onClose} onViewItem={onViewItem} />
+      ) : null}
     </Modal>
   );
 }
 
-function FeedMediaModalContent({ item, onClose }: { item: PhotoFeedItem; onClose: () => void }) {
+function FeedMediaModalContent({
+  items,
+  initialItemIndex,
+  onClose,
+  onViewItem,
+}: {
+  items: PhotoFeedItem[];
+  initialItemIndex: number;
+  onClose: () => void;
+  onViewItem?: (item: PhotoFeedItem) => void;
+}) {
   const insets = useSafeAreaInsets();
-  const [side, setSide] = useState<Side>('checkin');
+  const pages = useMemo(() => buildPages(items), [items]);
+  const [pageIndex, setPageIndex] = useState(() => Math.max(pages.findIndex((p) => p.itemIndex === initialItemIndex), 0));
+  const [fraction, setFraction] = useState(0);
   const dismissTranslateY = useSharedValue(0);
   const dismissOpacity = useSharedValue(1);
 
-  const hasCheckout = !!sideMediaFor(item, 'checkout');
+  const page = pages[pageIndex];
+  const item = items[page.itemIndex];
+  const media = sideMediaFor(item, page.side)!;
+  const segmentCount = sideMediaFor(item, 'checkout') ? 2 : 1;
+  const activeSegment = page.side === 'checkin' ? 0 : 1;
+
+  const goNext = () => {
+    if (pageIndex + 1 >= pages.length) onClose();
+    else setPageIndex(pageIndex + 1);
+  };
+  const goPrev = () => {
+    if (pageIndex > 0) setPageIndex(pageIndex - 1);
+  };
+
+  // Latest callback/close in a ref — read from the timer effect below
+  // without needing it in that effect's dependency array (which would
+  // restart the 8s timer on every unrelated parent re-render).
+  const goNextRef = useRef(goNext);
+  useEffect(() => {
+    goNextRef.current = goNext;
+  });
+  const onViewItemRef = useRef(onViewItem);
+  useEffect(() => {
+    onViewItemRef.current = onViewItem;
+  });
+
+  useEffect(() => {
+    onViewItemRef.current?.(item);
+  }, [item]);
+
+  // Photo pages drive their own fixed-duration timer here; video pages
+  // report their real playback position via SideView's onVideoProgress/
+  // onVideoEnd instead (see VideoSide) — a video's length is whatever it
+  // actually is, not a guess.
+  useEffect(() => {
+    setFraction(0);
+    if (media.videoPath) return;
+    const start = Date.now();
+    const id = setInterval(() => {
+      const f = Math.min((Date.now() - start) / PHOTO_PAGE_DURATION_MS, 1);
+      setFraction(f);
+      if (f >= 1) {
+        clearInterval(id);
+        goNextRef.current();
+      }
+    }, 100);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageIndex]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -161,11 +300,11 @@ function FeedMediaModalContent({ item, onClose }: { item: PhotoFeedItem; onClose
     })
     .onEnd((e) => {
       const isHorizontalSwipe = Math.abs(e.translationX) >= Math.abs(e.translationY);
-      if (isHorizontalSwipe && hasCheckout) {
-        if (side === 'checkin' && e.translationX < -SWIPE_THRESHOLD) {
-          runOnJS(setSide)('checkout');
-        } else if (side === 'checkout' && e.translationX > SWIPE_THRESHOLD) {
-          runOnJS(setSide)('checkin');
+      if (isHorizontalSwipe) {
+        if (e.translationX < -SWIPE_THRESHOLD) {
+          runOnJS(goNext)();
+        } else if (e.translationX > SWIPE_THRESHOLD) {
+          runOnJS(goPrev)();
         }
         return;
       }
@@ -182,21 +321,31 @@ function FeedMediaModalContent({ item, onClose }: { item: PhotoFeedItem; onClose
     transform: [{ translateY: dismissTranslateY.value }],
   }));
 
-  const media = sideMediaFor(item, side);
-
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View style={[styles.backdrop, animatedStyle]}>
-        {media ? <SideView key={`${item.checkinId}-${side}`} media={media} timezone={item.groupTimezone} /> : null}
+        <SideView
+          key={`${item.checkinId}-${page.side}`}
+          media={media}
+          timezone={item.groupTimezone}
+          onVideoProgress={setFraction}
+          onVideoEnd={goNext}
+        />
 
-        {hasCheckout ? (
-          <View style={[styles.dotsRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
-            <View style={[styles.dot, side === 'checkin' && styles.dotActive]} />
-            <View style={[styles.dot, side === 'checkout' && styles.dotActive]} />
-          </View>
-        ) : null}
+        <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
+          {Array.from({ length: segmentCount }).map((_, i) => (
+            <View key={i} style={styles.segmentTrack}>
+              <View
+                style={[
+                  styles.segmentFill,
+                  i < activeSegment ? styles.segmentFillDone : i === activeSegment ? { width: `${fraction * 100}%` } : styles.segmentFillNone,
+                ]}
+              />
+            </View>
+          ))}
+        </View>
 
-        {hasCheckout && side === 'checkin' ? (
+        {segmentCount > 1 && activeSegment === 0 ? (
           <View style={styles.swipeHint} pointerEvents="none">
             <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
           </View>
@@ -225,9 +374,11 @@ const styles = StyleSheet.create({
   },
   videoOverlayText: { color: 'white', fontSize: 13, fontWeight: '700' },
   expiredText: { color: colors.text, textAlign: 'center' },
-  dotsRow: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  dot: { width: 28, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.3)' },
-  dotActive: { backgroundColor: colors.primary },
+  progressRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', gap: 4 },
+  segmentTrack: { flex: 1, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
+  segmentFill: { height: '100%', borderRadius: radii.pill, backgroundColor: colors.primary },
+  segmentFillDone: { width: '100%' },
+  segmentFillNone: { width: '0%' },
   swipeHint: {
     position: 'absolute',
     bottom: spacing.xl,

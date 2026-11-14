@@ -153,16 +153,22 @@ export default function HomeScreen() {
   const { claims: openKothClaims, refresh: refreshKothClaims } = usePendingKothClaims(group?.id ?? null);
   const { items: feedItems, isLoading: feedLoading, refresh: refreshFeed } = useGroupsPhotoFeed(session?.user.id ?? null, 20);
   const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
-  const [viewingFeedItem, setViewingFeedItem] = useState<PhotoFeedItem | null>(null);
+  // Index into feedItems, not the item itself — FeedMediaModal auto-
+  // advances (and lets the member swipe) through every item from this one
+  // onward, so it needs the whole list, not just the one that was tapped.
+  const [viewingFeedIndex, setViewingFeedIndex] = useState<number | null>(null);
   // Which feed bubbles have already been opened (gray ring) vs not (green)
   // — reloaded on every focus too, so marking one seen from the full /home/
   // feed screen is reflected back here the moment this tab regains focus,
   // not just on the next cold mount.
   const [seenCheckinIds, setSeenCheckinIds] = useState<Set<string>>(new Set());
-  const handleOpenFeedItem = useCallback((item: PhotoFeedItem) => {
-    setViewingFeedItem(item);
-    setSeenCheckinIds((prev) => (prev.has(item.checkinId) ? prev : new Set(prev).add(item.checkinId)));
-    markCheckinSeen(item.checkinId).catch(() => {});
+  // Fired by FeedMediaModal for every item it actually shows — the one
+  // tapped AND every later auto/manual advance — so a member who keeps
+  // swiping through the whole feed sees all of it reflected back on the
+  // strip's rings, not just the single bubble they started on.
+  const handleViewFeedItem = useCallback((viewedItem: PhotoFeedItem) => {
+    setSeenCheckinIds((prev) => (prev.has(viewedItem.checkinId) ? prev : new Set(prev).add(viewedItem.checkinId)));
+    markCheckinSeen(viewedItem.checkinId).catch(() => {});
   }, []);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -399,7 +405,7 @@ export default function HomeScreen() {
         items={feedItems}
         isLoading={feedLoading}
         seenCheckinIds={seenCheckinIds}
-        onPressItem={handleOpenFeedItem}
+        onPressItem={(item) => setViewingFeedIndex(feedItems?.findIndex((i) => i.checkinId === item.checkinId) ?? null)}
         onPressSeeAll={() => router.push('/home/feed')}
       />
 
@@ -673,7 +679,13 @@ export default function HomeScreen() {
         onClose={() => setViewingMedia(null)}
       />
 
-      <FeedMediaModal visible={viewingFeedItem !== null} item={viewingFeedItem} onClose={() => setViewingFeedItem(null)} />
+      <FeedMediaModal
+        visible={viewingFeedIndex !== null}
+        items={feedItems ?? []}
+        initialIndex={viewingFeedIndex}
+        onClose={() => setViewingFeedIndex(null)}
+        onViewItem={handleViewFeedItem}
+      />
 
       <LeaderboardCard
         rowsByPeriod={rowsByPeriod}

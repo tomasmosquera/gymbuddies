@@ -17,14 +17,15 @@ const FEED_LIMIT = 60;
 export default function PhotoFeedScreen() {
   const { session } = useAuth();
   const { items, isLoading } = useGroupsPhotoFeed(session?.user.id ?? null, FEED_LIMIT);
-  const [viewing, setViewing] = useState<PhotoFeedItem | null>(null);
+  const [viewingIndex, setViewingIndex] = useState<number | null>(null);
 
-  const handleOpen = (item: PhotoFeedItem) => {
-    setViewing(item);
-    // So the Home strip's ring for this exact check-in shows as seen too,
-    // next time Home regains focus — same per-checkin tracking as tapping
-    // its bubble directly would do (see PhotoFeedStrip/photoFeedSeenCache).
-    markCheckinSeen(item.checkinId).catch(() => {});
+  // So the Home strip's rings for whatever check-ins get shown here (the
+  // tapped one AND every later auto/manual advance inside the modal) show
+  // as seen too, next time Home regains focus — same per-checkin tracking
+  // as tapping a bubble directly would do (see PhotoFeedStrip/
+  // photoFeedSeenCache).
+  const handleViewItem = (viewedItem: PhotoFeedItem) => {
+    markCheckinSeen(viewedItem.checkinId).catch(() => {});
   };
 
   if (isLoading) {
@@ -47,8 +48,8 @@ export default function PhotoFeedScreen() {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
-        {items.map((item) => (
-          <Pressable key={item.checkinId} onPress={() => handleOpen(item)}>
+        {items.map((item, index) => (
+          <Pressable key={item.checkinId} onPress={() => setViewingIndex(index)}>
             <Card style={styles.row}>
               <Image source={{ uri: item.thumbnailUrl }} style={styles.thumb} contentFit="cover" cachePolicy="memory-disk" />
               {item.isVideo ? (
@@ -70,7 +71,13 @@ export default function PhotoFeedScreen() {
         ))}
       </ScrollView>
 
-      <FeedMediaModal visible={viewing !== null} item={viewing} onClose={() => setViewing(null)} />
+      <FeedMediaModal
+        visible={viewingIndex !== null}
+        items={items}
+        initialIndex={viewingIndex}
+        onClose={() => setViewingIndex(null)}
+        onViewItem={handleViewItem}
+      />
     </>
   );
 }
