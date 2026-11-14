@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { getSignedUrl } from '@/lib/supabase/storage';
+import { getSignedThumbnailUrl } from '@/lib/supabase/storage';
 
 export interface PhotoFeedItem {
   checkinId: string;
@@ -16,6 +16,11 @@ export interface PhotoFeedItem {
   videoPath: string | null;
   latitude: number | null;
   longitude: number | null;
+  checkoutCapturedAt: string | null;
+  checkoutPhotoPath: string | null;
+  checkoutVideoPath: string | null;
+  checkoutLatitude: number | null;
+  checkoutLongitude: number | null;
 }
 
 interface CheckinRow {
@@ -28,17 +33,41 @@ interface CheckinRow {
   video_thumbnail_path: string | null;
   latitude: number | null;
   longitude: number | null;
+  checkout_captured_at: string | null;
+  checkout_photo_path: string | null;
+  checkout_video_path: string | null;
+  checkout_latitude: number | null;
+  checkout_longitude: number | null;
   profile: { full_name: string } | null;
   group: { name: string; timezone: string } | null;
+}
+
+// A tile in a 58-60px circle never needs the original ~1280px check-in
+// photo — 2x this (for retina) is still far lighter to download than the
+// full-size original. getSignedThumbnailUrl falls back to the full-size
+// signed URL on its own if Storage can't honor the resize, so this is
+// always the smaller option when it's available at all.
+const THUMBNAIL_SIZE = 160;
+
+/** First-wins "same person, same exact instant" key — a member whose
+ * check-in auto-fans-out to every other group they're in (profile setting,
+ * see checkin/preview.tsx's fanOutCheckinToOtherGroups) reuses the exact
+ * same captured_at across all of them, even though each group got its own
+ * uploaded copy of the photo at its own storage path. Deduping on this
+ * before resolving any signed URLs also means never paying for the
+ * redundant ones. */
+function dedupeKey(r: Pick<CheckinRow, 'user_id' | 'captured_at'>): string {
+  return `${r.user_id}|${r.captured_at}`;
 }
 
 /**
  * Every OTHER member's check-in capture, across every group the caller
  * belongs to, newest first — the Home feed strip's data. Never the caller's
  * own check-ins (this is "what my buddies have been up to", not a mirror of
- * my own Dashboard history). Only the initial check-in capture is used, not
- * the checkout one — the feed is "today's check-in photo", not every photo
- * a check-in can have.
+ * my own Dashboard history). The checkin side (photo_path/video_path) is
+ * what the strip's bubble itself shows; the checkout side is carried along
+ * only so the viewer can swipe to it (see FeedMediaModal) — it never affects
+ * which items appear or how they're deduped.
  *
  * A check-in with neither a real photo nor a pre-generated video thumbnail
  * (an older video from before 0166, or one whose thumbnail capture failed)
@@ -77,7 +106,9 @@ export function useGroupsPhotoFeed(userId: string | null, limit: number) {
     const candidatePoolSize = Math.min(limit * 3, 120);
     const { data } = await supabase
       .from('checkins')
-      .select('id, user_id, group_id, captured_at, photo_path, video_path, video_thumbnail_path, latitude, longitude, profile:profiles(full_name), group:groups(name, timezone)')
+      .select(
+        'id, user_id, group_id, captured_at, photo_path, video_path, video_thumbnail_path, latitude, longitude, checkout_captured_at, checkout_photo_path, checkout_video_path, checkout_latitude, checkout_longitude, profile:profiles(full_name), group:groups(name, timezone)'
+      )
       .in('group_id', groupIds)
       .neq('user_id', userId)
       .or('photo_path.not.is.null,video_thumbnail_path.not.is.null')
@@ -85,12 +116,20 @@ export function useGroupsPhotoFeed(userId: string | null, limit: number) {
       .limit(candidatePoolSize);
 
     const rows = (data as unknown as CheckinRow[]) ?? [];
+    const seenKeys = new Set<string>();
+    const deduped = rows.filter((r) => {
+      const key = dedupeKey(r);
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
+
     const resolved = await Promise.all(
-      rows.map(async (r): Promise<PhotoFeedItem | null> => {
+      deduped.map(async (r): Promise<PhotoFeedItem | null> => {
         const mediaPath = r.photo_path ?? r.video_thumbnail_path;
         if (!mediaPath || !r.profile || !r.group) return null;
         try {
-          const thumbnailUrl = await getSignedUrl('checkins', mediaPath);
+          const thumbnailUrl = await getSignedThumbnailUrl('checkins', mediaPath, THUMBNAIL_SIZE);
           return {
             checkinId: r.id,
             userId: r.user_id,
@@ -105,6 +144,11 @@ export function useGroupsPhotoFeed(userId: string | null, limit: number) {
             videoPath: r.video_path,
             latitude: r.latitude,
             longitude: r.longitude,
+            checkoutCapturedAt: r.checkout_captured_at,
+            checkoutPhotoPath: r.checkout_photo_path,
+            checkoutVideoPath: r.checkout_video_path,
+            checkoutLatitude: r.checkout_latitude,
+            checkoutLongitude: r.checkout_longitude,
           };
         } catch {
           return null;

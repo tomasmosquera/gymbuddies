@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
+import { FeedMediaModal } from '@/components/home/FeedMediaModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useGroupsPhotoFeed, type PhotoFeedItem } from '@/hooks/useGroupsPhotoFeed';
-import { setPhotoFeedLastSeenAt } from '@/lib/notifications/photoFeedSeenCache';
+import { markCheckinSeen } from '@/lib/notifications/photoFeedSeenCache';
 import { formatZonedDateTime12h } from '@/lib/domain/dateUtils';
 import { colors, radii, spacing } from '@/constants/theme';
 
@@ -19,11 +19,13 @@ export default function PhotoFeedScreen() {
   const { items, isLoading } = useGroupsPhotoFeed(session?.user.id ?? null, FEED_LIMIT);
   const [viewing, setViewing] = useState<PhotoFeedItem | null>(null);
 
-  // Opening this screen is what moves the strip's seen/unseen cutoff forward
-  // — looking at the strip itself on Home never does (see PhotoFeedStrip).
-  useEffect(() => {
-    setPhotoFeedLastSeenAt(new Date().toISOString());
-  }, []);
+  const handleOpen = (item: PhotoFeedItem) => {
+    setViewing(item);
+    // So the Home strip's ring for this exact check-in shows as seen too,
+    // next time Home regains focus — same per-checkin tracking as tapping
+    // its bubble directly would do (see PhotoFeedStrip/photoFeedSeenCache).
+    markCheckinSeen(item.checkinId).catch(() => {});
+  };
 
   if (isLoading) {
     return (
@@ -46,7 +48,7 @@ export default function PhotoFeedScreen() {
     <>
       <ScrollView contentContainerStyle={styles.container}>
         {items.map((item) => (
-          <Pressable key={item.checkinId} onPress={() => setViewing(item)}>
+          <Pressable key={item.checkinId} onPress={() => handleOpen(item)}>
             <Card style={styles.row}>
               <Image source={{ uri: item.thumbnailUrl }} style={styles.thumb} contentFit="cover" cachePolicy="memory-disk" />
               {item.isVideo ? (
@@ -68,16 +70,7 @@ export default function PhotoFeedScreen() {
         ))}
       </ScrollView>
 
-      <CheckinPhotoModal
-        visible={viewing !== null}
-        photoPath={viewing?.photoPath ?? null}
-        videoPath={viewing?.videoPath ?? null}
-        capturedAt={viewing?.capturedAt ?? null}
-        latitude={viewing?.latitude ?? null}
-        longitude={viewing?.longitude ?? null}
-        timezone={viewing?.groupTimezone ?? 'America/Bogota'}
-        onClose={() => setViewing(null)}
-      />
+      <FeedMediaModal visible={viewing !== null} item={viewing} onClose={() => setViewing(null)} />
     </>
   );
 }

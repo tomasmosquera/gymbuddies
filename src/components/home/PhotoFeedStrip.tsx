@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { getPhotoFeedLastSeenAt } from '@/lib/notifications/photoFeedSeenCache';
 import type { PhotoFeedItem } from '@/hooks/useGroupsPhotoFeed';
 import { colors, radii, spacing } from '@/constants/theme';
 
@@ -28,25 +26,17 @@ function groupTag(groupName: string): string {
 export function PhotoFeedStrip({
   items,
   isLoading,
+  seenCheckinIds,
   onPressItem,
   onPressSeeAll,
 }: {
   items: PhotoFeedItem[] | null;
   isLoading: boolean;
+  /** Which checkinIds have already been opened — the caller owns this (see Home), so a ring flips to gray the instant a bubble is tapped, not just after a later reload. */
+  seenCheckinIds: Set<string>;
   onPressItem: (item: PhotoFeedItem) => void;
   onPressSeeAll: () => void;
 }) {
-  // Unseen (green ring) vs already-looked-at (gray ring) — purely a local,
-  // per-device "have I opened the feed since this was captured" read, not a
-  // synced read receipt. Captured once per mount so the ring a member sees
-  // doesn't flip to "seen" the instant they look at the strip itself —
-  // only tapping into the full feed (onPressSeeAll's caller) moves the
-  // cutoff forward.
-  const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
-  useEffect(() => {
-    getPhotoFeedLastSeenAt().then(setLastSeenAt);
-  }, []);
-
   if (isLoading || !items || items.length === 0) return null;
 
   return (
@@ -57,7 +47,7 @@ export function PhotoFeedStrip({
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {items.map((item) => {
-          const isUnseen = !lastSeenAt || item.capturedAt > lastSeenAt;
+          const isUnseen = !seenCheckinIds.has(item.checkinId);
           return (
             <Pressable
               key={item.checkinId}

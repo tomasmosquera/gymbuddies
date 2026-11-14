@@ -77,6 +77,27 @@ export async function getSignedUrl(bucket: Bucket, path: string, expiresInSecond
   return data.signedUrl;
 }
 
+/**
+ * Same as getSignedUrl, but asks Storage's image transform to resize/
+ * recompress down to `size`×`size` first — for a tile that only ever
+ * renders small (a feed thumbnail circle), downloading the full ~1280px
+ * check-in photo is pure waste. Falls back to the untransformed full-size
+ * signed URL if the transform request itself fails for any reason (project
+ * tier without image transformations enabled, a transient error, ...) —
+ * deliberately NOT treated as "this media is gone", since that would make a
+ * perfectly live photo vanish from a feed just because the resize couldn't
+ * be honored. Only the fallback's own failure means the object is actually
+ * gone, which callers already treat as "drop this item" the same way
+ * getSignedUrl's rejection always has.
+ */
+export async function getSignedThumbnailUrl(bucket: Bucket, path: string, size: number, expiresInSeconds = 3600): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, expiresInSeconds, { transform: { width: size, height: size, resize: 'cover', quality: 60 } });
+  if (!error && data) return data.signedUrl;
+  return getSignedUrl(bucket, path, expiresInSeconds);
+}
+
 export async function uploadImage(bucket: Bucket, path: string, fileUri: string): Promise<void> {
   // Resize + recompress before upload: source photos (camera or library) are
   // routinely several MB, far more than a private check-in/receipt photo needs.

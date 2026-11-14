@@ -9,11 +9,13 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { LeaderboardCard } from '@/components/home/LeaderboardCard';
 import { PhotoFeedStrip } from '@/components/home/PhotoFeedStrip';
+import { FeedMediaModal } from '@/components/home/FeedMediaModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { useCheckins } from '@/hooks/useCheckins';
 import { useGroupsPhotoFeed, type PhotoFeedItem } from '@/hooks/useGroupsPhotoFeed';
+import { getSeenCheckinIds, markCheckinSeen } from '@/lib/notifications/photoFeedSeenCache';
 import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
 import { useElapsedSeconds } from '@/hooks/useElapsedSeconds';
@@ -152,6 +154,16 @@ export default function HomeScreen() {
   const { items: feedItems, isLoading: feedLoading, refresh: refreshFeed } = useGroupsPhotoFeed(session?.user.id ?? null, 20);
   const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
   const [viewingFeedItem, setViewingFeedItem] = useState<PhotoFeedItem | null>(null);
+  // Which feed bubbles have already been opened (gray ring) vs not (green)
+  // — reloaded on every focus too, so marking one seen from the full /home/
+  // feed screen is reflected back here the moment this tab regains focus,
+  // not just on the next cold mount.
+  const [seenCheckinIds, setSeenCheckinIds] = useState<Set<string>>(new Set());
+  const handleOpenFeedItem = useCallback((item: PhotoFeedItem) => {
+    setViewingFeedItem(item);
+    setSeenCheckinIds((prev) => (prev.has(item.checkinId) ? prev : new Set(prev).add(item.checkinId)));
+    markCheckinSeen(item.checkinId).catch(() => {});
+  }, []);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // "Did I check in today?" only from todayCheckin while actually viewing
@@ -184,6 +196,7 @@ export default function HomeScreen() {
       refreshKothClaims();
       refreshWorkoutSession();
       refreshFeed();
+      getSeenCheckinIds().then(setSeenCheckinIds);
     }, [
       session,
       refreshGroup,
@@ -382,17 +395,18 @@ export default function HomeScreen() {
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
     >
+      <PhotoFeedStrip
+        items={feedItems}
+        isLoading={feedLoading}
+        seenCheckinIds={seenCheckinIds}
+        onPressItem={handleOpenFeedItem}
+        onPressSeeAll={() => router.push('/home/feed')}
+      />
+
       <Pressable onPress={() => router.push('/home/group-summary')}>
         <Text style={styles.groupName}>{group.name} ›</Text>
         <Text style={styles.inviteCode}>Código: {group.invite_code}</Text>
       </Pressable>
-
-      <PhotoFeedStrip
-        items={feedItems}
-        isLoading={feedLoading}
-        onPressItem={setViewingFeedItem}
-        onPressSeeAll={() => router.push('/home/feed')}
-      />
 
       {pendingVoteCount > 0 ? (
         <Pressable onPress={() => router.push('/rules')}>
@@ -659,16 +673,7 @@ export default function HomeScreen() {
         onClose={() => setViewingMedia(null)}
       />
 
-      <CheckinPhotoModal
-        visible={viewingFeedItem !== null}
-        photoPath={viewingFeedItem?.photoPath ?? null}
-        videoPath={viewingFeedItem?.videoPath ?? null}
-        capturedAt={viewingFeedItem?.capturedAt ?? null}
-        latitude={viewingFeedItem?.latitude ?? null}
-        longitude={viewingFeedItem?.longitude ?? null}
-        timezone={viewingFeedItem?.groupTimezone ?? group.timezone}
-        onClose={() => setViewingFeedItem(null)}
-      />
+      <FeedMediaModal visible={viewingFeedItem !== null} item={viewingFeedItem} onClose={() => setViewingFeedItem(null)} />
 
       <LeaderboardCard
         rowsByPeriod={rowsByPeriod}
