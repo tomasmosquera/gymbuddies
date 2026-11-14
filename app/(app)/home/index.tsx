@@ -8,10 +8,12 @@ import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { LeaderboardCard } from '@/components/home/LeaderboardCard';
+import { PhotoFeedStrip } from '@/components/home/PhotoFeedStrip';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
 import { useCheckins } from '@/hooks/useCheckins';
+import { useGroupsPhotoFeed, type PhotoFeedItem } from '@/hooks/useGroupsPhotoFeed';
 import { useExcusedDays } from '@/hooks/useExcusedDays';
 import { useAttendanceOverrides } from '@/hooks/useAttendanceOverrides';
 import { useElapsedSeconds } from '@/hooks/useElapsedSeconds';
@@ -147,7 +149,9 @@ export default function HomeScreen() {
   } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
   const { challenges: openChallenges, refresh: refreshChallenges } = usePhotoChallenges(group?.id ?? null);
   const { claims: openKothClaims, refresh: refreshKothClaims } = usePendingKothClaims(group?.id ?? null);
+  const { items: feedItems, isLoading: feedLoading, refresh: refreshFeed } = useGroupsPhotoFeed(session?.user.id ?? null, 20);
   const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
+  const [viewingFeedItem, setViewingFeedItem] = useState<PhotoFeedItem | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // "Did I check in today?" only from todayCheckin while actually viewing
@@ -179,6 +183,7 @@ export default function HomeScreen() {
       refreshChallenges();
       refreshKothClaims();
       refreshWorkoutSession();
+      refreshFeed();
     }, [
       session,
       refreshGroup,
@@ -191,6 +196,7 @@ export default function HomeScreen() {
       refreshChallenges,
       refreshKothClaims,
       refreshWorkoutSession,
+      refreshFeed,
     ])
   );
 
@@ -380,6 +386,13 @@ export default function HomeScreen() {
         <Text style={styles.groupName}>{group.name} ›</Text>
         <Text style={styles.inviteCode}>Código: {group.invite_code}</Text>
       </Pressable>
+
+      <PhotoFeedStrip
+        items={feedItems}
+        isLoading={feedLoading}
+        onPressItem={setViewingFeedItem}
+        onPressSeeAll={() => router.push('/home/feed')}
+      />
 
       {pendingVoteCount > 0 ? (
         <Pressable onPress={() => router.push('/rules')}>
@@ -644,6 +657,17 @@ export default function HomeScreen() {
         longitude={viewingMedia?.longitude ?? null}
         timezone={group.timezone}
         onClose={() => setViewingMedia(null)}
+      />
+
+      <CheckinPhotoModal
+        visible={viewingFeedItem !== null}
+        photoPath={viewingFeedItem?.photoPath ?? null}
+        videoPath={viewingFeedItem?.videoPath ?? null}
+        capturedAt={viewingFeedItem?.capturedAt ?? null}
+        latitude={viewingFeedItem?.latitude ?? null}
+        longitude={viewingFeedItem?.longitude ?? null}
+        timezone={viewingFeedItem?.groupTimezone ?? group.timezone}
+        onClose={() => setViewingFeedItem(null)}
       />
 
       <LeaderboardCard
