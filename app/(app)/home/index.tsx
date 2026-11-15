@@ -151,7 +151,17 @@ export default function HomeScreen() {
   } = useExcuseVote(group?.id ?? null, session?.user.id ?? null);
   const { challenges: openChallenges, refresh: refreshChallenges } = usePhotoChallenges(group?.id ?? null);
   const { claims: openKothClaims, refresh: refreshKothClaims } = usePendingKothClaims(group?.id ?? null);
-  const { items: feedItems, isLoading: feedLoading, refresh: refreshFeed } = useGroupsPhotoFeed(session?.user.id ?? null, 20);
+  const { items: feedItems, ownItem: ownFeedItem, isLoading: feedLoading, refresh: refreshFeed } = useGroupsPhotoFeed(
+    session?.user.id ?? null,
+    20
+  );
+  // My own today's check-in, always first — see useGroupsPhotoFeed's doc
+  // comment for why the hook keeps it separate from `feedItems` (the "every
+  // OTHER member" list) instead of prepending it itself.
+  const feedItemsWithOwn = useMemo(
+    () => (ownFeedItem ? [ownFeedItem, ...(feedItems ?? [])] : feedItems),
+    [ownFeedItem, feedItems]
+  );
   const [viewingMedia, setViewingMedia] = useState<ViewingMedia | null>(null);
   // Index into feedItems, not the item itself — FeedMediaModal auto-
   // advances (and lets the member swipe) through every item from this one
@@ -403,9 +413,10 @@ export default function HomeScreen() {
     >
       <PhotoFeedStrip
         items={feedItems}
+        ownItem={ownFeedItem}
         isLoading={feedLoading}
         seenCheckinIds={seenCheckinIds}
-        onPressItem={(item) => setViewingFeedIndex(feedItems?.findIndex((i) => i.checkinId === item.checkinId) ?? null)}
+        onPressItem={(item) => setViewingFeedIndex(feedItemsWithOwn?.findIndex((i) => i.checkinId === item.checkinId) ?? null)}
         onPressSeeAll={() => router.push('/home/feed')}
       />
 
@@ -681,7 +692,7 @@ export default function HomeScreen() {
 
       <FeedMediaModal
         visible={viewingFeedIndex !== null}
-        items={feedItems ?? []}
+        items={feedItemsWithOwn ?? []}
         initialIndex={viewingFeedIndex}
         onClose={() => setViewingFeedIndex(null)}
         onViewItem={handleViewFeedItem}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { getSignedThumbnailUrl } from '@/lib/supabase/storage';
+import { toZonedDateString } from '@/lib/domain/dateUtils';
 
 export interface PhotoFeedItem {
   checkinId: string;
@@ -21,7 +22,11 @@ export interface PhotoFeedItem {
   checkoutVideoPath: string | null;
   checkoutLatitude: number | null;
   checkoutLongitude: number | null;
+  caloriesKcal: number | null;
 }
+
+const CHECKIN_SELECT =
+  'id, user_id, group_id, captured_at, photo_path, video_path, video_thumbnail_path, latitude, longitude, checkout_captured_at, checkout_photo_path, checkout_video_path, checkout_latitude, checkout_longitude, active_energy_kcal, profile:profiles(full_name), group:groups(name, timezone)';
 
 interface CheckinRow {
   id: string;
@@ -38,8 +43,44 @@ interface CheckinRow {
   checkout_video_path: string | null;
   checkout_latitude: number | null;
   checkout_longitude: number | null;
+  active_energy_kcal: number | null;
   profile: { full_name: string } | null;
   group: { name: string; timezone: string } | null;
+}
+
+/** Resolves one checkins row into a feed item, signed thumbnail included.
+ * Returns null for anything unusable (no media, no joined profile/group, or
+ * a signed URL that fails to resolve) — shared by both the "others" query
+ * and the "my own today" query below so both drop candidates the same way. */
+async function resolveItem(r: CheckinRow): Promise<PhotoFeedItem | null> {
+  const mediaPath = r.photo_path ?? r.video_thumbnail_path;
+  if (!mediaPath || !r.profile || !r.group) return null;
+  try {
+    const thumbnailUrl = await getSignedThumbnailUrl('checkins', mediaPath, THUMBNAIL_SIZE);
+    return {
+      checkinId: r.id,
+      userId: r.user_id,
+      fullName: r.profile.full_name,
+      groupId: r.group_id,
+      groupName: r.group.name,
+      groupTimezone: r.group.timezone,
+      capturedAt: r.captured_at,
+      isVideo: !r.photo_path && !!r.video_path,
+      thumbnailUrl,
+      photoPath: r.photo_path,
+      videoPath: r.video_path,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      checkoutCapturedAt: r.checkout_captured_at,
+      checkoutPhotoPath: r.checkout_photo_path,
+      checkoutVideoPath: r.checkout_video_path,
+      checkoutLatitude: r.checkout_latitude,
+      checkoutLongitude: r.checkout_longitude,
+      caloriesKcal: r.active_energy_kcal,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // A tile in a 58-60px circle never needs the original ~1280px check-in
@@ -62,12 +103,15 @@ function dedupeKey(r: Pick<CheckinRow, 'user_id' | 'captured_at'>): string {
 
 /**
  * Every OTHER member's check-in capture, across every group the caller
- * belongs to, newest first — the Home feed strip's data. Never the caller's
- * own check-ins (this is "what my buddies have been up to", not a mirror of
- * my own Dashboard history). The checkin side (photo_path/video_path) is
- * what the strip's bubble itself shows; the checkout side is carried along
- * only so the viewer can swipe to it (see FeedMediaModal) — it never affects
- * which items appear or how they're deduped.
+ * belongs to, newest first — the Home feed strip's data — plus, separately,
+ * the caller's OWN today's check-in (`ownItem`, across every group too),
+ * meant to be shown as the strip's always-first bubble by whoever renders
+ * it (this hook doesn't prepend it itself, so a screen that only wants
+ * "what my buddies have been up to" — like the full /home/feed list — can
+ * keep using `items` alone). The checkin side (photo_path/video_path) is
+ * what a bubble itself shows; the checkout side is carried along only so
+ * the viewer can swipe to it (see FeedMediaModal) — it never affects which
+ * items appear or how they're deduped.
  *
  * A check-in with neither a real photo nor a pre-generated video thumbnail
  * (an older video from before 0166, or one whose thumbnail capture failed)
@@ -85,11 +129,13 @@ function dedupeKey(r: Pick<CheckinRow, 'user_id' | 'captured_at'>): string {
  */
 export function useGroupsPhotoFeed(userId: string | null, limit: number) {
   const [items, setItems] = useState<PhotoFeedItem[] | null>(null);
+  const [ownItem, setOwnItem] = useState<PhotoFeedItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!userId) {
       setItems(null);
+      setOwnItem(null);
       setIsLoading(false);
       return;
     }
@@ -99,21 +145,33 @@ export function useGroupsPhotoFeed(userId: string | null, limit: number) {
     const groupIds = (memberships ?? []).map((m) => m.group_id as string);
     if (groupIds.length === 0) {
       setItems([]);
+      setOwnItem(null);
       setIsLoading(false);
       return;
     }
 
     const candidatePoolSize = Math.min(limit * 3, 120);
-    const { data } = await supabase
-      .from('checkins')
-      .select(
-        'id, user_id, group_id, captured_at, photo_path, video_path, video_thumbnail_path, latitude, longitude, checkout_captured_at, checkout_photo_path, checkout_video_path, checkout_latitude, checkout_longitude, profile:profiles(full_name), group:groups(name, timezone)'
-      )
-      .in('group_id', groupIds)
-      .neq('user_id', userId)
-      .or('photo_path.not.is.null,video_thumbnail_path.not.is.null')
-      .order('captured_at', { ascending: false })
-      .limit(candidatePoolSize);
+    const [{ data }, { data: ownData }] = await Promise.all([
+      supabase
+        .from('checkins')
+        .select(CHECKIN_SELECT)
+        .in('group_id', groupIds)
+        .neq('user_id', userId)
+        .or('photo_path.not.is.null,video_thumbnail_path.not.is.null')
+        .order('captured_at', { ascending: false })
+        .limit(candidatePoolSize),
+      // My own most recent check-ins, across the same groups — only ever
+      // narrowed down to "today's" below, a handful is plenty to find it
+      // (or a fanned-out duplicate of it) without scanning the whole table.
+      supabase
+        .from('checkins')
+        .select(CHECKIN_SELECT)
+        .eq('user_id', userId)
+        .in('group_id', groupIds)
+        .or('photo_path.not.is.null,video_thumbnail_path.not.is.null')
+        .order('captured_at', { ascending: false })
+        .limit(5),
+    ]);
 
     const rows = (data as unknown as CheckinRow[]) ?? [];
     const seenKeys = new Set<string>();
@@ -124,39 +182,18 @@ export function useGroupsPhotoFeed(userId: string | null, limit: number) {
       return true;
     });
 
-    const resolved = await Promise.all(
-      deduped.map(async (r): Promise<PhotoFeedItem | null> => {
-        const mediaPath = r.photo_path ?? r.video_thumbnail_path;
-        if (!mediaPath || !r.profile || !r.group) return null;
-        try {
-          const thumbnailUrl = await getSignedThumbnailUrl('checkins', mediaPath, THUMBNAIL_SIZE);
-          return {
-            checkinId: r.id,
-            userId: r.user_id,
-            fullName: r.profile.full_name,
-            groupId: r.group_id,
-            groupName: r.group.name,
-            groupTimezone: r.group.timezone,
-            capturedAt: r.captured_at,
-            isVideo: !r.photo_path && !!r.video_path,
-            thumbnailUrl,
-            photoPath: r.photo_path,
-            videoPath: r.video_path,
-            latitude: r.latitude,
-            longitude: r.longitude,
-            checkoutCapturedAt: r.checkout_captured_at,
-            checkoutPhotoPath: r.checkout_photo_path,
-            checkoutVideoPath: r.checkout_video_path,
-            checkoutLatitude: r.checkout_latitude,
-            checkoutLongitude: r.checkout_longitude,
-          };
-        } catch {
-          return null;
-        }
-      })
+    const ownRows = (ownData as unknown as CheckinRow[]) ?? [];
+    const ownTodayRow = ownRows.find(
+      (r) => r.group && toZonedDateString(new Date(r.captured_at), r.group.timezone) === toZonedDateString(new Date(), r.group.timezone)
     );
 
+    const [resolved, resolvedOwn] = await Promise.all([
+      Promise.all(deduped.map(resolveItem)),
+      ownTodayRow ? resolveItem(ownTodayRow) : Promise.resolve(null),
+    ]);
+
     setItems(resolved.filter((r): r is PhotoFeedItem => r !== null).slice(0, limit));
+    setOwnItem(resolvedOwn);
     setIsLoading(false);
   }, [userId, limit]);
 
@@ -164,5 +201,5 @@ export function useGroupsPhotoFeed(userId: string | null, limit: number) {
     refresh();
   }, [refresh]);
 
-  return { items, isLoading, refresh };
+  return { items, ownItem, isLoading, refresh };
 }

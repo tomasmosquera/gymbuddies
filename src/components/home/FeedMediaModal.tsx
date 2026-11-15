@@ -73,18 +73,44 @@ const DISMISS_VELOCITY_THRESHOLD = 800;
 // accident, it's so a stray tap mid-photo doesn't surprise-skip a story).
 const TAP_ZONE_FRACTION = 0.28;
 
+/** The bottom info bar shared by every page — name always, then whichever of date/time, location and calories actually apply. A photo's date/time/location is already baked into the image itself as a watermark (see CheckinPhotoModal's own doc comment), so a photo page only ever passes caloriesText here; a video has no such baked-in watermark, so its page passes all four. */
+function InfoOverlay({
+  fullName,
+  overlayText,
+  locationText,
+  caloriesText,
+}: {
+  fullName: string;
+  overlayText?: string | null;
+  locationText?: string | null;
+  caloriesText: string | null;
+}) {
+  return (
+    <View style={styles.infoOverlay}>
+      <Text style={styles.infoOverlayName}>{fullName}</Text>
+      {overlayText ? <Text style={styles.infoOverlayText}>{overlayText}</Text> : null}
+      {locationText ? <Text style={styles.infoOverlayText}>{locationText}</Text> : null}
+      {caloriesText ? <Text style={styles.infoOverlayText}>{caloriesText}</Text> : null}
+    </View>
+  );
+}
+
 /** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. Reports its real duration once known (so the parent's progress bar times itself to the ACTUAL video length, not a guess) and end-of-playback (to advance) — a video's real length is whatever it is, not the fixed 8s a photo gets. `paused` mirrors the story's own pause state (press-and-hold) onto real playback, so the video doesn't keep rolling behind a frozen progress bar. */
 function VideoSide({
   uri,
+  fullName,
   overlayText,
   locationText,
+  caloriesText,
   paused,
   onDurationKnown,
   onEnd,
 }: {
   uri: string;
+  fullName: string;
   overlayText: string | null;
   locationText: string | null;
+  caloriesText: string | null;
   paused: boolean;
   onDurationKnown: (durationMs: number) => void;
   onEnd: () => void;
@@ -120,23 +146,20 @@ function VideoSide({
   return (
     <View style={styles.mediaArea}>
       <VideoView style={styles.mediaArea} player={player} nativeControls={false} />
-      {overlayText || locationText ? (
-        <View style={styles.videoOverlay}>
-          {overlayText ? <Text style={styles.videoOverlayText}>{overlayText}</Text> : null}
-          {locationText ? <Text style={styles.videoOverlayText}>{locationText}</Text> : null}
-        </View>
-      ) : null}
+      <InfoOverlay fullName={fullName} overlayText={overlayText} locationText={locationText} caloriesText={caloriesText} />
     </View>
   );
 }
 
 function SideView({
+  item,
   media,
   timezone,
   paused,
   onVideoDurationKnown,
   onVideoEnd,
 }: {
+  item: PhotoFeedItem;
   media: SideMedia;
   timezone: string;
   paused: boolean;
@@ -184,13 +207,16 @@ function SideView({
 
   const coordsText = media.latitude != null && media.longitude != null ? `${media.latitude.toFixed(5)}, ${media.longitude.toFixed(5)}` : null;
   const overlayText = media.capturedAt ? formatZonedDateTime12h(new Date(media.capturedAt), timezone) : null;
+  const caloriesText = item.caloriesKcal != null ? `🔥 ${Math.round(item.caloriesKcal)} kcal` : null;
 
   if (media.videoPath) {
     return (
       <VideoSide
         uri={signedUrl}
+        fullName={item.fullName}
         overlayText={overlayText}
         locationText={locationText ?? coordsText}
+        caloriesText={caloriesText}
         paused={paused}
         onDurationKnown={onVideoDurationKnown}
         onEnd={onVideoEnd}
@@ -198,12 +224,18 @@ function SideView({
     );
   }
   return (
-    <Image
-      source={{ uri: signedUrl, cacheKey: media.photoPath ?? undefined }}
-      style={styles.mediaArea}
-      contentFit="contain"
-      cachePolicy="memory-disk"
-    />
+    <View style={styles.mediaArea}>
+      <Image
+        source={{ uri: signedUrl, cacheKey: media.photoPath ?? undefined }}
+        style={styles.mediaArea}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+      />
+      {/* A photo's date/time/location is already baked into the image as a
+          watermark (see CheckinPhotoModal's own doc comment) — only the
+          name and calories are new information this overlay adds here. */}
+      <InfoOverlay fullName={item.fullName} caloriesText={caloriesText} />
+    </View>
   );
 }
 
@@ -432,6 +464,7 @@ function FeedMediaModalContent({
         <Animated.View style={[styles.backdrop, animatedStyle]} onLayout={handleContainerLayout}>
           <SideView
             key={`${item.checkinId}-${page.side}`}
+            item={item}
             media={media}
             timezone={item.groupTimezone}
             paused={isPaused}
@@ -471,7 +504,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   mediaArea: { flex: 1 },
-  videoOverlay: {
+  infoOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -480,7 +513,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: 2,
   },
-  videoOverlayText: { color: 'white', fontSize: 13, fontWeight: '700' },
+  infoOverlayName: { color: 'white', fontSize: 15, fontWeight: '800' },
+  infoOverlayText: { color: 'white', fontSize: 13, fontWeight: '700' },
   expiredText: { color: colors.text, textAlign: 'center' },
   progressRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', gap: 4 },
   segmentTrack: { flex: 1, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },

@@ -18,26 +18,32 @@ function groupTag(groupName: string): string {
 /**
  * Home's cross-group "what my buddies have been up to" strip — every other
  * member's most recent check-in capture, across every group I'm in, newest
- * first. Renders nothing at all while there's genuinely nothing to show
- * (still loading, or no buddy has a live photo right now) rather than an
+ * first, with MY OWN today's check-in always first (see useGroupsPhotoFeed's
+ * `ownItem`) — a gray, unpressable placeholder bubble when I haven't
+ * uploaded one yet today, rather than a real bubble or nothing at all, so
+ * that slot's position never shifts. Renders nothing at all while there's
+ * genuinely nothing to show (still loading, or no groups) rather than an
  * empty row — see useGroupsPhotoFeed's own doc comment for why a photo can
  * be missing here even when the check-in itself still exists.
  */
 export function PhotoFeedStrip({
   items,
+  ownItem,
   isLoading,
   seenCheckinIds,
   onPressItem,
   onPressSeeAll,
 }: {
   items: PhotoFeedItem[] | null;
+  /** My own today's check-in, across any of my groups — null if I haven't uploaded one yet today, in which case the first bubble renders as a gray, unpressable placeholder instead of being skipped. */
+  ownItem: PhotoFeedItem | null;
   isLoading: boolean;
   /** Which checkinIds have already been opened — the caller owns this (see Home), so a ring flips to gray the instant a bubble is tapped, not just after a later reload. */
   seenCheckinIds: Set<string>;
   onPressItem: (item: PhotoFeedItem) => void;
   onPressSeeAll: () => void;
 }) {
-  if (isLoading || !items || items.length === 0) return null;
+  if (isLoading || !items) return null;
 
   return (
     <View>
@@ -46,6 +52,50 @@ export function PhotoFeedStrip({
         <Text style={styles.headerHint}>Todos tus grupos</Text>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+        {ownItem ? (
+          <Pressable
+            key={ownItem.checkinId}
+            onPress={() => onPressItem(ownItem)}
+            style={styles.itemColumn}
+            accessibilityRole="button"
+            accessibilityLabel={`Tu ${ownItem.isVideo ? 'video' : 'foto'} de hoy`}
+          >
+            <View style={styles.ringWrap}>
+              <View style={[styles.ring, { backgroundColor: seenCheckinIds.has(ownItem.checkinId) ? colors.border : colors.primary }]}>
+                <View style={styles.ringGap}>
+                  <Image source={{ uri: ownItem.thumbnailUrl }} style={styles.photo} contentFit="cover" cachePolicy="memory-disk" />
+                </View>
+              </View>
+              {ownItem.isVideo ? (
+                <View style={styles.videoBadge}>
+                  <Ionicons name="play" size={8} color={colors.text} />
+                </View>
+              ) : null}
+            </View>
+            <Text
+              style={[styles.itemName, seenCheckinIds.has(ownItem.checkinId) ? styles.itemNameSeen : styles.itemNameUnseen]}
+              numberOfLines={1}
+            >
+              Tú
+            </Text>
+          </Pressable>
+        ) : (
+          <View key="own-empty" style={styles.itemColumn} accessibilityElementsHidden>
+            <View style={styles.ringWrap}>
+              <View style={[styles.ring, { backgroundColor: colors.border }]}>
+                <View style={styles.ringGap}>
+                  <View style={styles.ownEmptyCircle}>
+                    <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
+                  </View>
+                </View>
+              </View>
+            </View>
+            <Text style={[styles.itemName, styles.itemNameSeen]} numberOfLines={1}>
+              Tú
+            </Text>
+          </View>
+        )}
+
         {items.map((item) => {
           const isUnseen = !seenCheckinIds.has(item.checkinId);
           return (
@@ -101,6 +151,17 @@ const styles = StyleSheet.create({
   ring: { width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: radii.pill, padding: 2.5 },
   ringGap: { width: '100%', height: '100%', borderRadius: radii.pill, backgroundColor: colors.background, padding: 2 },
   photo: { width: '100%', height: '100%', borderRadius: radii.pill, backgroundColor: colors.surfaceAlt },
+  // The gray, unpressable placeholder shown in the own-story slot before
+  // I've uploaded today's check-in — same footprint as a real photo so the
+  // rest of the strip never shifts once one actually appears.
+  ownEmptyCircle: {
+    width: '100%',
+    height: '100%',
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   groupTag: {
     position: 'absolute',
     top: -3,
@@ -112,7 +173,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 1,
   },
-  groupTagText: { fontSize: 7, fontWeight: '800', color: colors.text },
+  // 15% larger than the original 7px, per user request.
+  groupTagText: { fontSize: 8, fontWeight: '800', color: colors.text },
   videoBadge: {
     position: 'absolute',
     bottom: -1,
