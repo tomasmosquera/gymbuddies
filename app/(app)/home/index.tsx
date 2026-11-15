@@ -417,6 +417,7 @@ export default function HomeScreen() {
         isLoading={feedLoading}
         seenCheckinIds={seenCheckinIds}
         onPressItem={(item) => setViewingFeedIndex(feedItemsWithOwn?.findIndex((i) => i.checkinId === item.checkinId) ?? null)}
+        onPressOwnEmpty={() => router.push('/checkin')}
         onPressSeeAll={() => router.push('/home/feed')}
       />
 

@@ -32,15 +32,18 @@ export function PhotoFeedStrip({
   isLoading,
   seenCheckinIds,
   onPressItem,
+  onPressOwnEmpty,
   onPressSeeAll,
 }: {
   items: PhotoFeedItem[] | null;
-  /** My own today's check-in, across any of my groups — null if I haven't uploaded one yet today, in which case the first bubble renders as a gray, unpressable placeholder instead of being skipped. */
+  /** My own today's check-in, across any of my groups — null if I haven't uploaded one yet today, in which case the first bubble renders as a gray placeholder that opens check-in (via onPressOwnEmpty) instead of a story. */
   ownItem: PhotoFeedItem | null;
   isLoading: boolean;
   /** Which checkinIds have already been opened — the caller owns this (see Home), so a ring flips to gray the instant a bubble is tapped, not just after a later reload. */
   seenCheckinIds: Set<string>;
   onPressItem: (item: PhotoFeedItem) => void;
+  /** Fired when the empty own-story placeholder (no photo uploaded today) is tapped — takes the member straight to check-in instead of doing nothing. */
+  onPressOwnEmpty: () => void;
   onPressSeeAll: () => void;
 }) {
   if (isLoading || !items) return null;
@@ -80,7 +83,13 @@ export function PhotoFeedStrip({
             </Text>
           </Pressable>
         ) : (
-          <View key="own-empty" style={styles.itemColumn} accessibilityElementsHidden>
+          <Pressable
+            key="own-empty"
+            onPress={onPressOwnEmpty}
+            style={styles.itemColumn}
+            accessibilityRole="button"
+            accessibilityLabel="Hacer check-in de hoy"
+          >
             <View style={styles.ringWrap}>
               <View style={[styles.ring, { backgroundColor: colors.border }]}>
                 <View style={styles.ringGap}>
@@ -93,7 +102,7 @@ export function PhotoFeedStrip({
             <Text style={[styles.itemName, styles.itemNameSeen]} numberOfLines={1}>
               Tú
             </Text>
-          </View>
+          </Pressable>
         )}
 
         {items.map((item) => {
@@ -173,8 +182,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 1,
   },
-  // 15% larger than the original 7px, per user request.
-  groupTagText: { fontSize: 8, fontWeight: '800', color: colors.text },
+  // 15% larger than 8px (itself 15% larger than the original 7px), per user request.
+  groupTagText: { fontSize: 9, fontWeight: '800', color: colors.text },
   videoBadge: {
     position: 'absolute',
     bottom: -1,
