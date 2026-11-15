@@ -63,7 +63,7 @@ function buildPages(items: PhotoFeedItem[]): FeedPage[] {
   return pages;
 }
 
-const PHOTO_PAGE_DURATION_MS = 8000;
+const PHOTO_PAGE_DURATION_MS = 6000;
 const SWIPE_THRESHOLD = 60;
 const DISMISS_DISTANCE_THRESHOLD = 120;
 const DISMISS_VELOCITY_THRESHOLD = 800;
@@ -73,46 +73,31 @@ const DISMISS_VELOCITY_THRESHOLD = 800;
 // accident, it's so a stray tap mid-photo doesn't surprise-skip a story).
 const TAP_ZONE_FRACTION = 0.28;
 
-/** The bottom info bar shared by every page — name always, then whichever of date/time, location and calories actually apply. A photo's date/time/location is already baked into the image itself as a watermark (see CheckinPhotoModal's own doc comment), so a photo page only ever passes caloriesText here; a video has no such baked-in watermark, so its page passes all four. */
-function InfoOverlay({
-  fullName,
-  overlayText,
-  locationText,
-  caloriesText,
-}: {
-  fullName: string;
-  overlayText?: string | null;
-  locationText?: string | null;
-  caloriesText: string | null;
-}) {
+/** The bottom date/time/location bar — video only. A photo's date/time/location is already baked into the image itself as a watermark (see CheckinPhotoModal's own doc comment), so a photo page never needs this. */
+function VideoInfoOverlay({ overlayText, locationText }: { overlayText: string | null; locationText: string | null }) {
+  if (!overlayText && !locationText) return null;
   return (
-    <View style={styles.infoOverlay}>
-      <Text style={styles.infoOverlayName}>{fullName}</Text>
-      {overlayText ? <Text style={styles.infoOverlayText}>{overlayText}</Text> : null}
-      {locationText ? <Text style={styles.infoOverlayText}>{locationText}</Text> : null}
-      {caloriesText ? <Text style={styles.infoOverlayText}>{caloriesText}</Text> : null}
+    <View style={styles.videoOverlay}>
+      {overlayText ? <Text style={styles.videoOverlayText}>{overlayText}</Text> : null}
+      {locationText ? <Text style={styles.videoOverlayText}>{locationText}</Text> : null}
     </View>
   );
 }
 
-/** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. Reports its real duration once known (so the parent's progress bar times itself to the ACTUAL video length, not a guess) and end-of-playback (to advance) — a video's real length is whatever it is, not the fixed 8s a photo gets. `paused` mirrors the story's own pause state (press-and-hold) onto real playback, so the video doesn't keep rolling behind a frozen progress bar. */
+/** Mounted only while actually showing a video, same AVPlayer-scoping idiom as CheckinPhotoModal's own VideoModalContent. Reports its real duration once known (so the parent's progress bar times itself to the ACTUAL video length, not a guess, and doesn't start counting down before then) and end-of-playback (to advance) — a video's real length is whatever it is, not the fixed 6s a photo gets. `paused` mirrors the story's own pause state (press-and-hold) onto real playback, so the video doesn't keep rolling behind a frozen progress bar. */
 function VideoSide({
   uri,
-  fullName,
   overlayText,
   locationText,
-  caloriesText,
   paused,
-  onDurationKnown,
+  onReady,
   onEnd,
 }: {
   uri: string;
-  fullName: string;
   overlayText: string | null;
   locationText: string | null;
-  caloriesText: string | null;
   paused: boolean;
-  onDurationKnown: (durationMs: number) => void;
+  onReady: (durationMs: number) => void;
   onEnd: () => void;
 }) {
   const player = useVideoPlayer({ uri }, (p) => {
@@ -124,7 +109,7 @@ function VideoSide({
     const sub = player.addListener('statusChange', ({ status }) => {
       if (status === 'readyToPlay' && player.duration > 0 && !reportedDurationRef.current) {
         reportedDurationRef.current = true;
-        onDurationKnown(player.duration * 1000);
+        onReady(player.duration * 1000);
       }
     });
     return () => sub.remove();
@@ -146,30 +131,30 @@ function VideoSide({
   return (
     <View style={styles.mediaArea}>
       <VideoView style={styles.mediaArea} player={player} nativeControls={false} />
-      <InfoOverlay fullName={fullName} overlayText={overlayText} locationText={locationText} caloriesText={caloriesText} />
+      <VideoInfoOverlay overlayText={overlayText} locationText={locationText} />
     </View>
   );
 }
 
 function SideView({
-  item,
   media,
   timezone,
   paused,
-  onVideoDurationKnown,
+  onReady,
   onVideoEnd,
 }: {
-  item: PhotoFeedItem;
   media: SideMedia;
   timezone: string;
   paused: boolean;
-  onVideoDurationKnown: (durationMs: number) => void;
+  /** Fired once the page's media is actually ready to view — the video's real duration once known, or the fixed photo duration once the image itself has finished loading (not just once its signed URL resolved). The progress bar never starts counting down before this fires. */
+  onReady: (durationMs: number) => void;
   onVideoEnd: () => void;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'expired'>('loading');
   const mediaPath = media.videoPath ?? media.photoPath;
   const locationText = useReverseGeocode(media.videoPath ? media.latitude : null, media.videoPath ? media.longitude : null);
+  const reportedReadyRef = useRef(false);
 
   useEffect(() => {
     if (!mediaPath) {
@@ -207,35 +192,31 @@ function SideView({
 
   const coordsText = media.latitude != null && media.longitude != null ? `${media.latitude.toFixed(5)}, ${media.longitude.toFixed(5)}` : null;
   const overlayText = media.capturedAt ? formatZonedDateTime12h(new Date(media.capturedAt), timezone) : null;
-  const caloriesText = item.caloriesKcal != null ? `🔥 ${Math.round(item.caloriesKcal)} kcal` : null;
 
   if (media.videoPath) {
     return (
       <VideoSide
         uri={signedUrl}
-        fullName={item.fullName}
         overlayText={overlayText}
         locationText={locationText ?? coordsText}
-        caloriesText={caloriesText}
         paused={paused}
-        onDurationKnown={onVideoDurationKnown}
+        onReady={onReady}
         onEnd={onVideoEnd}
       />
     );
   }
   return (
-    <View style={styles.mediaArea}>
-      <Image
-        source={{ uri: signedUrl, cacheKey: media.photoPath ?? undefined }}
-        style={styles.mediaArea}
-        contentFit="contain"
-        cachePolicy="memory-disk"
-      />
-      {/* A photo's date/time/location is already baked into the image as a
-          watermark (see CheckinPhotoModal's own doc comment) — only the
-          name and calories are new information this overlay adds here. */}
-      <InfoOverlay fullName={item.fullName} caloriesText={caloriesText} />
-    </View>
+    <Image
+      source={{ uri: signedUrl, cacheKey: media.photoPath ?? undefined }}
+      style={styles.mediaArea}
+      contentFit="contain"
+      cachePolicy="memory-disk"
+      onLoad={() => {
+        if (reportedReadyRef.current) return;
+        reportedReadyRef.current = true;
+        onReady(PHOTO_PAGE_DURATION_MS);
+      }}
+    />
   );
 }
 
@@ -348,10 +329,11 @@ function FeedMediaModalContent({
   const insets = useSafeAreaInsets();
   const pages = useMemo(() => buildPages(items), [items]);
   const [pageIndex, setPageIndex] = useState(() => Math.max(pages.findIndex((p) => p.itemIndex === initialItemIndex), 0));
-  // null while a video's real duration isn't known yet — the timer simply
-  // doesn't start until it is (see the effect below), so the bar never
-  // animates toward a guessed length.
-  const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null);
+  // null until the current page's media is actually ready — a video's real
+  // duration once known, or the fixed photo duration once the image itself
+  // has finished loading — so the bar never starts counting down (let alone
+  // toward a guessed length) before there's something to actually look at.
+  const [mediaDurationMs, setMediaDurationMs] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const dismissTranslateY = useSharedValue(0);
@@ -362,7 +344,7 @@ function FeedMediaModalContent({
   const media = sideMediaFor(item, page.side)!;
   const segmentCount = sideMediaFor(item, 'checkout') ? 2 : 1;
   const activeSegment = page.side === 'checkin' ? 0 : 1;
-  const durationMs = media.videoPath ? videoDurationMs : PHOTO_PAGE_DURATION_MS;
+  const caloriesText = item.caloriesKcal != null ? `🔥 ${Math.round(item.caloriesKcal)} kcal` : null;
 
   const goNext = () => {
     if (pageIndex + 1 >= pages.length) onClose();
@@ -382,11 +364,11 @@ function FeedMediaModalContent({
   }, [item]);
 
   // A fresh page always starts playing (never carries over a pause from
-  // whatever page came before it), and its video duration is unknown again
-  // until VideoSide reports it.
+  // whatever page came before it), and its media is considered not-ready
+  // again until SideView reports it.
   useEffect(() => {
     setIsPaused(false);
-    setVideoDurationMs(null);
+    setMediaDurationMs(null);
   }, [pageIndex]);
 
   const handleContainerLayout = (e: LayoutChangeEvent) => {
@@ -464,11 +446,10 @@ function FeedMediaModalContent({
         <Animated.View style={[styles.backdrop, animatedStyle]} onLayout={handleContainerLayout}>
           <SideView
             key={`${item.checkinId}-${page.side}`}
-            item={item}
             media={media}
             timezone={item.groupTimezone}
             paused={isPaused}
-            onVideoDurationKnown={setVideoDurationMs}
+            onReady={setMediaDurationMs}
             onVideoEnd={goNext}
           />
         </Animated.View>
@@ -480,10 +461,15 @@ function FeedMediaModalContent({
             {i < activeSegment ? (
               <View style={[styles.segmentFill, styles.segmentFillDone]} />
             ) : i === activeSegment ? (
-              <ActiveSegmentBar key={pageIndex} durationMs={durationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
+              <ActiveSegmentBar key={pageIndex} durationMs={mediaDurationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
             ) : null}
           </View>
         ))}
+      </View>
+
+      <View style={[styles.topInfo, { top: insets.top + spacing.sm + 3 + spacing.xs }]} pointerEvents="none">
+        <Text style={styles.topInfoName}>{item.fullName}</Text>
+        {caloriesText ? <Text style={styles.topInfoCalories}>{caloriesText}</Text> : null}
       </View>
 
       {segmentCount > 1 && activeSegment === 0 ? (
@@ -504,7 +490,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   mediaArea: { flex: 1 },
-  infoOverlay: {
+  videoOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -513,10 +499,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: 2,
   },
-  infoOverlayName: { color: 'white', fontSize: 15, fontWeight: '800' },
-  infoOverlayText: { color: 'white', fontSize: 13, fontWeight: '700' },
+  videoOverlayText: { color: 'white', fontSize: 13, fontWeight: '700' },
   expiredText: { color: colors.text, textAlign: 'center' },
   progressRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', gap: 4 },
+  // Name + calories — centered under the progress bar, for every page
+  // (photo or video), rather than down with date/time/location.
+  topInfo: { position: 'absolute', left: spacing.md, right: spacing.md, alignItems: 'center' },
+  topInfoName: { color: 'white', fontSize: 14, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
+  topInfoCalories: { color: 'white', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
   segmentTrack: { flex: 1, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
   segmentFill: { height: '100%', borderRadius: radii.pill, backgroundColor: colors.primary },
   segmentFillDone: { width: '100%' },
