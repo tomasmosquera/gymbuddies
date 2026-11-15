@@ -72,6 +72,10 @@ const DISMISS_VELOCITY_THRESHOLD = 800;
 // anywhere in the wide middle does nothing (it's not a dead zone by
 // accident, it's so a stray tap mid-photo doesn't surprise-skip a story).
 const TAP_ZONE_FRACTION = 0.28;
+// Shared between the close button and the name/calories row so their
+// vertical centers line up exactly, whichever one actually renders 1 or 2
+// lines of text inside it.
+const TOP_ROW_HEIGHT = 36;
 
 /** The bottom date/time/location bar — video only. A photo's date/time/location is already baked into the image itself as a watermark (see CheckinPhotoModal's own doc comment), so a photo page never needs this. */
 function VideoInfoOverlay({ overlayText, locationText }: { overlayText: string | null; locationText: string | null }) {
@@ -439,9 +443,13 @@ function FeedMediaModalContent({
       {/* The close button is a SIBLING, not a descendant, of the gesture-
           detected surface below — painted on top, so it claims its own taps
           outright instead of racing the edge-tap/long-press/swipe gestures
-          covering the whole screen underneath it. Same for the progress bar
-          and swipe hint, which are purely decorative (pointerEvents="none")
-          and were never meant to intercept touches anyway. */}
+          covering the whole screen underneath it, and so it stays put
+          (always tappable) instead of sliding away during a drag-to-dismiss.
+          The progress bar, name/calories and swipe hint are decorative
+          (pointerEvents="none") and were never meant to intercept touches —
+          they live INSIDE the animated view instead, so they slide down and
+          fade together with the photo/video during drag-to-dismiss rather
+          than staying frozen in place while everything else moves. */}
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.backdrop, animatedStyle]} onLayout={handleContainerLayout}>
           <SideView
@@ -452,33 +460,35 @@ function FeedMediaModalContent({
             onReady={setMediaDurationMs}
             onVideoEnd={goNext}
           />
+
+          <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
+            {Array.from({ length: segmentCount }).map((_, i) => (
+              <View key={i} style={styles.segmentTrack}>
+                {i < activeSegment ? (
+                  <View style={[styles.segmentFill, styles.segmentFillDone]} />
+                ) : i === activeSegment ? (
+                  <ActiveSegmentBar key={pageIndex} durationMs={mediaDurationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
+                ) : null}
+              </View>
+            ))}
+          </View>
+
+          {/* Same vertical level as the close button regardless of whether
+              calories renders a second line — both share TOP_ROW_HEIGHT and
+              center their content inside it, so the PAIR's vertical middle
+              always lines up with the button's, not just the name's. */}
+          <View style={[styles.topInfo, { top: insets.top + spacing.md }]} pointerEvents="none">
+            <Text style={styles.topInfoName}>{item.fullName}</Text>
+            {caloriesText ? <Text style={styles.topInfoCalories}>{caloriesText}</Text> : null}
+          </View>
+
+          {segmentCount > 1 && activeSegment === 0 ? (
+            <View style={styles.swipeHint} pointerEvents="none">
+              <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
+            </View>
+          ) : null}
         </Animated.View>
       </GestureDetector>
-
-      <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
-        {Array.from({ length: segmentCount }).map((_, i) => (
-          <View key={i} style={styles.segmentTrack}>
-            {i < activeSegment ? (
-              <View style={[styles.segmentFill, styles.segmentFillDone]} />
-            ) : i === activeSegment ? (
-              <ActiveSegmentBar key={pageIndex} durationMs={mediaDurationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
-            ) : null}
-          </View>
-        ))}
-      </View>
-
-      {/* Same vertical level as the close button, per user request — the
-          progress bar sits just above this row. */}
-      <View style={[styles.topInfo, { top: insets.top + spacing.md }]} pointerEvents="none">
-        <Text style={styles.topInfoName}>{item.fullName}</Text>
-        {caloriesText ? <Text style={styles.topInfoCalories}>{caloriesText}</Text> : null}
-      </View>
-
-      {segmentCount > 1 && activeSegment === 0 ? (
-        <View style={styles.swipeHint} pointerEvents="none">
-          <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
-        </View>
-      ) : null}
 
       <Pressable accessibilityRole="button" onPress={onClose} hitSlop={16} style={[styles.closeButton, { top: insets.top + spacing.md }]}>
         <Text style={styles.closeButtonText}>Cerrar ✕</Text>
@@ -504,9 +514,18 @@ const styles = StyleSheet.create({
   videoOverlayText: { color: 'white', fontSize: 13, fontWeight: '700' },
   expiredText: { color: colors.text, textAlign: 'center' },
   progressRow: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', gap: 4 },
-  // Name + calories — centered under the progress bar, for every page
-  // (photo or video), rather than down with date/time/location.
-  topInfo: { position: 'absolute', left: spacing.md, right: spacing.md, alignItems: 'center' },
+  // Name + calories, for every page (photo or video) — centered in a row
+  // the same fixed height as the close button (TOP_ROW_HEIGHT) so the
+  // PAIR's vertical middle lines up with the button's whether calories
+  // renders a second line or not, rather than just the name's top edge.
+  topInfo: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    height: TOP_ROW_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   topInfoName: { color: 'white', fontSize: 14, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
   topInfoCalories: { color: 'white', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
   segmentTrack: { flex: 1, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(255,255,255,0.3)', overflow: 'hidden' },
@@ -533,8 +552,9 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     zIndex: 10,
     elevation: 10,
+    height: TOP_ROW_HEIGHT,
+    justifyContent: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
