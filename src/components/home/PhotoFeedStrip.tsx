@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import type { PhotoFeedItem } from '@/hooks/useGroupsPhotoFeed';
 import { colors, radii, spacing } from '@/constants/theme';
 
@@ -15,16 +17,38 @@ function groupTag(groupName: string): string {
   return initials.slice(0, 3) || '?';
 }
 
+// How many placeholder circles to show while loading — just enough to read
+// as "a row of stories is coming", not an attempt to match the real count
+// (unknown until the fetch resolves).
+const SKELETON_COUNT = 4;
+
+/** One pulsing gray circle + label, standing in for a real bubble while the feed is still loading. */
+function SkeletonCircle() {
+  const opacity = useSharedValue(0.35);
+  useEffect(() => {
+    opacity.value = withRepeat(withTiming(0.8, { duration: 700 }), -1, true);
+  }, [opacity]);
+  const circleStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <View style={styles.itemColumn}>
+      <Animated.View style={[styles.ringWrap, styles.skeletonCircle, circleStyle]} />
+      <Animated.View style={[styles.skeletonLabel, circleStyle]} />
+    </View>
+  );
+}
+
 /**
  * Home's cross-group "what my buddies have been up to" strip — every other
  * member's most recent check-in capture, across every group I'm in, newest
  * first, with MY OWN today's check-in always first (see useGroupsPhotoFeed's
  * `ownItem`) — a gray, unpressable placeholder bubble when I haven't
  * uploaded one yet today, rather than a real bubble or nothing at all, so
- * that slot's position never shifts. Renders nothing at all while there's
- * genuinely nothing to show (still loading, or no groups) rather than an
- * empty row — see useGroupsPhotoFeed's own doc comment for why a photo can
- * be missing here even when the check-in itself still exists.
+ * that slot's position never shifts. While loading, renders a row of
+ * pulsing skeleton circles in the exact same spot instead of nothing at all
+ * — reserving the space up front is the whole point, so the rest of Home
+ * never jumps down once the real bubbles pop in — see useGroupsPhotoFeed's
+ * own doc comment for why a photo can be missing here even when the
+ * check-in itself still exists.
  */
 export function PhotoFeedStrip({
   items,
@@ -46,7 +70,22 @@ export function PhotoFeedStrip({
   onPressOwnEmpty: () => void;
   onPressSeeAll: () => void;
 }) {
-  if (isLoading || !items) return null;
+  if (isLoading) {
+    return (
+      <View>
+        <View style={styles.headerRow}>
+          <Text style={styles.header}>Feed de fotos</Text>
+          <Text style={styles.headerHint}>Todos tus grupos</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+            <SkeletonCircle key={i} />
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+  if (!items) return null;
 
   return (
     <View>
@@ -160,6 +199,8 @@ const styles = StyleSheet.create({
   ring: { width: CIRCLE_SIZE, height: CIRCLE_SIZE, borderRadius: radii.pill, padding: 2.5 },
   ringGap: { width: '100%', height: '100%', borderRadius: radii.pill, backgroundColor: colors.background, padding: 2 },
   photo: { width: '100%', height: '100%', borderRadius: radii.pill, backgroundColor: colors.surfaceAlt },
+  skeletonCircle: { borderRadius: radii.pill, backgroundColor: colors.surfaceAlt },
+  skeletonLabel: { width: 28, height: 10, borderRadius: radii.pill, backgroundColor: colors.surfaceAlt },
   // The gray, unpressable placeholder shown in the own-story slot before
   // I've uploaded today's check-in — same footprint as a real photo so the
   // rest of the strip never shifts once one actually appears.
