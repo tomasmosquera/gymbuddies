@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { Skeleton } from '@/components/ui/Skeleton';
 import type { PhotoFeedItem } from '@/hooks/useGroupsPhotoFeed';
 import { colors, radii, spacing } from '@/constants/theme';
 
@@ -25,15 +24,10 @@ const SKELETON_COUNT = 7;
 
 /** One pulsing gray circle + label, standing in for a real bubble while the feed is still loading. */
 function SkeletonCircle() {
-  const opacity = useSharedValue(0.35);
-  useEffect(() => {
-    opacity.value = withRepeat(withTiming(0.8, { duration: 700 }), -1, true);
-  }, [opacity]);
-  const circleStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return (
     <View style={styles.itemColumn}>
-      <Animated.View style={[styles.ringWrap, styles.skeletonCircle, circleStyle]} />
-      <Animated.View style={[styles.skeletonLabel, circleStyle]} />
+      <Skeleton style={[styles.ringWrap, styles.skeletonCircle]} />
+      <Skeleton style={styles.skeletonLabel} />
     </View>
   );
 }

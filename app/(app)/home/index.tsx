@@ -9,6 +9,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { LeaderboardCard } from '@/components/home/LeaderboardCard';
 import { PhotoFeedStrip } from '@/components/home/PhotoFeedStrip';
+import { HomeSkeleton } from '@/components/home/HomeSkeleton';
 import { FeedMediaModal } from '@/components/home/FeedMediaModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
@@ -379,11 +380,7 @@ export default function HomeScreen() {
   }, [session, groupLoading, group, membership]);
 
   if (groupLoading || !group || !membership) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+    return <HomeSkeleton />;
   }
 
   const effectiveRequired = Math.max(group.min_days_per_week - excusedCount, 0);
@@ -910,7 +907,6 @@ function dayToneStyle(tone: 'neutral' | 'success' | 'warning' | 'danger') {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
