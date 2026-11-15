@@ -443,13 +443,15 @@ function FeedMediaModalContent({
       {/* The close button is a SIBLING, not a descendant, of the gesture-
           detected surface below — painted on top, so it claims its own taps
           outright instead of racing the edge-tap/long-press/swipe gestures
-          covering the whole screen underneath it, and so it stays put
-          (always tappable) instead of sliding away during a drag-to-dismiss.
-          The progress bar, name/calories and swipe hint are decorative
-          (pointerEvents="none") and were never meant to intercept touches —
-          they live INSIDE the animated view instead, so they slide down and
-          fade together with the photo/video during drag-to-dismiss rather
-          than staying frozen in place while everything else moves. */}
+          covering the whole screen underneath it. It still gets its own
+          Animated.View with the SAME animatedStyle as the backdrop below, so
+          it visually slides/fades together with the photo during
+          drag-to-dismiss, without actually living inside the gesture-
+          detected tree (which would reintroduce the touch-priority problem
+          this split was meant to avoid). The progress bar, name/calories and
+          swipe hint are decorative (pointerEvents="none") and were never
+          meant to intercept touches, so they live directly INSIDE the
+          animated view instead. */}
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.backdrop, animatedStyle]} onLayout={handleContainerLayout}>
           <SideView
@@ -490,9 +492,11 @@ function FeedMediaModalContent({
         </Animated.View>
       </GestureDetector>
 
-      <Pressable accessibilityRole="button" onPress={onClose} hitSlop={16} style={[styles.closeButton, { top: insets.top + spacing.md }]}>
-        <Text style={styles.closeButtonText}>Cerrar ✕</Text>
-      </Pressable>
+      <Animated.View style={[styles.closeButtonWrap, { top: insets.top + spacing.md }, animatedStyle]}>
+        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={16} style={styles.closeButton}>
+          <Text style={styles.closeButtonText}>Cerrar ✕</Text>
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -547,11 +551,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radii.pill,
   },
+  closeButtonWrap: { position: 'absolute', right: spacing.lg, zIndex: 10, elevation: 10 },
   closeButton: {
-    position: 'absolute',
-    right: spacing.lg,
-    zIndex: 10,
-    elevation: 10,
     height: TOP_ROW_HEIGHT,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
