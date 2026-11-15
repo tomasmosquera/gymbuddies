@@ -17,10 +17,11 @@ function groupTag(groupName: string): string {
   return initials.slice(0, 3) || '?';
 }
 
-// How many placeholder circles to show while loading — just enough to read
-// as "a row of stories is coming", not an attempt to match the real count
-// (unknown until the fetch resolves).
-const SKELETON_COUNT = 4;
+// How many placeholder circles to show while loading — not an attempt to
+// match the real count (unknown until the fetch resolves), just enough that
+// the row visibly overflows past the screen edge, same as it would with a
+// real, longer list.
+const SKELETON_COUNT = 7;
 
 /** One pulsing gray circle + label, standing in for a real bubble while the feed is still loading. */
 function SkeletonCircle() {

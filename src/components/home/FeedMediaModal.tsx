@@ -467,7 +467,9 @@ function FeedMediaModalContent({
         ))}
       </View>
 
-      <View style={[styles.topInfo, { top: insets.top + spacing.sm + 3 + spacing.xs }]} pointerEvents="none">
+      {/* Same vertical level as the close button, per user request — the
+          progress bar sits just above this row. */}
+      <View style={[styles.topInfo, { top: insets.top + spacing.md }]} pointerEvents="none">
         <Text style={styles.topInfoName}>{item.fullName}</Text>
         {caloriesText ? <Text style={styles.topInfoCalories}>{caloriesText}</Text> : null}
       </View>
