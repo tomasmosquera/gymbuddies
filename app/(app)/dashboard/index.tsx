@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, FlatList, Keyboard, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -11,6 +11,7 @@ import { CheckinPhotoColumn } from '@/components/checkin/CheckinPhotoColumn';
 import { CheckinPhotoModal } from '@/components/checkin/CheckinPhotoModal';
 import { AvatarWithLevel } from '@/components/ui/AvatarWithLevel';
 import { CrownIcon } from '@/components/ui/CrownIcon';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 import { useIsLeagueChampion } from '@/hooks/useLeagueChampions';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGroup } from '@/hooks/useActiveGroup';
@@ -737,11 +738,7 @@ export default function DashboardScreen() {
   };
 
   if (groupLoading || !group) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+    return <DashboardSkeleton />;
   }
 
   // Days with nobody active yet (group didn't exist, or everyone joined
@@ -991,7 +988,6 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   container: { padding: spacing.lg, backgroundColor: colors.background, flexGrow: 1 },
   modalBackdrop: {
     flex: 1,
