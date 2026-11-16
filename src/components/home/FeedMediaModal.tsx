@@ -76,6 +76,13 @@ const TAP_ZONE_FRACTION = 0.28;
 // vertical centers line up exactly, whichever one actually renders 1 or 2
 // lines of text inside it.
 const TOP_ROW_HEIGHT = 36;
+// How far (in px) a drag has to travel before the backdrop is fully
+// transparent — and, doubling as that, how tall a buffer of extra backdrop
+// needs to sit ABOVE the screen's top edge so dragging down never uncovers
+// a hard edge where the real backdrop "ends": by the time a drag has gone
+// far enough to expose that buffer's own top edge, the backdrop has already
+// faded to nothing, so there's never anything visible left to reveal.
+const DISMISS_FADE_DISTANCE = 400;
 
 /** The bottom date/time/location bar — video only. A photo's date/time/location is already baked into the image itself as a watermark (see CheckinPhotoModal's own doc comment), so a photo page never needs this. */
 function VideoInfoOverlay({ overlayText, locationText }: { overlayText: string | null; locationText: string | null }) {
@@ -383,7 +390,7 @@ function FeedMediaModalContent({
     .onUpdate((e) => {
       if (Math.abs(e.translationX) < Math.abs(e.translationY)) {
         dismissTranslateY.value = e.translationY;
-        dismissOpacity.value = Math.max(1 - Math.abs(e.translationY) / 400, 0.4);
+        dismissOpacity.value = Math.max(1 - Math.abs(e.translationY) / DISMISS_FADE_DISTANCE, 0);
       }
     })
     .onEnd((e) => {
@@ -451,44 +458,57 @@ function FeedMediaModalContent({
           this split was meant to avoid). The progress bar, name/calories and
           swipe hint are decorative (pointerEvents="none") and were never
           meant to intercept touches, so they live directly INSIDE the
-          animated view instead. */}
+          animated view instead.
+
+          animatedStyle (translateY + opacity) is on this OUTER wrapper, not
+          on `backdrop` itself, so `backdropOverscan` — a same-colored panel
+          sitting just above the screen's top edge — moves and fades right
+          along with it. Without that buffer, dragging down would slide
+          `backdrop`'s own top edge away from y=0 and lay bare whatever
+          happens to be behind this transparent Modal for however far it's
+          been dragged; with it, that gap is covered by more backdrop until
+          DISMISS_FADE_DISTANCE's worth of dragging has also faded the whole
+          thing to nothing, so there's nothing left to notice uncovering. */}
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.backdrop, animatedStyle]} onLayout={handleContainerLayout}>
-          <SideView
-            key={`${item.checkinId}-${page.side}`}
-            media={media}
-            timezone={item.groupTimezone}
-            paused={isPaused}
-            onReady={setMediaDurationMs}
-            onVideoEnd={goNext}
-          />
+        <Animated.View style={[styles.backdropWrap, animatedStyle]} onLayout={handleContainerLayout}>
+          <View style={styles.backdropOverscan} pointerEvents="none" />
+          <View style={styles.backdrop}>
+            <SideView
+              key={`${item.checkinId}-${page.side}`}
+              media={media}
+              timezone={item.groupTimezone}
+              paused={isPaused}
+              onReady={setMediaDurationMs}
+              onVideoEnd={goNext}
+            />
 
-          <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
-            {Array.from({ length: segmentCount }).map((_, i) => (
-              <View key={i} style={styles.segmentTrack}>
-                {i < activeSegment ? (
-                  <View style={[styles.segmentFill, styles.segmentFillDone]} />
-                ) : i === activeSegment ? (
-                  <ActiveSegmentBar key={pageIndex} durationMs={mediaDurationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
-                ) : null}
-              </View>
-            ))}
-          </View>
-
-          {/* Same vertical level as the close button regardless of whether
-              calories renders a second line — both share TOP_ROW_HEIGHT and
-              center their content inside it, so the PAIR's vertical middle
-              always lines up with the button's, not just the name's. */}
-          <View style={[styles.topInfo, { top: insets.top + spacing.md }]} pointerEvents="none">
-            <Text style={styles.topInfoName}>{item.fullName}</Text>
-            {caloriesText ? <Text style={styles.topInfoCalories}>{caloriesText}</Text> : null}
-          </View>
-
-          {segmentCount > 1 && activeSegment === 0 ? (
-            <View style={styles.swipeHint} pointerEvents="none">
-              <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
+            <View style={[styles.progressRow, { top: insets.top + spacing.sm }]} pointerEvents="none">
+              {Array.from({ length: segmentCount }).map((_, i) => (
+                <View key={i} style={styles.segmentTrack}>
+                  {i < activeSegment ? (
+                    <View style={[styles.segmentFill, styles.segmentFillDone]} />
+                  ) : i === activeSegment ? (
+                    <ActiveSegmentBar key={pageIndex} durationMs={mediaDurationMs} paused={isPaused} isVideo={!!media.videoPath} onComplete={goNext} />
+                  ) : null}
+                </View>
+              ))}
             </View>
-          ) : null}
+
+            {/* Same vertical level as the close button regardless of whether
+                calories renders a second line — both share TOP_ROW_HEIGHT and
+                center their content inside it, so the PAIR's vertical middle
+                always lines up with the button's, not just the name's. */}
+            <View style={[styles.topInfo, { top: insets.top + spacing.md }]} pointerEvents="none">
+              <Text style={styles.topInfoName}>{item.fullName}</Text>
+              {caloriesText ? <Text style={styles.topInfoCalories}>{caloriesText}</Text> : null}
+            </View>
+
+            {segmentCount > 1 && activeSegment === 0 ? (
+              <View style={styles.swipeHint} pointerEvents="none">
+                <Text style={styles.swipeHintText}>Desliza para ver el final ‹›</Text>
+              </View>
+            ) : null}
+          </View>
         </Animated.View>
       </GestureDetector>
 
@@ -503,6 +523,18 @@ function FeedMediaModalContent({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  backdropWrap: { flex: 1 },
+  // Same color as `backdrop` — sits just above the screen's top edge so a
+  // downward drag never outruns it before the whole thing has already
+  // faded away. See the doc comment above this component's JSX.
+  backdropOverscan: {
+    position: 'absolute',
+    top: -DISMISS_FADE_DISTANCE,
+    left: 0,
+    right: 0,
+    height: DISMISS_FADE_DISTANCE,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+  },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   mediaArea: { flex: 1 },
